@@ -235,78 +235,128 @@ export function HeroSection({
             </div>
           </div>
 
-          {/* Right Column: Executive Portrait & Contact Dossier Card */}
+          {/* Right Column: Editorial Portrait & Executive Dossier Card */}
           <div className="print:col-span-5 lg:col-span-5">
-            <div className="print-dossier-card flex h-full flex-col justify-between rounded-2xl border border-slate-800 bg-slate-900 p-7 text-slate-100 print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-4 print:text-slate-900 dark:bg-slate-950">
-              <div className="flex items-center gap-5 print:gap-3">
-                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-slate-700 bg-slate-800 print:h-16 print:w-16 print:border-slate-300 sm:h-28 sm:w-28">
-                  {!imgError ? (
-                    <img
-                      src={sanitizePortraitSrc(profile.portraitDataUrl)}
-                      alt={`${profile.name} portrait`}
-                      referrerPolicy="no-referrer"
-                      onError={() => setImgError(true)}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-800 font-display text-2xl font-bold text-slate-200">
-                      {initials || 'CV'}
+            <div className="print-dossier-card flex h-full flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/75 p-6 shadow-xs transition-colors print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-4 dark:border-slate-800 dark:bg-slate-950/90 sm:p-7">
+              <div>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-4 print:gap-3">
+                    <div className="relative h-22 w-22 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs print:h-16 print:w-16 print:rounded-full print:border-slate-300 dark:border-slate-700 dark:bg-slate-800 sm:h-24 sm:w-24">
+                      {!imgError ? (
+                        <img
+                          src={sanitizePortraitSrc(profile.portraitDataUrl)}
+                          alt={`${profile.name} portrait`}
+                          referrerPolicy="no-referrer"
+                          onError={() => setImgError(true)}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-100 font-display text-2xl font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          {initials || 'JB'}
+                        </div>
+                      )}
                     </div>
-                  )}
+
+                    <div className="min-w-0">
+                      <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-emerald-700 print:hidden dark:text-emerald-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                        <span>{locale === 'en' ? 'Active Assignment' : 'Penugasan Aktif'}</span>
+                      </div>
+                      <p className="mt-1 font-display text-lg font-bold tracking-tight text-slate-950 print:mt-0 print:text-sm dark:text-white">
+                        {profile.currentCompany}
+                      </p>
+                      <p className="mt-0.5 text-sm font-medium text-blue-800 print:text-xs dark:text-blue-400">
+                        {profile.currentRole}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500 print:text-[10px] dark:text-slate-400">
+                        {locale === 'en'
+                          ? '336 Rooms · 15 Meeting Rooms · 2 Ballrooms'
+                          : '336 Kamar · 15 Ruang Rapat · 2 Ballroom'}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="text-xs font-medium tracking-wide text-slate-400 print:text-[10px] print:text-slate-500">
-                    {locale === 'en' ? 'Current Assignment' : 'Penugasan Saat Ini'}
-                  </p>
-                  <p className="mt-1 font-display text-lg font-semibold tracking-wide text-white print:mt-0.5 print:text-sm print:text-slate-950">
-                    {profile.currentCompany}
-                  </p>
-                  <p className="mt-0.5 text-sm text-slate-300 print:text-xs print:text-slate-700">
-                    {profile.currentRole}
-                  </p>
+                {/* Clean hairline-divided contact & verification details */}
+                <div className="mt-6 divide-y divide-slate-200/80 border-t border-slate-200/80 text-sm print:mt-3 print:divide-slate-200 print:border-slate-200 print:text-xs dark:divide-slate-800 dark:border-slate-800">
+                  <div className="flex items-center justify-between gap-3 py-3 print:py-1.5">
+                    <a
+                      href={phoneHref}
+                      className="flex items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 print:text-slate-800 dark:text-slate-200 dark:hover:text-blue-400"
+                    >
+                      <Phone className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
+                      <span className="font-mono tabular-nums">{profile.phoneDisplay}</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(profile.phoneDisplay, 'phone')}
+                      aria-label="Copy phone number"
+                      className="no-print inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                    >
+                      {copiedField === 'phone' ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-emerald-700 dark:text-emerald-400">
+                            {locale === 'en' ? 'Copied' : 'Disalin'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>{locale === 'en' ? 'Copy' : 'Salin'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 py-3 print:py-1.5">
+                    <a
+                      href={`mailto:${sanitizeEmailForHref(profile.email)}`}
+                      className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 print:text-slate-800 dark:text-slate-200 dark:hover:text-blue-400"
+                    >
+                      <Mail className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
+                      <span className="truncate">{profile.email}</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(profile.email, 'email')}
+                      aria-label="Copy email address"
+                      className="no-print inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                    >
+                      {copiedField === 'email' ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-emerald-700 dark:text-emerald-400">
+                            {locale === 'en' ? 'Copied' : 'Disalin'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>{locale === 'en' ? 'Copy' : 'Salin'}</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="flex items-start gap-3 pt-3 print:pt-1.5">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
+                    <span className="leading-snug text-slate-600 print:text-slate-700 dark:text-slate-300">
+                      {profile.address}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-7 space-y-4 border-t border-slate-800 pt-6 text-sm print:mt-3 print:space-y-1.5 print:border-slate-200 print:pt-3 print:text-xs">
-                <div className="flex items-center justify-between gap-3">
-                  <a
-                    href={phoneHref}
-                    className="flex items-center gap-3 text-slate-200 transition-colors hover:text-white print:text-slate-800"
-                  >
-                    <Phone className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                    <span className="font-mono tabular-nums">{profile.phoneDisplay}</span>
-                  </a>
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(profile.phoneDisplay, 'phone')}
-                    aria-label="Copy phone number"
-                    className="no-print rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white cursor-pointer"
-                  >
-                    {copiedField === 'phone' ? (
-                      <Check className="h-3.5 w-3.5 text-emerald-400" />
-                    ) : (
-                      <Copy className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                  <a
-                    href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                    className="truncate text-slate-200 transition-colors hover:text-white print:text-slate-800"
-                  >
-                    {profile.email}
-                  </a>
-                </div>
-
-                <div className="flex items-start gap-3">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                  <span className="leading-snug text-slate-300 print:text-slate-700">
-                    {profile.address}
-                  </span>
-                </div>
+              <div className="no-print mt-5 flex items-center justify-between border-t border-slate-200/80 pt-4 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                <span>
+                  {locale === 'en'
+                    ? 'Harvard A4 ATS Format Ready'
+                    : 'Siap Cetak Format Harvard A4'}
+                </span>
+                <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+                  EN / ID
+                </span>
               </div>
             </div>
           </div>

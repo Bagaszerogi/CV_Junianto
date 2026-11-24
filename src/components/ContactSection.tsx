@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUpRight, Mail, MapPin, Phone, Printer } from 'lucide-react';
+import { ArrowUp, ArrowUpRight, Check, Copy, Mail, MapPin, Phone, Printer } from 'lucide-react';
 import { Locale, UI_COPY } from '../data/cvData';
 import { CvProfileData } from '../utils/cvFirestoreApi';
 import { sanitizeEmailForHref, sanitizeWhatsAppHref } from '../utils/safeUrls';
@@ -14,7 +14,9 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
   const [senderName, setSenderName] = useState('');
   const [company, setCompany] = useState('');
   const [message, setMessage] = useState('');
+  const [copiedField, setCopiedField] = useState<'email' | 'phone' | null>(null);
 
+  const navCopy = UI_COPY[locale].nav;
   const t = UI_COPY[locale].sections;
 
   const digits = profile.phoneDisplay.replace(/\D/g, '');
@@ -23,6 +25,16 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
     : digits
       ? `tel:+${digits}`
       : '#';
+
+  const handleCopy = async (value: string, field: 'email' | 'phone') => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      // Ignore clipboard failure
+    }
+  };
 
   const buildMailtoUrl = () => {
     const subject = encodeURIComponent(
@@ -63,10 +75,14 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
 
   return (
     <>
-      <section id="contact" className="no-print bg-slate-50 py-14 dark:bg-slate-950 md:py-20">
+      <section
+        id="contact"
+        data-animate="section"
+        className="no-print bg-slate-50 py-14 dark:bg-slate-950 md:py-20"
+      >
         <div className="mx-auto max-w-6xl px-6">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
-            {/* Left Info */}
+          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:items-start">
+            {/* Left Info & Quick-Copy Executive Contact */}
             <div className="lg:col-span-5">
               <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
                 {t.contactKicker}
@@ -78,22 +94,66 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                 {t.contactDesc}
               </p>
 
-              <div className="mt-8 space-y-4 border-t border-slate-200 pt-6 text-sm dark:border-slate-800">
-                <a
-                  href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                  className="flex items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-300 dark:hover:text-blue-400"
-                >
-                  <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{profile.email}</span>
-                </a>
-                <a
-                  href={phoneHref}
-                  className="flex items-center gap-3 font-mono text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-300 dark:hover:text-blue-400"
-                >
-                  <Phone className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{profile.phoneDisplay}</span>
-                </a>
-                <div className="flex items-start gap-3 text-slate-600 dark:text-slate-400">
+              <div className="mt-7 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/90 bg-white/80 px-5 shadow-2xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="flex items-center justify-between gap-3 py-3.5 text-sm">
+                  <a
+                    href={`mailto:${sanitizeEmailForHref(profile.email)}`}
+                    className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-200 dark:hover:text-blue-400"
+                  >
+                    <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                    <span className="truncate font-medium">{profile.email}</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(profile.email, 'email')}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                  >
+                    {copiedField === 'email' ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          {locale === 'en' ? 'Copied' : 'Disalin'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>{locale === 'en' ? 'Copy' : 'Salin'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 py-3.5 text-sm">
+                  <a
+                    href={phoneHref}
+                    className="flex items-center gap-3 font-mono text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-200 dark:hover:text-blue-400"
+                  >
+                    <Phone className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                    <span>{profile.phoneDisplay}</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy(profile.phoneDisplay, 'phone')}
+                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                  >
+                    {copiedField === 'phone' ? (
+                      <>
+                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-emerald-700 dark:text-emerald-400">
+                          {locale === 'en' ? 'Copied' : 'Disalin'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3.5 w-3.5" />
+                        <span>{locale === 'en' ? 'Copy' : 'Salin'}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <div className="flex items-start gap-3 py-3.5 text-sm text-slate-600 dark:text-slate-400">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
                   <span>{profile.address}</span>
                 </div>
@@ -102,13 +162,13 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
 
             {/* Right Interactive Message Composer */}
             <div className="lg:col-span-7">
-              <div className="rounded-2xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 md:p-8">
+              <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs transition-shadow hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-8">
                 <h3 className="font-display text-lg font-bold text-slate-950 dark:text-white">
                   {locale === 'en' ? 'Quick Message Composer' : 'Kirim Pesan Cepat'}
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {locale === 'en'
-                    ? 'Compose your inquiry and open directly in your email client or WhatsApp.'
+                    ? 'Compose your inquiry and launch directly in your email client or WhatsApp.'
                     : 'Tulis pesan Anda dan kirim langsung melalui aplikasi Email atau WhatsApp.'}
                 </p>
 
@@ -126,7 +186,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                       value={senderName}
                       onChange={(e) => setSenderName(e.target.value)}
                       placeholder={locale === 'en' ? 'e.g. HR Manager' : 'mis. HR Manager'}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
                     />
                   </div>
 
@@ -143,7 +203,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
                       placeholder={locale === 'en' ? 'e.g. Grand Hotel Jakarta' : 'mis. Hotel Nusantara'}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
                     />
                   </div>
                 </div>
@@ -165,7 +225,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                         ? 'Share role details, interview schedule, or infrastructure consultation...'
                         : 'Sampaikan detail posisi, jadwal wawancara, atau kebutuhan konsultasi IT...'
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
                   />
                 </div>
 
@@ -182,7 +242,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                     href={buildWhatsAppUrl()}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
                   >
                     <span>{locale === 'en' ? 'Send via WhatsApp' : 'Kirim via WhatsApp'}</span>
                     <ArrowUpRight className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" />
@@ -194,20 +254,53 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
         </div>
       </section>
 
-      <footer className="no-print border-t border-slate-200 bg-white py-8 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 sm:flex-row sm:items-center">
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            © {new Date().getFullYear()} {profile.name} · {locale === 'en' ? profile.titleEn : profile.titleId}
-          </p>
+      <footer className="no-print border-t border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="font-display text-sm font-bold text-slate-900 dark:text-white">
+              {profile.name}
+            </p>
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {locale === 'en' ? profile.titleEn : profile.titleId} · {profile.address}
+            </p>
+          </div>
 
-          <button
-            type="button"
-            onClick={onPrint}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-white cursor-pointer"
+          <nav
+            aria-label="Footer navigation"
+            className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium text-slate-600 dark:text-slate-300"
           >
-            <Printer className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{locale === 'en' ? 'Print A4 Resume' : 'Cetak CV Ukuran A4'}</span>
-          </button>
+            <a href="#profile" className="hover:text-blue-700 dark:hover:text-blue-400">
+              {navCopy.profile}
+            </a>
+            <a href="#experience" className="hover:text-blue-700 dark:hover:text-blue-400">
+              {navCopy.experience}
+            </a>
+            <a href="#projects" className="hover:text-blue-700 dark:hover:text-blue-400">
+              {navCopy.projects}
+            </a>
+            <a href="#tech-stack" className="hover:text-blue-700 dark:hover:text-blue-400">
+              {navCopy.stack}
+            </a>
+          </nav>
+
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={onPrint}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+            >
+              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{UI_COPY[locale].downloadPdf}</span>
+            </button>
+
+            <a
+              href="#profile"
+              aria-label={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+            >
+              <ArrowUp className="h-4 w-4" aria-hidden="true" />
+            </a>
+          </div>
         </div>
       </footer>
     </>

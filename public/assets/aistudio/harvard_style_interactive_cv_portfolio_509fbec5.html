@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Junianto Bagas Prasetyo - IT Infrastructure & Hospitality Specialist</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        harvard: {
+                            navy: '#1E3A8A',
+                            darkNavy: '#0F172A',
+                            accent: '#2563EB',
+                            paper: '#FAFAFA',
+                            text: '#1E293B'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                        serif: ['Georgia', 'Cambria', 'Times New Roman', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+
+        /* Pure Harvard CV Styling for Print / PDF Export */
+        @media print {
+            @page {
+                size: A4 portrait;
+                margin: 12mm 15mm 12mm 15mm;
+            }
+            
+            body {
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-size: 10.5pt !important;
+                line-height: 1.45 !important;
+            }
+
+            .no-print, nav, #toast, #vercel-guide {
+                display: none !important;
+            }
+
+            .print-only-block {
+                display: block !important;
+            }
+
+            .cv-container {
+                max-width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+                border: none !important;
+                background: transparent !important;
+            }
+
+            .cv-header-title {
+                color: #000000 !important;
+                font-size: 20pt !important;
+                letter-spacing: 0.5px;
+            }
+
+            .cv-section-title {
+                color: #1E3A8A !important;
+                border-bottom: 1.5px solid #1E3A8A !important;
+                font-size: 11pt !important;
+                margin-top: 14pt !important;
+                margin-bottom: 6pt !important;
+                padding-bottom: 2pt !important;
+            }
+
+            .skill-item {
+                display: inline-block !important;
+                background: transparent !important;
+                color: #000000 !important;
+                border: none !important;
+                padding: 0 !important;
+                margin-right: 8px !important;
+            }
+
+            .skill-item::after {
+                content: " •";
+                color: #64748B;
+            }
+            .skill-item:last-child::after {
+                content: "";
+            }
+
+            .experience-item, .reference-card {
+                page-break-inside: avoid;
+            }
+
+            .grid-print-cols {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 8px !important;
+            }
+        }
+
+        /* Toast animation */
+        #toast {
+            transition: transform 0.3s ease, opacity 0.3s ease;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200 min-h-screen transition-colors duration-200 pb-16">
+
+    <!-- TOP CONTROL BAR (Web View Only) -->
+    <nav class="no-print sticky top-0 z-40 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm py-3 px-4 sm:px-8 mb-8">
+        <div class="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <!-- Brand / Quick Status -->
+            <div class="flex items-center gap-2">
+                <span class="inline-block w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span class="font-semibold text-sm tracking-wide text-slate-700 dark:text-slate-300">
+                    Harvard-Standard Interactive Portfolio
+                </span>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center flex-wrap gap-2 text-xs sm:text-sm">
+                <!-- Theme Toggle Button -->
+                <button onclick="toggleDarkMode()" class="p-2.5 rounded-lg border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-2" title="Toggle Light/Dark Theme">
+                    <i id="theme-icon" class="fa-solid fa-moon text-slate-600 dark:text-yellow-400"></i>
+                    <span class="hidden sm:inline font-medium" id="theme-text">Dark Mode</span>
+                </button>
+
+                <!-- Vercel Guide Toggle -->
+                <button onclick="toggleVercelGuide()" class="px-3 py-2 rounded-lg bg-slate-800 dark:bg-slate-700 text-white hover:bg-slate-700 dark:hover:bg-slate-600 transition-colors flex items-center gap-2 font-medium">
+                    <i class="fa-solid fa-cloud-arrow-up text-xs"></i>
+                    <span>Deploy Guide</span>
+                </button>
+
+                <!-- PDF / Print Button -->
+                <button onclick="window.print()" class="px-4 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white font-semibold transition-all shadow-sm hover:shadow flex items-center gap-2">
+                    <i class="fa-solid fa-file-pdf"></i>
+                    <span>Download / Print Harvard CV</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- VERCEL DEPLOYMENT INSTRUCTIONS MODAL/DRAWER (Web View Only) -->
+    <div id="vercel-guide" class="no-print hidden max-w-5xl mx-auto px-4 mb-6">
+        <div class="bg-gradient-to-r from-slate-900 to-indigo-950 text-white rounded-xl p-5 shadow-xl border border-indigo-800/40 relative">
+            <button onclick="toggleVercelGuide()" class="absolute top-4 right-4 text-slate-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <h3 class="text-base font-bold text-blue-400 flex items-center gap-2 mb-3">
+                <i class="fa-solid fa-rocket"></i> Panduan Upload ke Hosting Vercel (Gratis & Cepat)
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-300">
+                <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700">
+                    <div class="font-semibold text-white mb-1">Cara 1: Drag & Drop (Tanpa Coding)</div>
+                    <p>1. Simpan file ini sebagai <code class="bg-slate-900 px-1 py-0.5 rounded text-blue-300">index.html</code> di dalam satu folder kosong.</p>
+                    <p class="mt-1">2. Buka <strong>vercel.com</strong> & log in.</p>
+                    <p class="mt-1">3. Drag & drop folder tersebut langsung ke dashboard Vercel.</p>
+                </div>
+                <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700">
+                    <div class="font-semibold text-white mb-1">Cara 2: GitHub Integration</div>
+                    <p>1. Buat repository baru di GitHub.</p>
+                    <p class="mt-1">2. Push file <code class="bg-slate-900 px-1 py-0.5 rounded text-blue-300">index.html</code> ini.</p>
+                    <p class="mt-1">3. Connect repository GitHub Anda ke Vercel untuk otomatis deploy setiap ada updates.</p>
+                </div>
+                <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700">
+                    <div class="font-semibold text-white mb-1">Fitur CV Harvard ini:</div>
+                    <p>• Rapi di Browser HP/Laptop.</p>
+                    <p class="mt-1">• Saat diklik "Print", otomatis ter-format sempurna ala CV Harvard tanpa tombol/UI web.</p>
+                    <p class="mt-1">• 100% ATS-Friendly.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN CV CONTAINER (Standard Harvard Alignment & Typography) -->
+    <main class="cv-container max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-xl shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-10 transition-colors duration-200">
+        
+        <!-- HEADER SECTION -->
+        <header class="text-center border-b pb-6 border-slate-200 dark:border-slate-800">
+            <h1 class="cv-header-title text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white uppercase font-serif">
+                JUNIANTO BAGAS PRASETYO
+            </h1>
+            <p class="text-sm sm:text-base font-semibold text-blue-800 dark:text-blue-400 mt-1 uppercase tracking-wider">
+                IT Infrastructure & Hospitality Systems Specialist
+            </p>
+            
+            <!-- Contact Info Bar -->
+            <div class="mt-3 flex flex-wrap justify-center items-center gap-x-4 gap-y-2 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+                <span class="flex items-center gap-1.5">
+                    <i class="fa-solid fa-location-dot text-slate-400 no-print"></i>
+                    Sleman, Yogyakarta / Jakarta, Indonesia
+                </span>
+                <span class="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+                
+                <!-- Clickable Copy Phone -->
+                <button onclick="copyToClipboard('+6281225560408', 'Phone number')" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1.5 group cursor-pointer" title="Click to copy phone number">
+                    <i class="fa-solid fa-phone text-slate-400 group-hover:text-blue-600 no-print"></i>
+                    <span>+62 812-2556-0408</span>
+                    <i class="fa-regular fa-copy text-[10px] opacity-0 group-hover:opacity-100 transition-opacity no-print"></i>
+                </button>
+                <span class="hidden sm:inline text-slate-300 dark:text-slate-700">•</span>
+
+                <!-- Clickable Copy Email -->
+                <button onclick="copyToClipboard('bagaszerogi@gmail.com', 'Email address')" class="hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-1.5 group cursor-pointer" title="Click to copy email address">
+                    <i class="fa-solid fa-envelope text-slate-400 group-hover:text-blue-600 no-print"></i>
+                    <span>bagaszerogi@gmail.com</span>
+                    <i class="fa-regular fa-copy text-[10px] opacity-0 group-hover:opacity-100 transition-opacity no-print"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- PROFESSIONAL SUMMARY SECTION -->
+        <section class="mt-6">
+            <h2 class="cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-400 border-b-2 border-blue-900 dark:border-blue-400 pb-1 mb-3">
+                Professional Summary
+            </h2>
+            <p class="text-xs sm:text-sm leading-relaxed text-slate-700 dark:text-slate-300 text-justify">
+                Results-driven <strong>Hospitality IT Supervisor</strong> with 5+ years of hands-on experience (2020–Present) aligning enterprise network infrastructure, virtualization environments, and hotel technology ecosystems with seamless operational workflows and guest experiences. Proven track record in leading end-to-end IT operations for 300+ room properties, strengthening multi-layered network security, and resolving complex system bottlenecks under 24/7 high-demand hospitality environments. Skilled in bridging technical execution with strategic cross-departmental business needs.
+            </p>
+        </section>
+
+        <!-- SKILLS & COMPETENCIES SECTION (WITH INTERACTIVE FILTER FOR WEB) -->
+        <section class="mt-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b-2 border-blue-900 dark:border-blue-400 pb-1 mb-3 gap-2">
+                <h2 class="cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-400">
+                    Skills & Core Competencies
+                </h2>
+
+                <!-- Interactive Filter Tabs (Web View Only) -->
+                <div class="no-print flex flex-wrap gap-1 text-[11px] font-medium">
+                    <button onclick="filterSkills('all')" class="skill-tab active-tab px-2.5 py-1 rounded bg-blue-900 text-white transition-colors" data-cat="all">All</button>
+                    <button onclick="filterSkills('infra')" class="skill-tab px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" data-cat="infra">Infrastructure & Network</button>
+                    <button onclick="filterSkills('pms')" class="skill-tab px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" data-cat="pms">Hospitality Systems</button>
+                    <button onclick="filterSkills('sec')" class="skill-tab px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" data-cat="sec">Security & Virtualization</button>
+                    <button onclick="filterSkills('core')" class="skill-tab px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors" data-cat="core">Core Competencies</button>
+                </div>
+            </div>
+
+            <!-- Skills Display Grid / Badges -->
+            <div id="skills-container" class="space-y-3 text-xs sm:text-sm">
+                
+                <!-- Category 1: Core Analytical & Management Skills -->
+                <div class="skill-group" data-category="core">
+                    <span class="font-bold text-slate-900 dark:text-white block sm:inline sm:w-44">Core Competencies:</span>
+                    <div class="inline-flex flex-wrap gap-1.5 mt-1 sm:mt-0">
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Root-Cause Problem Solving</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Incident & Crisis Management</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Cross-Departmental Communication</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Vendor & SLA Management</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">IT Compliance & Audit Readiness</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Preventive Maintenance Planning</span>
+                    </div>
+                </div>
+
+                <!-- Category 2: Hospitality & Business Systems -->
+                <div class="skill-group" data-category="pms">
+                    <span class="font-bold text-slate-900 dark:text-white block sm:inline sm:w-44">Hospitality Systems:</span>
+                    <div class="inline-flex flex-wrap gap-1.5 mt-1 sm:mt-0">
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Protel PMS</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">VHP PMS</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">XNPOS (F&B POS)</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">SAGE (Back Office)</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Majoo</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">GoDesk & SARA Apps</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Samsung LinkReach</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">DigiSign / MagicInfo / CDMS</span>
+                    </div>
+                </div>
+
+                <!-- Category 3: Network, Security & Virtualization -->
+                <div class="skill-group" data-category="infra sec">
+                    <span class="font-bold text-slate-900 dark:text-white block sm:inline sm:w-44">Infrastructure & Security:</span>
+                    <div class="inline-flex flex-wrap gap-1.5 mt-1 sm:mt-0">
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Fortigate Firewall</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Cisco Meraki</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">UniFi & Ruijie APs</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">VMware vSphere</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">ESET Endpoint Security</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Miwa & Onity Lock Systems</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Hikvision CCTV Networks</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">PABX (Trancel)</span>
+                    </div>
+                </div>
+
+                <!-- Category 4: Tools & Platforms -->
+                <div class="skill-group" data-category="core">
+                    <span class="font-bold text-slate-900 dark:text-white block sm:inline sm:w-44">Productivity & Design:</span>
+                    <div class="inline-flex flex-wrap gap-1.5 mt-1 sm:mt-0">
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Google Workspace (Advanced Analytics)</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">MDaemon Mail Server</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Adobe Creative Suite</span>
+                        <span class="skill-item px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">Canva</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- WORK EXPERIENCE SECTION -->
+        <section class="mt-6">
+            <h2 class="cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-400 border-b-2 border-blue-900 dark:border-blue-400 pb-1 mb-4">
+                Professional Experience
+            </h2>
+
+            <div class="space-y-5">
+                
+                <!-- Experience Item 1 -->
+                <div class="experience-item">
+                    <div class="flex flex-col sm:flex-row sm:items-baseline justify-between">
+                        <div>
+                            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                Hotel Ciputra Jakarta
+                            </h3>
+                            <div class="text-xs sm:text-sm font-semibold text-blue-800 dark:text-blue-400 italic">
+                                Information Technology Supervisor
+                            </div>
+                        </div>
+                        <div class="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-0">
+                            Jul 2023 – Present | Jakarta, Indonesia
+                        </div>
+                    </div>
+                    <ul class="mt-2 list-disc list-outside ml-4 space-y-1 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                        <li>Direct end-to-end IT infrastructure, system compliance, and daily technical operations for a 336-room luxury property featuring 15 meeting rooms and 2 ballrooms.</li>
+                        <li>Architect and maintain mission-critical hospitality applications, including Protel Property Management System (PMS), XNPOS (F&B Point of Sale), SAGE Back Office Finance, and VMware vSphere virtualization environments.</li>
+                        <li>Harden property network security via Fortigate Firewall configuration and manage 345+ UniFi and Ruijie wireless access points to ensure uninterrupted high-speed Wi-Fi coverage across all guest and administration zones.</li>
+                        <li>Streamline cross-departmental operations and digital guest touchpoints by implementing automated tools, including SARA apps, Majoo, GoDesk, and centralized digital signage platforms (DigiSign, MagicInfo, CDMS).</li>
+                    </ul>
+                </div>
+
+                <!-- Experience Item 2 -->
+                <div class="experience-item">
+                    <div class="flex flex-col sm:flex-row sm:items-baseline justify-between">
+                        <div>
+                            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                Fave Hotel Kusumanegara
+                            </h3>
+                            <div class="text-xs sm:text-sm font-semibold text-blue-800 dark:text-blue-400 italic">
+                                Information Technology Officer & Graphic Design
+                            </div>
+                        </div>
+                        <div class="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-0">
+                            Oct 2021 – Jul 2023 | Yogyakarta, Indonesia
+                        </div>
+                    </div>
+                    <ul class="mt-2 list-disc list-outside ml-4 space-y-1 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                        <li>Administered VHP Property Management System and Onity electronic keycard door lock infrastructure across 115 guest rooms, guaranteeing 99.9% check-in system availability.</li>
+                        <li>Oversee property-wide CCTV IP camera surveillance networks, in-house TV distribution channels, and Cisco Meraki / Ruijie switching hardware.</li>
+                        <li>Executed preventive hardware maintenance schedules and rapid level-2 incident troubleshooting for front-office, administrative, and guest-facing technology touchpoints.</li>
+                        <li>Designed internal and promotional visual assets using Adobe Creative Suite to align branding across digital and print collateral.</li>
+                    </ul>
+                </div>
+
+                <!-- Experience Item 3 -->
+                <div class="experience-item">
+                    <div class="flex flex-col sm:flex-row sm:items-baseline justify-between">
+                        <div>
+                            <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                                Liquid Next Generation
+                            </h3>
+                            <div class="text-xs sm:text-sm font-semibold text-blue-800 dark:text-blue-400 italic">
+                                Information Technology Officer
+                            </div>
+                        </div>
+                        <div class="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-0">
+                            Dec 2020 – Oct 2021 | Yogyakarta, Indonesia
+                        </div>
+                    </div>
+                    <ul class="mt-2 list-disc list-outside ml-4 space-y-1 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
+                        <li>Maintained and optimized high-speed internet connectivity and LAN routing across all venue operational areas to eliminate transaction bottlenecks during peak operational hours.</li>
+                        <li>Administered and monitored local physical server infrastructure to ensure 24/7 uptime for central databases and billing systems.</li>
+                        <li>Configured, deployed, and supported high-volume Point-of-Sale (POS) terminals for rapid daily transaction processing.</li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- EDUCATION SECTION -->
+        <section class="mt-6">
+            <h2 class="cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-400 border-b-2 border-blue-900 dark:border-blue-400 pb-1 mb-3">
+                Education
+            </h2>
+            <div class="flex flex-col sm:flex-row sm:items-baseline justify-between">
+                <div>
+                    <h3 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                        Universitas Mercu Buana Yogyakarta
+                    </h3>
+                    <div class="text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Bachelor of Computer Science (Informatika) — <span class="font-semibold text-blue-800 dark:text-blue-400">GPA: 3.50 / 4.00</span>
+                    </div>
+                </div>
+                <div class="text-xs sm:text-sm font-medium text-slate-600 dark:text-slate-400 mt-0.5 sm:mt-0">
+                    2015 – 2020
+                </div>
+            </div>
+        </section>
+
+        <!-- PROFESSIONAL REFERENCES SECTION -->
+        <section class="mt-6">
+            <h2 class="cv-section-title text-xs sm:text-sm font-bold uppercase tracking-wider text-blue-900 dark:text-blue-400 border-b-2 border-blue-900 dark:border-blue-400 pb-1 mb-3">
+                Professional References
+            </h2>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 grid-print-cols">
+                
+                <!-- Ref 1 -->
+                <div class="reference-card p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                    <div class="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">Kasanova Hermawan</div>
+                    <div class="text-xs text-blue-800 dark:text-blue-400 font-medium">GM Cluster — Hotel Aston Cilacap</div>
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-phone text-[10px] no-print"></i>
+                        <span>Phone: 0877-3919-9722</span>
+                    </div>
+                </div>
+
+                <!-- Ref 2 -->
+                <div class="reference-card p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                    <div class="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">Arum Sekar Rahajeng</div>
+                    <div class="text-xs text-blue-800 dark:text-blue-400 font-medium">HR Manager — AVEON Hotel</div>
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-phone text-[10px] no-print"></i>
+                        <span>Phone: 0878-7770-7000</span>
+                    </div>
+                </div>
+
+                <!-- Ref 3 -->
+                <div class="reference-card p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                    <div class="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">Wahyu Andriwibowo</div>
+                    <div class="text-xs text-blue-800 dark:text-blue-400 font-medium">IT — Vasa Hotel</div>
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-phone text-[10px] no-print"></i>
+                        <span>Phone: 0856-4545-8553</span>
+                    </div>
+                </div>
+
+                <!-- Ref 4 -->
+                <div class="reference-card p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                    <div class="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">Kiki Vindian</div>
+                    <div class="text-xs text-blue-800 dark:text-blue-400 font-medium">Financial Controller — Hotel Malioboro</div>
+                    <div class="text-xs text-slate-600 dark:text-slate-400 mt-1 flex items-center gap-1">
+                        <i class="fa-solid fa-phone text-[10px] no-print"></i>
+                        <span>Phone: 0822-8147-7405</span>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- TOAST NOTIFICATION CONTAINER (Web View Only) -->
+    <div id="toast" class="no-print fixed bottom-5 right-5 z-50 bg-slate-900 text-white dark:bg-white dark:text-slate-900 px-4 py-3 rounded-lg shadow-2xl flex items-center gap-3 translate-y-20 opacity-0 pointer-events-none text-xs sm:text-sm font-medium border border-slate-700 dark:border-slate-200">
+        <i class="fa-solid fa-circle-check text-emerald-400 dark:text-emerald-600 text-base"></i>
+        <span id="toast-message">Copied to clipboard!</span>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Theme Toggle Logic
+        function toggleDarkMode() {
+            const html = document.documentElement;
+            const themeIcon = document.getElementById('theme-icon');
+            const themeText = document.getElementById('theme-text');
+
+            if (html.classList.contains('dark')) {
+                html.classList.remove('dark');
+                html.classList.add('light');
+                themeIcon.className = 'fa-solid fa-moon text-slate-600';
+                themeText.innerText = 'Dark Mode';
+                localStorage.setItem('theme', 'light');
+            } else {
+                html.classList.remove('light');
+                html.classList.add('dark');
+                themeIcon.className = 'fa-solid fa-sun text-yellow-400';
+                themeText.innerText = 'Light Mode';
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Initialize saved theme
+        if (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+            document.getElementById('theme-icon').className = 'fa-solid fa-sun text-yellow-400';
+            document.getElementById('theme-text').innerText = 'Light Mode';
+        }
+
+        // Copy to Clipboard with Toast Notification
+        function copyToClipboard(text, label) {
+            const tempInput = document.createElement('input');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            showToast(`${label} copied to clipboard!`);
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = msg;
+
+            toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            toast.classList.add('translate-y-0', 'opacity-100');
+
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        // Skill Filter Functionality for Web View
+        function filterSkills(category) {
+            const groups = document.querySelectorAll('.skill-group');
+            const tabs = document.querySelectorAll('.skill-tab');
+
+            // Active Tab Styling
+            tabs.forEach(tab => {
+                if (tab.getAttribute('data-cat') === category) {
+                    tab.className = 'skill-tab active-tab px-2.5 py-1 rounded bg-blue-900 text-white transition-colors';
+                } else {
+                    tab.className = 'skill-tab px-2.5 py-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors';
+                }
+            });
+
+            // Filter Skill Groups
+            groups.forEach(group => {
+                const itemCats = group.getAttribute('data-category');
+                if (category === 'all' || itemCats.includes(category)) {
+                    group.style.display = 'block';
+                } else {
+                    group.style.display = 'none';
+                }
+            });
+        }
+
+        // Toggle Vercel Deployment Instructions Modal
+        function toggleVercelGuide() {
+            const guide = document.getElementById('vercel-guide');
+            guide.classList.toggle('hidden');
+        }
+    </script>
+</body>
+</html>

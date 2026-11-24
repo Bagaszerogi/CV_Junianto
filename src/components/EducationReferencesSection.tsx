@@ -166,17 +166,22 @@ export function EducationReferencesSection({
               )}
             </div>
 
-            <div className="print-break-inside-avoid mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-7 print:mt-3 print:rounded-lg print:bg-white print:p-3.5 dark:border-slate-800 dark:bg-slate-950">
-              <p className="font-mono text-xs font-medium text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
-                {education.period} · {locale === 'en' ? education.gpaEn : education.gpaId}
-              </p>
+            <div className="print-break-inside-avoid mt-6 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-6 shadow-2xs transition-colors hover:border-slate-300 print:mt-3 print:rounded-lg print:bg-white print:p-3.5 dark:border-slate-800 dark:bg-slate-950/80 sm:p-7">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono text-xs font-medium text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
+                  {education.period}
+                </span>
+                <span className="rounded-md bg-blue-50 px-2.5 py-0.5 font-mono text-xs font-semibold text-blue-800 print:bg-transparent print:px-0 print:text-[10px] dark:bg-blue-950/60 dark:text-blue-300">
+                  {locale === 'en' ? education.gpaEn : education.gpaId}
+                </span>
+              </div>
               <h3 className="mt-3 font-display text-xl font-bold text-slate-950 print:mt-1 print:text-sm dark:text-white">
                 {education.institution}
               </h3>
               <p className="mt-1 text-sm font-semibold text-blue-700 print:text-xs dark:text-blue-400">
                 {locale === 'en' ? education.majorEn : education.majorId}
               </p>
-              <p className="mt-4 border-t border-slate-200 pt-4 text-sm leading-relaxed text-slate-600 print:mt-2 print:pt-2 print:text-[11px] print:leading-snug dark:border-slate-800 dark:text-slate-300">
+              <p className="mt-4 border-t border-slate-200/80 pt-4 text-sm leading-relaxed text-slate-600 print:mt-2 print:pt-2 print:text-[11px] print:leading-snug dark:border-slate-800 dark:text-slate-300">
                 {locale === 'en' ? education.focusEn : education.focusId}
               </p>
             </div>
@@ -222,14 +227,14 @@ export function EducationReferencesSection({
               {references.map((ref) => (
                 <div
                   key={ref.id}
-                  className="print-break-inside-avoid flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-5 print:rounded-lg print:bg-white print:p-3 dark:border-slate-800 dark:bg-slate-950"
+                  className="print-break-inside-avoid group flex flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/70 p-5 shadow-2xs transition-all duration-150 hover:border-slate-300 hover:bg-white print:rounded-lg print:bg-white print:p-3 dark:border-slate-800 dark:bg-slate-950/80 dark:hover:border-slate-700 dark:hover:bg-slate-900"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="font-display text-base font-bold text-slate-950 print:text-xs dark:text-white">
                         {ref.name}
                       </h3>
-                      <p className="mt-1 text-xs font-medium text-slate-600 print:mt-0.5 print:text-[10px] dark:text-slate-400">
+                      <p className="mt-1 text-xs font-semibold text-blue-800 print:mt-0.5 print:text-[10px] dark:text-blue-400">
                         {ref.role}
                       </p>
                     </div>
@@ -257,7 +262,7 @@ export function EducationReferencesSection({
                     )}
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3 print:mt-2 print:pt-1.5 dark:border-slate-800">
+                  <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200/80 pt-3 print:mt-2 print:pt-1.5 dark:border-slate-800">
                     <a
                       href={ref.phoneHref}
                       className="inline-flex items-center gap-2 font-mono text-xs font-medium text-slate-700 transition-colors hover:text-blue-700 tabular-nums print:text-[10px] dark:text-slate-300 dark:hover:text-blue-400"

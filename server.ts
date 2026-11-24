@@ -52,7 +52,7 @@ const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
 const STORE_FILE = process.env.VERCEL
   ? path.resolve('/tmp', 'jbp-cv-store.json')
-  : path.resolve(process.cwd(), 'data', 'store.json');
+  : path.resolve(process.cwd(), '.runtime-data', 'store.json');
 
 function ensureStoreDirectory(): void {
   const dir = path.dirname(STORE_FILE);

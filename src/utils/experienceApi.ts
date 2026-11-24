@@ -155,6 +155,9 @@ export async function saveExperienceToFirestore(
   }
 
   const sanitizedId = item.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  if (!sanitizedId) {
+    throw new Error('Invalid experience ID.');
+  }
   const sanitized = sanitizeExperiencePayload(item);
   const path = `experiences/${sanitizedId}`;
 
@@ -205,6 +208,9 @@ export async function deleteExperienceFromFirestore(id: string): Promise<void> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new Error('Authentication required.');
+  }
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(id)) {
+    throw new Error('Invalid experience ID.');
   }
 
   const path = `experiences/${id}`;

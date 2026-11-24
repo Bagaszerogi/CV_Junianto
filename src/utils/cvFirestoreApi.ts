@@ -19,6 +19,7 @@ import {
   type ReferenceItem,
   type TechCategory,
 } from '../data/cvData';
+import { isValidEmailAddress, sanitizePortraitSrc } from './safeUrls';
 
 export interface MetricItem {
   value: string;
@@ -192,14 +193,14 @@ export async function saveProfileToFirestore(
     whatsappHref: normalizedWa.slice(0, 200),
     email: profile.email.trim().slice(0, 140),
     address: profile.address.trim().slice(0, 240),
-    portraitDataUrl: profile.portraitDataUrl.trim(),
+    portraitDataUrl: sanitizePortraitSrc(profile.portraitDataUrl),
     metrics: profile.metrics.slice(0, 6).map((m) => ({
-      value: m.value.trim().slice(0, 40),
-      valueId: (m.valueId || m.value).trim().slice(0, 40),
-      label: m.label.trim().slice(0, 80),
-      labelId: (m.labelId || m.label).trim().slice(0, 80),
-      detail: m.detail.trim().slice(0, 120),
-      detailId: (m.detailId || m.detail).trim().slice(0, 120),
+      value: (m.value || '-').trim().slice(0, 40) || '-',
+      valueId: (m.valueId || m.value || '-').trim().slice(0, 40) || '-',
+      label: (m.label || '-').trim().slice(0, 80) || '-',
+      labelId: (m.labelId || m.label || '-').trim().slice(0, 80) || '-',
+      detail: (m.detail || '').trim().slice(0, 120),
+      detailId: (m.detailId || m.detail || '').trim().slice(0, 120),
     })),
     education: {
       institution: profile.education.institution.trim().slice(0, 160),
@@ -215,6 +216,12 @@ export async function saveProfileToFirestore(
 
   if (!payload.name || !payload.email || !payload.phoneDisplay || !payload.address) {
     throw new Error('Name, Email, Phone, and Address are required.');
+  }
+  if (!isValidEmailAddress(payload.email)) {
+    throw new Error('Please enter a valid email address.');
+  }
+  if (payload.metrics.length === 0) {
+    throw new Error('At least one KPI metric is required.');
   }
 
   try {
@@ -295,6 +302,7 @@ export async function saveTechStackToFirestore(
   if (!currentUser) throw new Error('Authentication required.');
 
   const cleanId = item.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  if (!cleanId) throw new Error('Invalid tech stack ID.');
   const items = item.items.map((x) => x.trim().slice(0, 100)).filter(Boolean).slice(0, 40);
   if (!item.label.trim() || items.length === 0) {
     throw new Error('Category label and at least one tool are required.');
@@ -399,6 +407,7 @@ export async function saveReferenceToFirestore(
   if (!currentUser) throw new Error('Authentication required.');
 
   const cleanId = item.id.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128);
+  if (!cleanId) throw new Error('Invalid reference ID.');
   if (!item.name.trim() || !item.role.trim() || !item.phone.trim()) {
     throw new Error('Name, role, and phone are required.');
   }

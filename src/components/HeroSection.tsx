@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Locale, UI_COPY } from '../data/cvData';
 import { CvProfileData } from '../utils/cvFirestoreApi';
+import { sanitizeEmailForHref, sanitizePortraitSrc, sanitizeWhatsAppHref } from '../utils/safeUrls';
 import { ProfileEditTab } from './ProfileEditModal';
 
 export type ThemeMode = 'light' | 'dark';
@@ -186,7 +187,7 @@ export function HeroSection({
               </button>
 
               <a
-                href={`mailto:${profile.email}?subject=${encodeURIComponent(`Hospitality IT Opportunity — ${profile.name}`)}`}
+                href={`mailto:${sanitizeEmailForHref(profile.email)}?subject=${encodeURIComponent(`Hospitality IT Opportunity — ${profile.name}`)}`}
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0"
               >
                 <Mail className="h-4 w-4" aria-hidden="true" />
@@ -194,7 +195,7 @@ export function HeroSection({
               </a>
 
               <a
-                href={profile.whatsappHref}
+                href={sanitizeWhatsAppHref(profile.whatsappHref)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition-colors duration-150 hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0"
@@ -241,7 +242,7 @@ export function HeroSection({
                 <div className="h-24 w-24 shrink-0 overflow-hidden rounded-full border-2 border-slate-700 bg-slate-800 print:h-16 print:w-16 print:border-slate-300 sm:h-28 sm:w-28">
                   {!imgError ? (
                     <img
-                      src={profile.portraitDataUrl}
+                      src={sanitizePortraitSrc(profile.portraitDataUrl)}
                       alt={`${profile.name} portrait`}
                       referrerPolicy="no-referrer"
                       onError={() => setImgError(true)}
@@ -293,7 +294,7 @@ export function HeroSection({
                 <div className="flex items-center gap-3">
                   <Mail className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                   <a
-                    href={`mailto:${profile.email}`}
+                    href={`mailto:${sanitizeEmailForHref(profile.email)}`}
                     className="truncate text-slate-200 transition-colors hover:text-white print:text-slate-800"
                   >
                     {profile.email}

@@ -35,10 +35,22 @@ service cloud.firestore {
     }
 
     function isValidPortrait(val) {
-      return val is string && val.size() >= 5 && val.size() <= 600000 && (
+      return val is string && val.size() >= 5 && val.size() <= 600000 && !val.matches('.*\\.\\..*') && (
         val.matches('^/assets/[a-zA-Z0-9_./-]+$') ||
         val.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
       );
+    }
+
+    function isValidMetric(m) {
+      return m is map &&
+        m.keys().hasAll(['value', 'valueId', 'label', 'labelId', 'detail', 'detailId']) &&
+        m.keys().hasOnly(['value', 'valueId', 'label', 'labelId', 'detail', 'detailId']) &&
+        m.value is string && m.value.size() >= 1 && m.value.size() <= 40 &&
+        m.valueId is string && m.valueId.size() >= 1 && m.valueId.size() <= 40 &&
+        m.label is string && m.label.size() >= 1 && m.label.size() <= 80 &&
+        m.labelId is string && m.labelId.size() >= 1 && m.labelId.size() <= 80 &&
+        m.detail is string && m.detail.size() <= 120 &&
+        m.detailId is string && m.detailId.size() <= 120;
     }
 
     function isValidEducation(edu) {
@@ -114,9 +126,16 @@ service cloud.firestore {
         data.whatsappHref is string && data.whatsappHref.size() >= 1 && data.whatsappHref.size() <= 200 &&
         data.whatsappHref.matches('^https://wa\\.me/[0-9]+$') &&
         data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
+        data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$') &&
         data.address is string && data.address.size() >= 1 && data.address.size() <= 240 &&
         isValidPortrait(data.portraitDataUrl) &&
-        data.metrics is list && data.metrics.size() >= 1 && data.metrics.size() <= 6 && data.metrics[0] is map &&
+        data.metrics is list && data.metrics.size() >= 1 && data.metrics.size() <= 6 &&
+        isValidMetric(data.metrics[0]) &&
+        (data.metrics.size() < 2 || isValidMetric(data.metrics[1])) &&
+        (data.metrics.size() < 3 || isValidMetric(data.metrics[2])) &&
+        (data.metrics.size() < 4 || isValidMetric(data.metrics[3])) &&
+        (data.metrics.size() < 5 || isValidMetric(data.metrics[4])) &&
+        (data.metrics.size() < 6 || isValidMetric(data.metrics[5])) &&
         isValidEducation(data.education) &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
@@ -204,9 +223,9 @@ service cloud.firestore {
         data.periodId is string && data.periodId.size() >= 1 && data.periodId.size() <= 60 &&
         data.scaleContext is string && data.scaleContext.size() <= 200 &&
         data.scaleContextId is string && data.scaleContextId.size() <= 200 &&
-        data.bullets is list && data.bullets.size() >= 1 && data.bullets.size() <= 15 && data.bullets[0] is string && data.bullets[0].size() <= 500 &&
-        data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 && data.bulletsId[0] is string && data.bulletsId[0].size() <= 500 &&
-        data.systems is list && data.systems.size() <= 25 && (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() <= 80)) &&
+        data.bullets is list && data.bullets.size() >= 1 && data.bullets.size() <= 15 && data.bullets[0] is string && data.bullets[0].size() >= 1 && data.bullets[0].size() <= 500 &&
+        data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 && data.bulletsId[0] is string && data.bulletsId[0].size() >= 1 && data.bulletsId[0].size() <= 500 &&
+        data.systems is list && data.systems.size() <= 25 && (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() >= 1 && data.systems[0].size() <= 80)) &&
         data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
@@ -219,7 +238,7 @@ service cloud.firestore {
         data.group is string && data.group in ['core', 'infra', 'guest', 'productivity'] &&
         data.label is string && data.label.size() >= 1 && data.label.size() <= 100 &&
         data.labelId is string && data.labelId.size() >= 1 && data.labelId.size() <= 100 &&
-        data.items is list && data.items.size() >= 1 && data.items.size() <= 40 && data.items[0] is string && data.items[0].size() <= 100 &&
+        data.items is list && data.items.size() >= 1 && data.items.size() <= 40 && data.items[0] is string && data.items[0].size() >= 1 && data.items[0].size() <= 100 &&
         data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&

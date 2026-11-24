@@ -6,6 +6,7 @@ import {
   CvProfileData,
   saveProfileToFirestore,
 } from '../utils/cvFirestoreApi';
+import { sanitizePortraitSrc } from '../utils/safeUrls';
 
 export type ProfileEditTab = 'identity' | 'contact' | 'metrics' | 'education';
 
@@ -154,7 +155,7 @@ export function ProfileEditModal({
               <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
                 <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-slate-300 bg-slate-200 dark:border-slate-700 dark:bg-slate-800">
                   <img
-                    src={draft.portraitDataUrl}
+                    src={sanitizePortraitSrc(draft.portraitDataUrl)}
                     alt="Portrait preview"
                     className="h-full w-full object-cover"
                   />

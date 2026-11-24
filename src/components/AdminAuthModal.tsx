@@ -143,8 +143,8 @@ export function AdminAuthModal({ isOpen, locale, onClose }: AdminAuthModalProps)
           <div className="mt-5 space-y-4">
             <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
               {locale === 'en'
-                ? 'Sign in with your Google account (bagaszerogi@gmail.com, zerogi26@gmail.com, or it@hotelciputra.com) to unlock full CV editing.'
-                : 'Masuk dengan akun Google Anda (bagaszerogi@gmail.com, zerogi26@gmail.com, atau it@hotelciputra.com) untuk mengaktifkan mode edit penuh.'}
+                ? 'Sign in with your authorized admin Google account to unlock full CV editing.'
+                : 'Masuk dengan akun Google admin yang terdaftar untuk mengaktifkan mode edit penuh.'}
             </p>
             <button
               type="button"

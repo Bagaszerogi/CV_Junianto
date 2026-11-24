@@ -21,6 +21,7 @@ import {
   subscribeProjects,
   updateFirestoreProject,
 } from '../utils/projectApi';
+import { sanitizeProjectImageSrc } from '../utils/safeUrls';
 
 interface ProjectsSectionProps {
   locale: Locale;
@@ -446,9 +447,9 @@ export function ProjectsSection({
                   onClick={() => setActiveLightboxId(project.id)}
                   className="relative aspect-4/3 w-full overflow-hidden bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 print:aspect-16/9 dark:bg-slate-800 cursor-pointer"
                 >
-                  {!brokenImages[project.id] ? (
+                  {!brokenImages[project.id] && sanitizeProjectImageSrc(project.imageDataUrl) ? (
                     <img
-                      src={project.imageDataUrl}
+                      src={sanitizeProjectImageSrc(project.imageDataUrl)}
                       alt={`${project.title} — ${project.property}`}
                       referrerPolicy="no-referrer"
                       onError={() =>
@@ -805,7 +806,7 @@ export function ProjectsSection({
           <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-slate-900">
             <div className="flex max-h-[65vh] items-center justify-center bg-black">
               <img
-                src={activeLightboxItem.imageDataUrl}
+                src={sanitizeProjectImageSrc(activeLightboxItem.imageDataUrl)}
                 alt={activeLightboxItem.title}
                 referrerPolicy="no-referrer"
                 className="max-h-[65vh] w-auto max-w-full object-contain"

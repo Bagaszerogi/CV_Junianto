@@ -16,10 +16,15 @@
         "summaryEn": { "type": "string", "minLength": 1, "maxLength": 1500 },
         "summaryId": { "type": "string", "minLength": 1, "maxLength": 1500 },
         "phoneDisplay": { "type": "string", "minLength": 1, "maxLength": 40 },
-        "whatsappHref": { "type": "string", "minLength": 1, "maxLength": 200 },
-        "email": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "whatsappHref": { "type": "string", "minLength": 1, "maxLength": 200, "pattern": "^https://wa\\.me/[0-9]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 140, "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$" },
         "address": { "type": "string", "minLength": 1, "maxLength": 240 },
-        "portraitDataUrl": { "type": "string", "minLength": 5, "maxLength": 600000 },
+        "portraitDataUrl": {
+          "type": "string",
+          "minLength": 5,
+          "maxLength": 600000,
+          "pattern": "^(/assets/[a-zA-Z0-9_./-]+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$"
+        },
         "metrics": { "type": "array" },
         "education": { "type": "object" },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },

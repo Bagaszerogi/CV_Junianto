@@ -44,7 +44,9 @@ const SESSION_SECRET =
     ? process.env.SESSION_SECRET.trim()
     : crypto.randomBytes(32).toString('hex');
 
+const VALID_ID_RE = /^[a-zA-Z0-9_-]{1,80}$/;
 const TOKEN_TTL_MS = 1000 * 60 * 60 * 12; // 12 hours
+const MAX_REVOKED_TOKENS = 2000;
 const revokedTokens = new Set<string>();
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
@@ -103,11 +105,18 @@ function safeEqualText(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aDigest, bDigest);
 }
 
-function getEnvAdminConfig(): { email: string; password: string } | null {
+function getEnvAdminConfig(): { email: string; password: string; misconfigured?: boolean } | null {
   const envPassword = process.env.ADMIN_PASSWORD?.trim() ?? '';
   const envEmail = process.env.ADMIN_EMAIL?.trim() ?? '';
   if (!envPassword) {
     return null;
+  }
+  if (!EMAIL_RE.test(envEmail)) {
+    return {
+      email: '',
+      password: envPassword,
+      misconfigured: true,
+    };
   }
   return {
     email: normalizeEmail(envEmail),
@@ -193,6 +202,13 @@ function requireAdminAuth(req: AuthenticatedRequest, res: Response, next: NextFu
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
+  if (loginAttempts.size > 1000) {
+    for (const [key, entry] of loginAttempts.entries()) {
+      if (now > entry.resetAt) {
+        loginAttempts.delete(key);
+      }
+    }
+  }
   const existing = loginAttempts.get(ip);
   if (!existing || now > existing.resetAt) {
     loginAttempts.set(ip, { count: 1, resetAt: now + 60_000 });
@@ -258,6 +274,18 @@ function validateProjectPayload(body: unknown): {
 
 export const app = express();
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((_req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  next();
+});
+app.use('/api/auth', (_req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 app.use(express.json({ limit: '6mb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -281,6 +309,12 @@ app.get('/api/auth/status', (req, res) => {
 });
 
 app.post('/api/auth/setup', (req, res) => {
+  const clientIp = req.ip || 'unknown';
+  if (!checkRateLimit(clientIp)) {
+    res.status(429).json({ error: 'Too many attempts. Please wait a minute.' });
+    return;
+  }
+
   const envConfig = getEnvAdminConfig();
   const store = readStore();
 
@@ -297,8 +331,8 @@ app.post('/api/auth/setup', (req, res) => {
     res.status(400).json({ error: 'Please enter a valid email address.' });
     return;
   }
-  if (password.length < 6 || password.length > 128) {
-    res.status(400).json({ error: 'Password must be between 6 and 128 characters.' });
+  if (password.length < 10 || password.length > 128) {
+    res.status(400).json({ error: 'Password must be between 10 and 128 characters.' });
     return;
   }
 
@@ -335,7 +369,11 @@ app.post('/api/auth/login', (req, res) => {
 
   const envConfig = getEnvAdminConfig();
   if (envConfig) {
-    const emailMatches = envConfig.email ? safeEqualText(email, envConfig.email) : true;
+    if (envConfig.misconfigured || !envConfig.email) {
+      res.status(503).json({ error: 'Server admin email is not configured.' });
+      return;
+    }
+    const emailMatches = safeEqualText(email, envConfig.email);
     const passMatches = safeEqualText(password, envConfig.password);
     if (!emailMatches || !passMatches) {
       res.status(401).json({ error: 'Invalid email or password.' });
@@ -373,6 +411,9 @@ app.post('/api/auth/logout', (req, res) => {
   if (token) {
     const verified = verifySessionToken(token);
     if (verified) {
+      if (revokedTokens.size >= MAX_REVOKED_TOKENS) {
+        revokedTokens.clear();
+      }
       revokedTokens.add(verified.jti);
     }
   }
@@ -412,7 +453,7 @@ app.post('/api/projects', requireAdminAuth, (req, res) => {
 
 app.put('/api/projects/:id', requireAdminAuth, (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-  if (!id || id.length > 80) {
+  if (!VALID_ID_RE.test(id)) {
     res.status(400).json({ error: 'Invalid project ID.' });
     return;
   }
@@ -442,7 +483,7 @@ app.put('/api/projects/:id', requireAdminAuth, (req, res) => {
 
 app.delete('/api/projects/:id', requireAdminAuth, (req, res) => {
   const id = typeof req.params.id === 'string' ? req.params.id.trim() : '';
-  if (!id || id.length > 80) {
+  if (!VALID_ID_RE.test(id)) {
     res.status(400).json({ error: 'Invalid project ID.' });
     return;
   }

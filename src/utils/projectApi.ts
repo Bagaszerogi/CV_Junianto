@@ -190,6 +190,9 @@ export async function updateFirestoreProject(
   if (!currentUser) {
     throw new Error('Authentication required.');
   }
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(projectId)) {
+    throw new Error('Invalid project ID.');
+  }
 
   const sanitized = sanitizeProjectFields(input);
   const path = `projects/${projectId}`;
@@ -208,6 +211,9 @@ export async function deleteFirestoreProject(projectId: string): Promise<void> {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new Error('Authentication required.');
+  }
+  if (!/^[a-zA-Z0-9_-]{1,128}$/.test(projectId)) {
+    throw new Error('Invalid project ID.');
   }
 
   const path = `projects/${projectId}`;

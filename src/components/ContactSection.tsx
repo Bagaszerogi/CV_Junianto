@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ArrowUpRight, Mail, MapPin, Phone, Printer } from 'lucide-react';
 import { Locale, UI_COPY } from '../data/cvData';
 import { CvProfileData } from '../utils/cvFirestoreApi';
+import { sanitizeEmailForHref, sanitizeWhatsAppHref } from '../utils/safeUrls';
 
 interface ContactSectionProps {
   locale: Locale;
@@ -38,12 +39,15 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
           ? `Hello ${profile.brandShort}, we would like to discuss a hospitality IT opportunity with you.`
           : `Halo ${profile.brandShort}, kami ingin mendiskusikan peluang kerja di bidang IT perhotelan bersama Anda.`),
     ].filter(Boolean);
-    return `mailto:${profile.email}?subject=${subject}&body=${encodeURIComponent(
+    const safeEmail = sanitizeEmailForHref(profile.email);
+    return `mailto:${safeEmail}?subject=${subject}&body=${encodeURIComponent(
       bodyLines.join('\n')
     )}`;
   };
 
   const buildWhatsAppUrl = () => {
+    const baseWa = sanitizeWhatsAppHref(profile.whatsappHref);
+    if (baseWa === '#') return '#';
     const text = [
       senderName ? `Halo ${profile.brandShort}, saya ${senderName}` : `Halo ${profile.brandShort}`,
       company ? `dari ${company}.` : '.',
@@ -54,7 +58,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
     ]
       .join(' ')
       .replace(' .', '.');
-    return `${profile.whatsappHref}?text=${encodeURIComponent(text)}`;
+    return `${baseWa}?text=${encodeURIComponent(text)}`;
   };
 
   return (
@@ -76,7 +80,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
 
               <div className="mt-8 space-y-4 border-t border-slate-200 pt-6 text-sm dark:border-slate-800">
                 <a
-                  href={`mailto:${profile.email}`}
+                  href={`mailto:${sanitizeEmailForHref(profile.email)}`}
                   className="flex items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-300 dark:hover:text-blue-400"
                 >
                   <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />

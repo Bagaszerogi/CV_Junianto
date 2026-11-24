@@ -1,0 +1,417 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (
+          request.auth.token.email_verified == true &&
+          request.auth.token.email in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com']
+        )
+      );
+    }
+
+    function isValidPortrait(val) {
+      return val is string && val.size() >= 5 && val.size() <= 600000 && (
+        val.matches('^/assets/[a-zA-Z0-9_./-]+$') ||
+        val.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
+      );
+    }
+
+    function isValidEducation(edu) {
+      return edu is map &&
+        edu.keys().hasAll(['institution', 'majorEn', 'majorId', 'period', 'gpaEn', 'gpaId', 'focusEn', 'focusId']) &&
+        edu.keys().hasOnly(['institution', 'majorEn', 'majorId', 'period', 'gpaEn', 'gpaId', 'focusEn', 'focusId']) &&
+        edu.institution is string && edu.institution.size() >= 1 && edu.institution.size() <= 160 &&
+        edu.majorEn is string && edu.majorEn.size() >= 1 && edu.majorEn.size() <= 140 &&
+        edu.majorId is string && edu.majorId.size() >= 1 && edu.majorId.size() <= 140 &&
+        edu.period is string && edu.period.size() >= 1 && edu.period.size() <= 40 &&
+        edu.gpaEn is string && edu.gpaEn.size() >= 1 && edu.gpaEn.size() <= 40 &&
+        edu.gpaId is string && edu.gpaId.size() >= 1 && edu.gpaId.size() <= 40 &&
+        edu.focusEn is string && edu.focusEn.size() <= 600 &&
+        edu.focusId is string && edu.focusId.size() <= 600;
+    }
+
+    function isValidProfile(data) {
+      return data.keys().hasAll([
+          'name',
+          'brandShort',
+          'titleEn',
+          'titleId',
+          'kickerEn',
+          'kickerId',
+          'currentCompany',
+          'currentRole',
+          'summaryEn',
+          'summaryId',
+          'phoneDisplay',
+          'whatsappHref',
+          'email',
+          'address',
+          'portraitDataUrl',
+          'metrics',
+          'education',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'name',
+          'brandShort',
+          'titleEn',
+          'titleId',
+          'kickerEn',
+          'kickerId',
+          'currentCompany',
+          'currentRole',
+          'summaryEn',
+          'summaryId',
+          'phoneDisplay',
+          'whatsappHref',
+          'email',
+          'address',
+          'portraitDataUrl',
+          'metrics',
+          'education',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.brandShort is string && data.brandShort.size() >= 1 && data.brandShort.size() <= 60 &&
+        data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 140 &&
+        data.titleId is string && data.titleId.size() >= 1 && data.titleId.size() <= 140 &&
+        data.kickerEn is string && data.kickerEn.size() <= 160 &&
+        data.kickerId is string && data.kickerId.size() <= 160 &&
+        data.currentCompany is string && data.currentCompany.size() >= 1 && data.currentCompany.size() <= 140 &&
+        data.currentRole is string && data.currentRole.size() >= 1 && data.currentRole.size() <= 140 &&
+        data.summaryEn is string && data.summaryEn.size() >= 1 && data.summaryEn.size() <= 1500 &&
+        data.summaryId is string && data.summaryId.size() >= 1 && data.summaryId.size() <= 1500 &&
+        data.phoneDisplay is string && data.phoneDisplay.size() >= 1 && data.phoneDisplay.size() <= 40 &&
+        data.whatsappHref is string && data.whatsappHref.size() >= 1 && data.whatsappHref.size() <= 200 &&
+        data.whatsappHref.matches('^https://wa\\.me/[0-9]+$') &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
+        data.address is string && data.address.size() >= 1 && data.address.size() <= 240 &&
+        isValidPortrait(data.portraitDataUrl) &&
+        data.metrics is list && data.metrics.size() >= 1 && data.metrics.size() <= 6 && data.metrics[0] is map &&
+        isValidEducation(data.education) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll([
+          'title',
+          'property',
+          'year',
+          'category',
+          'description',
+          'imageDataUrl',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'title',
+          'property',
+          'year',
+          'category',
+          'description',
+          'imageDataUrl',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
+        data.property is string && data.property.size() >= 1 && data.property.size() <= 140 &&
+        data.year is string && data.year.size() >= 1 && data.year.size() <= 24 && data.year.matches('^[0-9A-Za-z\\s\\-]+$') &&
+        data.category is string && data.category in ['infrastructure', 'pms-pos', 'security', 'event-av'] &&
+        data.description is string && data.description.size() <= 1200 &&
+        data.imageDataUrl is string && data.imageDataUrl.size() >= 24 && data.imageDataUrl.size() <= 750000 &&
+        data.imageDataUrl.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidExperience(data) {
+      return data.keys().hasAll([
+          'company',
+          'role',
+          'roleId',
+          'status',
+          'category',
+          'period',
+          'periodId',
+          'scaleContext',
+          'scaleContextId',
+          'bullets',
+          'bulletsId',
+          'systems',
+          'sortOrder',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'company',
+          'role',
+          'roleId',
+          'status',
+          'category',
+          'period',
+          'periodId',
+          'scaleContext',
+          'scaleContextId',
+          'bullets',
+          'bulletsId',
+          'systems',
+          'sortOrder',
+          'authorId',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.company is string && data.company.size() >= 1 && data.company.size() <= 140 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
+        data.roleId is string && data.roleId.size() >= 1 && data.roleId.size() <= 140 &&
+        data.status is string && data.status in ['active', 'completed'] &&
+        data.category is string && data.category in ['leadership', 'operations'] &&
+        data.period is string && data.period.size() >= 1 && data.period.size() <= 60 &&
+        data.periodId is string && data.periodId.size() >= 1 && data.periodId.size() <= 60 &&
+        data.scaleContext is string && data.scaleContext.size() <= 200 &&
+        data.scaleContextId is string && data.scaleContextId.size() <= 200 &&
+        data.bullets is list && data.bullets.size() >= 1 && data.bullets.size() <= 15 && data.bullets[0] is string && data.bullets[0].size() <= 500 &&
+        data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 && data.bulletsId[0] is string && data.bulletsId[0].size() <= 500 &&
+        data.systems is list && data.systems.size() <= 25 && (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() <= 80)) &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTechStack(data) {
+      return data.keys().hasAll(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.group is string && data.group in ['core', 'infra', 'guest', 'productivity'] &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 100 &&
+        data.labelId is string && data.labelId.size() >= 1 && data.labelId.size() <= 100 &&
+        data.items is list && data.items.size() >= 1 && data.items.size() <= 40 && data.items[0] is string && data.items[0].size() <= 100 &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReference(data) {
+      return data.keys().hasAll(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
+        data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 40 &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // Public CV Profile & Education (readable by visitors, editable by verified admins)
+    match /profile/{profileId} {
+      allow get: if isValidId(profileId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(profileId) &&
+        isValidProfile(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(profileId) &&
+        isValidProfile(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name',
+          'brandShort',
+          'titleEn',
+          'titleId',
+          'kickerEn',
+          'kickerId',
+          'currentCompany',
+          'currentRole',
+          'summaryEn',
+          'summaryId',
+          'phoneDisplay',
+          'whatsappHref',
+          'email',
+          'address',
+          'portraitDataUrl',
+          'metrics',
+          'education',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    // Public CV Project Gallery
+    match /projects/{projectId} {
+      allow get: if isValidId(projectId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(projectId) &&
+        isValidProject(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title',
+          'property',
+          'year',
+          'category',
+          'description',
+          'imageDataUrl',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(projectId);
+    }
+
+    // Public CV Work Experience Timeline
+    match /experiences/{experienceId} {
+      allow get: if isValidId(experienceId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(experienceId) &&
+        isValidExperience(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(experienceId) &&
+        isValidExperience(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'company',
+          'role',
+          'roleId',
+          'status',
+          'category',
+          'period',
+          'periodId',
+          'scaleContext',
+          'scaleContextId',
+          'bullets',
+          'bulletsId',
+          'systems',
+          'sortOrder',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(experienceId);
+    }
+
+    // Public CV Tech Stack Expertise
+    match /techStacks/{stackId} {
+      allow get: if isValidId(stackId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(stackId) &&
+        isValidTechStack(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(stackId) &&
+        isValidTechStack(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'group',
+          'label',
+          'labelId',
+          'items',
+          'sortOrder',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(stackId);
+    }
+
+    // Public CV Professional References
+    match /references/{refId} {
+      allow get: if isValidId(refId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(refId) &&
+        isValidReference(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(refId) &&
+        isValidReference(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name',
+          'role',
+          'phone',
+          'sortOrder',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(refId);
+    }
+
+    // Admin UID Registry (read-only for self, never writable from client)
+    match /admins/{adminId} {
+      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow list, create, update, delete: if false;
+    }
+  }
+}

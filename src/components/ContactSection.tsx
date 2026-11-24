@@ -1,24 +1,33 @@
 import { useState } from 'react';
 import { ArrowUpRight, Mail, MapPin, Phone, Printer } from 'lucide-react';
-import { CV_PROFILE, Locale, UI_COPY } from '../data/cvData';
+import { Locale, UI_COPY } from '../data/cvData';
+import { CvProfileData } from '../utils/cvFirestoreApi';
 
 interface ContactSectionProps {
   locale: Locale;
+  profile: CvProfileData;
   onPrint: () => void;
 }
 
-export function ContactSection({ locale, onPrint }: ContactSectionProps) {
+export function ContactSection({ locale, profile, onPrint }: ContactSectionProps) {
   const [senderName, setSenderName] = useState('');
   const [company, setCompany] = useState('');
   const [message, setMessage] = useState('');
 
   const t = UI_COPY[locale].sections;
 
+  const digits = profile.phoneDisplay.replace(/\D/g, '');
+  const phoneHref = digits.startsWith('0')
+    ? `tel:+62${digits.slice(1)}`
+    : digits
+      ? `tel:+${digits}`
+      : '#';
+
   const buildMailtoUrl = () => {
     const subject = encodeURIComponent(
       company
         ? `Hospitality IT Inquiry — ${company}`
-        : 'Hospitality IT Opportunity — Junianto Bagas Prasetyo'
+        : `Hospitality IT Opportunity — ${profile.name}`
     );
     const bodyLines = [
       senderName ? `From: ${senderName}` : '',
@@ -26,17 +35,17 @@ export function ContactSection({ locale, onPrint }: ContactSectionProps) {
       '',
       message ||
         (locale === 'en'
-          ? 'Hello Bagas, we would like to discuss a hospitality IT opportunity with you.'
-          : 'Halo Bagas, kami ingin mendiskusikan peluang kerja di bidang IT perhotelan bersama Anda.'),
+          ? `Hello ${profile.brandShort}, we would like to discuss a hospitality IT opportunity with you.`
+          : `Halo ${profile.brandShort}, kami ingin mendiskusikan peluang kerja di bidang IT perhotelan bersama Anda.`),
     ].filter(Boolean);
-    return `mailto:${CV_PROFILE.contact.email}?subject=${subject}&body=${encodeURIComponent(
+    return `mailto:${profile.email}?subject=${subject}&body=${encodeURIComponent(
       bodyLines.join('\n')
     )}`;
   };
 
   const buildWhatsAppUrl = () => {
     const text = [
-      senderName ? `Halo Pak Bagas, saya ${senderName}` : 'Halo Pak Bagas',
+      senderName ? `Halo ${profile.brandShort}, saya ${senderName}` : `Halo ${profile.brandShort}`,
       company ? `dari ${company}.` : '.',
       message ||
         (locale === 'en'
@@ -45,7 +54,7 @@ export function ContactSection({ locale, onPrint }: ContactSectionProps) {
     ]
       .join(' ')
       .replace(' .', '.');
-    return `${CV_PROFILE.contact.whatsappHref}?text=${encodeURIComponent(text)}`;
+    return `${profile.whatsappHref}?text=${encodeURIComponent(text)}`;
   };
 
   return (
@@ -67,22 +76,22 @@ export function ContactSection({ locale, onPrint }: ContactSectionProps) {
 
               <div className="mt-8 space-y-4 border-t border-slate-200 pt-6 text-sm dark:border-slate-800">
                 <a
-                  href={`mailto:${CV_PROFILE.contact.email}`}
+                  href={`mailto:${profile.email}`}
                   className="flex items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-300 dark:hover:text-blue-400"
                 >
                   <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{CV_PROFILE.contact.email}</span>
+                  <span>{profile.email}</span>
                 </a>
                 <a
-                  href={CV_PROFILE.contact.phoneHref}
+                  href={phoneHref}
                   className="flex items-center gap-3 font-mono text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-300 dark:hover:text-blue-400"
                 >
                   <Phone className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{CV_PROFILE.contact.phoneDisplay}</span>
+                  <span>{profile.phoneDisplay}</span>
                 </a>
                 <div className="flex items-start gap-3 text-slate-600 dark:text-slate-400">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{CV_PROFILE.contact.address}</span>
+                  <span>{profile.address}</span>
                 </div>
               </div>
             </div>
@@ -184,7 +193,7 @@ export function ContactSection({ locale, onPrint }: ContactSectionProps) {
       <footer className="no-print border-t border-slate-200 bg-white py-8 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-4 px-6 sm:flex-row sm:items-center">
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            © {new Date().getFullYear()} {CV_PROFILE.name} · {CV_PROFILE.title[locale]}
+            © {new Date().getFullYear()} {profile.name} · {locale === 'en' ? profile.titleEn : profile.titleId}
           </p>
 
           <button

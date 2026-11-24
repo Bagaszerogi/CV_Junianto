@@ -1,3 +1,31 @@
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  setDoc,
+  Timestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import {
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  type User,
+} from 'firebase/auth';
+import {
+  ADMIN_EMAIL_ALLOWLIST,
+  auth,
+  db,
+  googleProvider,
+  handleFirestoreError,
+  OperationType,
+} from '../firebase';
+
 export type ProjectCategory = 'infrastructure' | 'pms-pos' | 'security' | 'event-av';
 
 export interface ProjectPhotoItem {
@@ -8,154 +36,189 @@ export interface ProjectPhotoItem {
   category: ProjectCategory;
   description: string;
   imageDataUrl: string;
+  authorId: string;
   createdAt: number;
-  source?: 'backend' | 'static';
 }
 
-export interface AuthStatusResponse {
-  needsSetup: boolean;
-  configured: boolean;
-  authenticated: boolean;
-  email: string | null;
-}
+const MAX_TITLE_LEN = 140;
+const MAX_PROPERTY_LEN = 140;
+const MAX_YEAR_LEN = 24;
+const MAX_DESC_LEN = 1200;
+const MAX_IMAGE_DATA_URL_LEN = 750000;
+const YEAR_PATTERN = /^[0-9A-Za-z\s-]+$/;
+const DATA_IMAGE_PATTERN = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const VALID_CATEGORIES = new Set<ProjectCategory>([
+  'infrastructure',
+  'pms-pos',
+  'security',
+  'event-av',
+]);
 
-export async function fetchAuthStatus(token: string | null): Promise<AuthStatusResponse> {
-  const headers: HeadersInit = {};
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
+export async function checkIsAdminUser(user: User | null): Promise<boolean> {
+  if (!user) return false;
+  const email = user.email?.trim().toLowerCase() ?? '';
+  if (user.emailVerified && ADMIN_EMAIL_ALLOWLIST.has(email)) {
+    return true;
   }
-  const res = await fetch('/api/auth/status', { headers, cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error('Failed to check authentication status.');
-  }
-  return (await res.json()) as AuthStatusResponse;
-}
-
-export async function setupAdminAccount(
-  email: string,
-  password: string
-): Promise<{ token: string; email: string }> {
-  const res = await fetch('/api/auth/setup', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = (await res.json()) as { token?: string; email?: string; error?: string };
-  if (!res.ok || !data.token || !data.email) {
-    throw new Error(data.error || 'Failed to complete admin setup.');
-  }
-  return { token: data.token, email: data.email };
-}
-
-export async function loginAdmin(
-  email: string,
-  password: string
-): Promise<{ token: string; email: string }> {
-  const res = await fetch('/api/auth/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const data = (await res.json()) as { token?: string; email?: string; error?: string };
-  if (!res.ok || !data.token || !data.email) {
-    throw new Error(data.error || 'Invalid email or password.');
-  }
-  return { token: data.token, email: data.email };
-}
-
-export async function logoutAdmin(token: string): Promise<void> {
-  await fetch('/api/auth/logout', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-  }).catch(() => undefined);
-}
-
-export async function fetchBackendProjects(): Promise<ProjectPhotoItem[]> {
-  const res = await fetch('/api/projects', { cache: 'no-store' });
-  if (!res.ok) {
-    throw new Error('Failed to load projects from server.');
-  }
-  const data = (await res.json()) as { projects?: ProjectPhotoItem[] };
-  const items = Array.isArray(data.projects) ? data.projects : [];
-  return items.map((item) => ({ ...item, source: 'backend' as const }));
-}
-
-export async function fetchStaticProjects(): Promise<ProjectPhotoItem[]> {
   try {
-    const response = await fetch('/projects-gallery.json', { cache: 'no-store' });
-    if (!response.ok) return [];
-    const contentType = response.headers.get('content-type') ?? '';
-    if (!contentType.includes('application/json')) return [];
-    const data = (await response.json()) as unknown;
-    if (!Array.isArray(data)) return [];
-    return data
-      .filter(
-        (item): item is ProjectPhotoItem =>
-          typeof item === 'object' &&
-          item !== null &&
-          typeof (item as ProjectPhotoItem).id === 'string' &&
-          typeof (item as ProjectPhotoItem).title === 'string' &&
-          typeof (item as ProjectPhotoItem).imageDataUrl === 'string'
-      )
-      .map((item) => ({ ...item, source: 'static' as const }));
+    const adminSnap = await getDoc(doc(db, 'admins', user.uid));
+    return adminSnap.exists();
   } catch {
-    return [];
+    return false;
   }
 }
 
-export async function createBackendProject(
-  token: string,
-  payload: Omit<ProjectPhotoItem, 'id' | 'createdAt' | 'source'>
-): Promise<ProjectPhotoItem> {
-  const res = await fetch('/api/projects', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
+export async function signInAdminWithGoogle(): Promise<User> {
+  const credential = await signInWithPopup(auth, googleProvider);
+  return credential.user;
+}
+
+export async function signInAdminWithEmail(email: string, password: string): Promise<User> {
+  const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+  return credential.user;
+}
+
+export async function signOutAdmin(): Promise<void> {
+  await signOut(auth);
+}
+
+export function subscribeProjects(
+  onData: (projects: ProjectPhotoItem[]) => void,
+  onError: (err: Error) => void
+): () => void {
+  const projectsRef = collection(db, 'projects');
+  const q = query(projectsRef, orderBy('createdAt', 'desc'));
+
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const items: ProjectPhotoItem[] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        const ts = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now();
+        return {
+          id: docSnap.id,
+          title: typeof data.title === 'string' ? data.title : '',
+          property: typeof data.property === 'string' ? data.property : '',
+          year: typeof data.year === 'string' ? data.year : '',
+          category: VALID_CATEGORIES.has(data.category as ProjectCategory)
+            ? (data.category as ProjectCategory)
+            : 'infrastructure',
+          description: typeof data.description === 'string' ? data.description : '',
+          imageDataUrl: typeof data.imageDataUrl === 'string' ? data.imageDataUrl : '',
+          authorId: typeof data.authorId === 'string' ? data.authorId : '',
+          createdAt: ts,
+        };
+      });
+      onData(items);
     },
-    body: JSON.stringify(payload),
-  });
-  const data = (await res.json()) as { project?: ProjectPhotoItem; error?: string };
-  if (!res.ok || !data.project) {
-    throw new Error(data.error || 'Failed to upload project photo.');
-  }
-  return { ...data.project, source: 'backend' };
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'projects');
+      } catch (wrapped) {
+        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
 }
 
-export async function updateBackendProject(
-  token: string,
-  id: string,
-  payload: Omit<ProjectPhotoItem, 'id' | 'createdAt' | 'source'>
-): Promise<ProjectPhotoItem> {
-  const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = (await res.json()) as { project?: ProjectPhotoItem; error?: string };
-  if (!res.ok || !data.project) {
-    throw new Error(data.error || 'Failed to update project.');
+function sanitizeProjectFields(input: {
+  title: string;
+  property: string;
+  year: string;
+  category: ProjectCategory;
+  description: string;
+  imageDataUrl: string;
+}) {
+  const title = input.title.trim().slice(0, MAX_TITLE_LEN);
+  const property = input.property.trim().slice(0, MAX_PROPERTY_LEN);
+  const rawYear = input.year.trim().slice(0, MAX_YEAR_LEN);
+  const year = YEAR_PATTERN.test(rawYear) ? rawYear : String(new Date().getFullYear());
+  const category = VALID_CATEGORIES.has(input.category) ? input.category : 'infrastructure';
+  const description = input.description.trim().slice(0, MAX_DESC_LEN);
+  const imageDataUrl = input.imageDataUrl.trim();
+
+  if (!title) throw new Error('Project title is required.');
+  if (!property) throw new Error('Hotel / property name is required.');
+  if (!DATA_IMAGE_PATTERN.test(imageDataUrl) || imageDataUrl.length > MAX_IMAGE_DATA_URL_LEN) {
+    throw new Error('Image must be a compressed JPEG, PNG, or WebP under 750 KB.');
   }
-  return { ...data.project, source: 'backend' };
+
+  return { title, property, year, category, description, imageDataUrl };
 }
 
-export async function deleteBackendProject(token: string, id: string): Promise<void> {
-  const res = await fetch(`/api/projects/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new Error(data.error || 'Failed to delete project.');
+export async function createFirestoreProject(input: {
+  title: string;
+  property: string;
+  year: string;
+  category: ProjectCategory;
+  description: string;
+  imageDataUrl: string;
+}): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required.');
+  }
+
+  const sanitized = sanitizeProjectFields(input);
+  const projectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const path = `projects/${projectId}`;
+
+  try {
+    await setDoc(doc(db, 'projects', projectId), {
+      ...sanitized,
+      authorId: currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
   }
 }
 
-export function compressImageFile(file: File, maxDimension = 1400, quality = 0.82): Promise<string> {
+export async function updateFirestoreProject(
+  projectId: string,
+  input: {
+    title: string;
+    property: string;
+    year: string;
+    category: ProjectCategory;
+    description: string;
+    imageDataUrl: string;
+  }
+): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required.');
+  }
+
+  const sanitized = sanitizeProjectFields(input);
+  const path = `projects/${projectId}`;
+
+  try {
+    await updateDoc(doc(db, 'projects', projectId), {
+      ...sanitized,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
+}
+
+export async function deleteFirestoreProject(projectId: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Authentication required.');
+  }
+
+  const path = `projects/${projectId}`;
+  try {
+    await deleteDoc(doc(db, 'projects', projectId));
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
+export function compressImageFile(file: File, maxDimension = 1080): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error('File must be an image (JPG, PNG, or WebP).'));
@@ -195,8 +258,21 @@ export function compressImageFile(file: File, maxDimension = 1400, quality = 0.8
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        const outputDataUrl = canvas.toDataURL('image/jpeg', quality);
-        resolve(outputDataUrl);
+
+        // Step down JPEG quality if needed to stay safely below Firestore's 1MB doc limit
+        let quality = 0.78;
+        let dataUrl = canvas.toDataURL('image/jpeg', quality);
+        while (dataUrl.length > 700_000 && quality > 0.35) {
+          quality -= 0.1;
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+
+        if (dataUrl.length > MAX_IMAGE_DATA_URL_LEN) {
+          reject(new Error('Compressed image still exceeds 750 KB limit. Please use a smaller photo.'));
+          return;
+        }
+
+        resolve(dataUrl);
       };
       img.src = String(reader.result);
     };

@@ -1,0 +1,192 @@
+{
+  "entities": {
+    "CvProfile": {
+      "title": "CvProfile",
+      "description": "Primary CV identity, portrait photo, contact details, metrics strip, and education record.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "brandShort": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "titleEn": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "titleId": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "kickerEn": { "type": "string", "minLength": 0, "maxLength": 160 },
+        "kickerId": { "type": "string", "minLength": 0, "maxLength": 160 },
+        "currentCompany": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "currentRole": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "summaryEn": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "summaryId": { "type": "string", "minLength": 1, "maxLength": 1500 },
+        "phoneDisplay": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "whatsappHref": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "address": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "portraitDataUrl": { "type": "string", "minLength": 5, "maxLength": 600000 },
+        "metrics": { "type": "array" },
+        "education": { "type": "object" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "name",
+        "brandShort",
+        "titleEn",
+        "titleId",
+        "kickerEn",
+        "kickerId",
+        "currentCompany",
+        "currentRole",
+        "summaryEn",
+        "summaryId",
+        "phoneDisplay",
+        "whatsappHref",
+        "email",
+        "address",
+        "portraitDataUrl",
+        "metrics",
+        "education",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "A hospitality IT project photo and summary displayed on the public CV portfolio.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "property": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "year": { "type": "string", "minLength": 1, "maxLength": 24, "pattern": "^[0-9A-Za-z\\s\\-]+$" },
+        "category": { "type": "string", "enum": ["infrastructure", "pms-pos", "security", "event-av"] },
+        "description": { "type": "string", "minLength": 0, "maxLength": 1200 },
+        "imageDataUrl": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 750000,
+          "pattern": "^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+        },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "title",
+        "property",
+        "year",
+        "category",
+        "description",
+        "imageDataUrl",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Experience": {
+      "title": "Experience",
+      "description": "A work experience entry displayed on the CV timeline, editable by verified admins.",
+      "type": "object",
+      "properties": {
+        "company": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "roleId": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "status": { "type": "string", "enum": ["active", "completed"] },
+        "category": { "type": "string", "enum": ["leadership", "operations"] },
+        "period": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "periodId": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "scaleContext": { "type": "string", "minLength": 0, "maxLength": 200 },
+        "scaleContextId": { "type": "string", "minLength": 0, "maxLength": 200 },
+        "bullets": { "type": "array" },
+        "bulletsId": { "type": "array" },
+        "systems": { "type": "array" },
+        "sortOrder": { "type": "number" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "company",
+        "role",
+        "roleId",
+        "status",
+        "category",
+        "period",
+        "periodId",
+        "scaleContext",
+        "scaleContextId",
+        "bullets",
+        "bulletsId",
+        "systems",
+        "sortOrder",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "TechStackItem": {
+      "title": "TechStackItem",
+      "description": "Technology stack expertise category and tool list.",
+      "type": "object",
+      "properties": {
+        "group": { "type": "string", "enum": ["core", "infra", "guest", "productivity"] },
+        "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "labelId": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "items": { "type": "array" },
+        "sortOrder": { "type": "number" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["group", "label", "labelId", "items", "sortOrder", "authorId", "createdAt", "updatedAt"]
+    },
+    "ReferencePerson": {
+      "title": "ReferencePerson",
+      "description": "Professional reference contact displayed on the CV.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "role": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "phone": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "sortOrder": { "type": "number" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "role", "phone", "sortOrder", "authorId", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin UID registry document.",
+      "type": "object",
+      "properties": {
+        "role": { "type": "string", "enum": ["admin"] }
+      },
+      "required": ["role"]
+    }
+  },
+  "firestore": {
+    "/profile/{profileId}": {
+      "schema": { "$ref": "#/entities/CvProfile" },
+      "description": "Publicly readable CV profile, portrait photo, contact details, metrics, and education."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/Project" },
+      "description": "Publicly readable hospitality IT project gallery managed by verified admins."
+    },
+    "/experiences/{experienceId}": {
+      "schema": { "$ref": "#/entities/Experience" },
+      "description": "Publicly readable work experience timeline managed by verified admins."
+    },
+    "/techStacks/{stackId}": {
+      "schema": { "$ref": "#/entities/TechStackItem" },
+      "description": "Publicly readable technology stack categories managed by verified admins."
+    },
+    "/references/{refId}": {
+      "schema": { "$ref": "#/entities/ReferencePerson" },
+      "description": "Publicly readable professional references managed by verified admins."
+    },
+    "/admins/{adminId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Admin role registry readable only by the matching authenticated user."
+    }
+  }
+}

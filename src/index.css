@@ -66,15 +66,53 @@
 
 @media print {
   @page {
-    size: A4;
-    margin: 12mm 14mm;
+    size: A4 portrait;
+    margin: 10mm 12mm;
   }
 
-  body {
+  html,
+  html.dark,
+  body,
+  #root {
     background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #0f172a !important;
+    color-scheme: light !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
+  }
+
+  .print-section {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    border-color: #e2e8f0 !important;
+    color: #0f172a !important;
+  }
+
+  .print-section *,
+  .print-dossier-card * {
+    color: inherit;
+  }
+
+  .print-section h1,
+  .print-section h2,
+  .print-section h3,
+  .print-section h4 {
+    color: #020617 !important;
+  }
+
+  .print-section p,
+  .print-section li,
+  .print-section span,
+  .print-section a {
+    color: #334155 !important;
+  }
+
+  .print-dossier-card {
+    background: #f8fafc !important;
+    background-color: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
   }
 
   .no-print {

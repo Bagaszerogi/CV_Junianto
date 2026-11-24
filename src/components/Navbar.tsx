@@ -1,14 +1,32 @@
-import { useState } from 'react';
-import { Printer, Menu, X } from 'lucide-react';
-import { CV_PROFILE, Locale, UI_COPY } from '../data/cvData';
+import { useEffect, useRef, useState } from 'react';
+import { type User } from 'firebase/auth';
+import { ChevronDown, LogIn, LogOut, Menu, Pencil, Printer, X } from 'lucide-react';
+import { Locale, UI_COPY } from '../data/cvData';
 
 interface NavbarProps {
   locale: Locale;
+  brandShort: string;
+  firebaseUser: User | null;
+  isAdminUser: boolean;
+  onOpenAuth: () => void;
+  onOpenProfileEdit: () => void;
+  onLogout: () => void;
   onPrint: () => void;
 }
 
-export function Navbar({ locale, onPrint }: NavbarProps) {
+export function Navbar({
+  locale,
+  brandShort,
+  firebaseUser,
+  isAdminUser,
+  onOpenAuth,
+  onOpenProfileEdit,
+  onLogout,
+  onPrint,
+}: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const t = UI_COPY[locale];
 
   const navItems = [
@@ -19,6 +37,17 @@ export function Navbar({ locale, onPrint }: NavbarProps) {
     { href: '#contact', label: t.nav.contact },
   ];
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [menuOpen]);
+
   return (
     <header className="no-print sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-8 px-6">
@@ -27,7 +56,7 @@ export function Navbar({ locale, onPrint }: NavbarProps) {
           href="#profile"
           className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
         >
-          {CV_PROFILE.brandShort}
+          {brandShort}
         </a>
 
         {/* Zone 2: 5 concise single-line navigation links */}
@@ -46,16 +75,99 @@ export function Navbar({ locale, onPrint }: NavbarProps) {
           ))}
         </nav>
 
-        {/* Zone 3: 1 primary action */}
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onPrint}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            <Printer className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{t.downloadPdf}</span>
-          </button>
+        {/* Zone 3: Top-right Login / Admin Menu action */}
+        <div className="flex items-center gap-3 shrink-0" ref={menuRef}>
+          {!firebaseUser ? (
+            <button
+              type="button"
+              onClick={onOpenAuth}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
+            >
+              <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{locale === 'en' ? 'Login' : 'Masuk'}</span>
+            </button>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
+              >
+                <span>
+                  {isAdminUser
+                    ? locale === 'en'
+                      ? 'Edit Mode'
+                      : 'Mode Edit'
+                    : locale === 'en'
+                      ? 'Account'
+                      : 'Akun'}
+                </span>
+                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                  <div className="border-b border-slate-100 px-4 py-2.5 dark:border-slate-800">
+                    <p className="truncate text-xs font-semibold text-slate-900 dark:text-white">
+                      {firebaseUser.email}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      {isAdminUser
+                        ? locale === 'en'
+                          ? 'Admin Access Active'
+                          : 'Akses Admin Aktif'
+                        : locale === 'en'
+                          ? 'Read-only Account'
+                          : 'Akun Hanya Baca'}
+                    </p>
+                  </div>
+
+                  {isAdminUser && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        onOpenProfileEdit();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                      <span>
+                        {locale === 'en'
+                          ? 'Edit Profile, Photo & Contact'
+                          : 'Ubah Profil, Foto & Kontak'}
+                      </span>
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onPrint();
+                    }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                  >
+                    <Printer className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                    <span>{t.downloadPdf}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onLogout();
+                    }}
+                    className="flex w-full items-center gap-2.5 border-t border-slate-100 px-4 py-2.5 text-left text-xs font-medium text-red-600 hover:bg-red-50 dark:border-slate-800 dark:text-red-400 dark:hover:bg-red-950/50 cursor-pointer"
+                  >
+                    <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    <span>{locale === 'en' ? 'Sign Out' : 'Keluar'}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             type="button"

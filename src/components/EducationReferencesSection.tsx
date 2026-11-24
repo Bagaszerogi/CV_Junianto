@@ -1,14 +1,58 @@
-import { useState } from 'react';
-import { Check, Copy, Phone } from 'lucide-react';
-import { EDUCATION, Locale, REFERENCES, UI_COPY } from '../data/cvData';
+import { FormEvent, useEffect, useState } from 'react';
+import { Check, Copy, Pencil, Phone, Plus, Trash2, X } from 'lucide-react';
+import { Locale, UI_COPY } from '../data/cvData';
+import {
+  deleteReferenceFromFirestore,
+  EducationData,
+  FirestoreReferenceItem,
+  saveReferenceToFirestore,
+  subscribeReferences,
+} from '../utils/cvFirestoreApi';
 
 interface EducationReferencesSectionProps {
   locale: Locale;
+  authReady: boolean;
+  isAdminUser: boolean;
+  education: EducationData;
+  onEditEducation: () => void;
 }
 
-export function EducationReferencesSection({ locale }: EducationReferencesSectionProps) {
+export function EducationReferencesSection({
+  locale,
+  authReady,
+  isAdminUser,
+  education,
+  onEditEducation,
+}: EducationReferencesSectionProps) {
+  const [references, setReferences] = useState<FirestoreReferenceItem[]>([]);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Add / Edit Reference modal
+  const [isRefModalOpen, setIsRefModalOpen] = useState(false);
+  const [editingRef, setEditingRef] = useState<FirestoreReferenceItem | null>(null);
+  const [refName, setRefName] = useState('');
+  const [refRole, setRefRole] = useState('');
+  const [refPhone, setRefPhone] = useState('');
+  const [refOrder, setRefOrder] = useState(0);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
   const t = UI_COPY[locale].sections;
+
+  useEffect(() => {
+    if (!authReady) return;
+    const unsubscribe = subscribeReferences(
+      (items) => {
+        setReferences(items);
+        setLoadError(null);
+      },
+      (err) => {
+        setLoadError(err.message);
+      }
+    );
+    return () => unsubscribe();
+  }, [authReady]);
 
   const handleCopyPhone = async (phone: string) => {
     try {
@@ -20,71 +64,205 @@ export function EducationReferencesSection({ locale }: EducationReferencesSectio
     }
   };
 
+  const openAddRef = () => {
+    setEditingRef(null);
+    setRefName('');
+    setRefRole('');
+    setRefPhone('');
+    setRefOrder(references.length);
+    setFormError(null);
+    setIsRefModalOpen(true);
+  };
+
+  const openEditRef = (item: FirestoreReferenceItem) => {
+    setEditingRef(item);
+    setRefName(item.name);
+    setRefRole(item.role);
+    setRefPhone(item.phone);
+    setRefOrder(item.sortOrder);
+    setFormError(null);
+    setIsRefModalOpen(true);
+  };
+
+  const handleSaveRef = async (e: FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    if (!refName.trim() || !refRole.trim() || !refPhone.trim()) {
+      setFormError(
+        locale === 'en'
+          ? 'Name, role, and phone number are required.'
+          : 'Nama, jabatan, dan nomor telepon wajib diisi.'
+      );
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const id = editingRef
+        ? editingRef.id
+        : `ref_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      await saveReferenceToFirestore(
+        {
+          id,
+          name: refName.trim(),
+          role: refRole.trim(),
+          phone: refPhone.trim(),
+          sortOrder: Number(refOrder) || 0,
+        },
+        Boolean(editingRef?.fromFirestore)
+      );
+      setIsRefModalOpen(false);
+    } catch (err) {
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        // Keep msg
+      }
+      setFormError(msg);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteRef = async (id: string) => {
+    try {
+      await deleteReferenceFromFirestore(id);
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   return (
     <section
       id="education"
-      className="border-b border-slate-200 bg-white py-14 dark:border-slate-800 dark:bg-slate-900 md:py-20"
+      data-animate="section"
+      className="print-section border-b border-slate-200 bg-white py-14 print:py-5 dark:border-slate-800 dark:bg-slate-900 md:py-20"
     >
-      <div className="mx-auto max-w-6xl px-6">
-        <div className="grid grid-cols-1 gap-10 lg:grid-cols-12">
+      <div className="mx-auto max-w-6xl px-6 print:px-0">
+        <div className="grid grid-cols-1 gap-10 print:grid-cols-12 print:gap-5 lg:grid-cols-12">
           {/* Left: Education */}
-          <div className="lg:col-span-5">
-            <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
-              {t.educationKicker}
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
-              {t.educationTitle}
-            </h2>
+          <div className="print:col-span-5 lg:col-span-5">
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
+                  {t.educationKicker}
+                </p>
+                <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
+                  {t.educationTitle}
+                </h2>
+              </div>
 
-            <div className="print-break-inside-avoid mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-7 dark:border-slate-800 dark:bg-slate-950">
-              <p className="font-mono text-xs font-medium text-slate-500 tabular-nums dark:text-slate-400">
-                {EDUCATION.period} · {locale === 'en' ? EDUCATION.gpa : EDUCATION.gpaId}
+              {isAdminUser && (
+                <button
+                  type="button"
+                  onClick={onEditEducation}
+                  className="no-print inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-blue-400 cursor-pointer"
+                >
+                  <Pencil className="h-3 w-3" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
+                </button>
+              )}
+            </div>
+
+            <div className="print-break-inside-avoid mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-7 print:mt-3 print:rounded-lg print:bg-white print:p-3.5 dark:border-slate-800 dark:bg-slate-950">
+              <p className="font-mono text-xs font-medium text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
+                {education.period} · {locale === 'en' ? education.gpaEn : education.gpaId}
               </p>
-              <h3 className="mt-3 font-display text-xl font-bold text-slate-950 dark:text-white">
-                {EDUCATION.institution}
+              <h3 className="mt-3 font-display text-xl font-bold text-slate-950 print:mt-1 print:text-sm dark:text-white">
+                {education.institution}
               </h3>
-              <p className="mt-1 text-sm font-semibold text-blue-700 dark:text-blue-400">
-                {EDUCATION.major[locale]}
+              <p className="mt-1 text-sm font-semibold text-blue-700 print:text-xs dark:text-blue-400">
+                {locale === 'en' ? education.majorEn : education.majorId}
               </p>
-              <p className="mt-4 border-t border-slate-200 pt-4 text-sm leading-relaxed text-slate-600 dark:border-slate-800 dark:text-slate-300">
-                {EDUCATION.focus[locale]}
+              <p className="mt-4 border-t border-slate-200 pt-4 text-sm leading-relaxed text-slate-600 print:mt-2 print:pt-2 print:text-[11px] print:leading-snug dark:border-slate-800 dark:text-slate-300">
+                {locale === 'en' ? education.focusEn : education.focusId}
               </p>
             </div>
           </div>
 
           {/* Right: Professional References */}
-          <div className="lg:col-span-7">
-            <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
-              {t.referencesKicker}
-            </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
-              {t.referencesTitle}
-            </h2>
-            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
-              {t.referencesNote}
-            </p>
+          <div className="print:col-span-7 lg:col-span-7">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
+                  {t.referencesKicker}
+                </p>
+                <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
+                  {t.referencesTitle}
+                </h2>
+                <p className="mt-2 text-sm text-slate-600 print:hidden dark:text-slate-300">
+                  {t.referencesNote}
+                </p>
+              </div>
 
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {REFERENCES.map((ref) => (
-                <div
-                  key={ref.name}
-                  className="print-break-inside-avoid flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-950"
+              {isAdminUser && (
+                <button
+                  type="button"
+                  onClick={openAddRef}
+                  className="no-print inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 cursor-pointer"
                 >
-                  <div>
-                    <h3 className="font-display text-base font-bold text-slate-950 dark:text-white">
-                      {ref.name}
-                    </h3>
-                    <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-400">
-                      {ref.role}
-                    </p>
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Add Reference' : 'Tambah Referensi'}</span>
+                </button>
+              )}
+            </div>
+
+            {loadError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
+              >
+                {loadError}
+              </div>
+            )}
+
+            <div className="mt-6 grid grid-cols-1 gap-4 print:mt-3 print:grid-cols-2 print:gap-2.5 sm:grid-cols-2">
+              {references.map((ref) => (
+                <div
+                  key={ref.id}
+                  className="print-break-inside-avoid flex flex-col justify-between rounded-2xl border border-slate-200 bg-slate-50 p-5 print:rounded-lg print:bg-white print:p-3 dark:border-slate-800 dark:bg-slate-950"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h3 className="font-display text-base font-bold text-slate-950 print:text-xs dark:text-white">
+                        {ref.name}
+                      </h3>
+                      <p className="mt-1 text-xs font-medium text-slate-600 print:mt-0.5 print:text-[10px] dark:text-slate-400">
+                        {ref.role}
+                      </p>
+                    </div>
+                    {isAdminUser && (
+                      <div className="no-print flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => openEditRef(ref)}
+                          aria-label={`Edit ${ref.name}`}
+                          className="rounded p-1 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-800 cursor-pointer"
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                        {ref.fromFirestore && (
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteRef(ref.id)}
+                            aria-label={`Delete ${ref.name}`}
+                            className="rounded p-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-slate-800 cursor-pointer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3 dark:border-slate-800">
+                  <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-200 pt-3 print:mt-2 print:pt-1.5 dark:border-slate-800">
                     <a
                       href={ref.phoneHref}
-                      className="inline-flex items-center gap-2 font-mono text-xs font-medium text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-300 dark:hover:text-blue-400"
+                      className="inline-flex items-center gap-2 font-mono text-xs font-medium text-slate-700 transition-colors hover:text-blue-700 tabular-nums print:text-[10px] dark:text-slate-300 dark:hover:text-blue-400"
                     >
-                      <Phone className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                      <Phone className="h-3.5 w-3.5 text-slate-400 print:h-3 print:w-3 dark:text-slate-500" aria-hidden="true" />
                       <span>{ref.phone}</span>
                     </a>
 
@@ -115,6 +293,138 @@ export function EducationReferencesSection({ locale }: EducationReferencesSectio
           </div>
         </div>
       </div>
+
+      {/* Add / Edit Reference Modal */}
+      {isRefModalOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ref-modal-title"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-7">
+            <div className="flex items-start justify-between gap-4">
+              <h3
+                id="ref-modal-title"
+                className="font-display text-lg font-bold text-slate-950 dark:text-white"
+              >
+                {editingRef
+                  ? locale === 'en'
+                    ? 'Edit Reference'
+                    : 'Ubah Referensi'
+                  : locale === 'en'
+                    ? 'Add Reference'
+                    : 'Tambah Referensi'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRefModalOpen(false)}
+                aria-label="Close modal"
+                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveRef} className="mt-5 space-y-4">
+              {formError && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+                >
+                  {formError}
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="ref-name" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {locale === 'en' ? 'Full Name *' : 'Nama Lengkap *'}
+                </label>
+                <input
+                  id="ref-name"
+                  type="text"
+                  required
+                  maxLength={120}
+                  value={refName}
+                  onChange={(e) => setRefName(e.target.value)}
+                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="ref-role" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  {locale === 'en' ? 'Role & Hotel / Company *' : 'Jabatan & Hotel / Perusahaan *'}
+                </label>
+                <input
+                  id="ref-role"
+                  type="text"
+                  required
+                  maxLength={140}
+                  value={refRole}
+                  onChange={(e) => setRefRole(e.target.value)}
+                  placeholder="GM Cluster – Hotel Aston Cilacap"
+                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="ref-phone" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {locale === 'en' ? 'Phone Number *' : 'Nomor Telepon *'}
+                  </label>
+                  <input
+                    id="ref-phone"
+                    type="text"
+                    required
+                    maxLength={40}
+                    value={refPhone}
+                    onChange={(e) => setRefPhone(e.target.value)}
+                    placeholder="0877-3919-9722"
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="ref-order" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {locale === 'en' ? 'Order' : 'Urutan'}
+                  </label>
+                  <input
+                    id="ref-order"
+                    type="number"
+                    min={0}
+                    max={1000}
+                    value={refOrder}
+                    onChange={(e) => setRefOrder(Number(e.target.value))}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsRefModalOpen(false)}
+                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                >
+                  {locale === 'en' ? 'Cancel' : 'Batal'}
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSaving}
+                  className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 cursor-pointer"
+                >
+                  {isSaving
+                    ? locale === 'en'
+                      ? 'Saving...'
+                      : 'Menyimpan...'
+                    : locale === 'en'
+                      ? 'Save'
+                      : 'Simpan'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

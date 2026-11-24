@@ -5,13 +5,10 @@ import {
   X,
   Trash2,
   Pencil,
-  Download,
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
   Lock,
-  LogOut,
-  ShieldCheck,
 } from 'lucide-react';
 import { Locale, UI_COPY } from '../data/cvData';
 import { ProjectGridSkeleton } from './Skeletons';
@@ -19,22 +16,17 @@ import {
   ProjectCategory,
   ProjectPhotoItem,
   compressImageFile,
-  createBackendProject,
-  deleteBackendProject,
-  fetchAuthStatus,
-  fetchBackendProjects,
-  fetchStaticProjects,
-  loginAdmin,
-  logoutAdmin,
-  setupAdminAccount,
-  updateBackendProject,
+  createFirestoreProject,
+  deleteFirestoreProject,
+  subscribeProjects,
+  updateFirestoreProject,
 } from '../utils/projectApi';
 
 interface ProjectsSectionProps {
   locale: Locale;
-  authToken: string | null;
-  adminEmail: string | null;
-  onAuthChange: (token: string | null, email: string | null) => void;
+  authReady: boolean;
+  isAdminUser: boolean;
+  onOpenAuth: () => void;
 }
 
 type CategoryFilter = 'all' | ProjectCategory;
@@ -48,23 +40,14 @@ const CATEGORY_LABELS: Record<ProjectCategory, { en: string; id: string }> = {
 
 export function ProjectsSection({
   locale,
-  authToken,
-  adminEmail,
-  onAuthChange,
+  authReady,
+  isAdminUser,
+  onOpenAuth,
 }: ProjectsSectionProps) {
   const [projects, setProjects] = useState<ProjectPhotoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryFilter>('all');
-
-  // Auth modal state
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [loginEmail, setLoginEmail] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
 
   // Upload / Edit modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -87,41 +70,31 @@ export function ProjectsSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const t = UI_COPY[locale].sections;
 
-  const isAuthenticated = Boolean(authToken);
-
-  const loadAllProjects = async () => {
+  useEffect(() => {
+    if (!authReady) return;
     setIsLoading(true);
     setLoadError(null);
-    try {
-      const [backendItems, staticItems] = await Promise.all([
-        fetchBackendProjects().catch(() => [] as ProjectPhotoItem[]),
-        fetchStaticProjects(),
-      ]);
 
-      const mergedMap = new Map<string, ProjectPhotoItem>();
-      for (const item of staticItems) {
-        mergedMap.set(item.id, item);
+    const unsubscribe = subscribeProjects(
+      (items) => {
+        setProjects(items);
+        setIsLoading(false);
+      },
+      (err) => {
+        let message = err.message;
+        try {
+          const parsed = JSON.parse(err.message) as { error?: string };
+          if (parsed?.error) message = parsed.error;
+        } catch {
+          // Keep message
+        }
+        setLoadError(message);
+        setIsLoading(false);
       }
-      for (const item of backendItems) {
-        mergedMap.set(item.id, item);
-      }
+    );
 
-      const merged = Array.from(mergedMap.values()).sort((a, b) => b.createdAt - a.createdAt);
-      setProjects(merged);
-    } catch {
-      setLoadError(
-        locale === 'en'
-          ? 'Unable to load project gallery from server.'
-          : 'Tidak dapat memuat galeri proyek dari server.'
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadAllProjects();
-  }, []);
+    return () => unsubscribe();
+  }, [authReady]);
 
   const filteredProjects = projects.filter((item) =>
     filter === 'all' ? true : item.category === filter
@@ -131,13 +104,12 @@ export function ProjectsSection({
   const activeLightboxItem = activeLightboxIndex >= 0 ? filteredProjects[activeLightboxIndex] : null;
 
   useEffect(() => {
-    if (!activeLightboxId && !isModalOpen && !isAuthModalOpen) return;
+    if (!activeLightboxId && !isModalOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (activeLightboxId) setActiveLightboxId(null);
         else if (isModalOpen) closeModal();
-        else if (isAuthModalOpen) setIsAuthModalOpen(false);
       } else if (activeLightboxId && filteredProjects.length > 1) {
         if (e.key === 'ArrowRight') {
           const next = (activeLightboxIndex + 1) % filteredProjects.length;
@@ -151,53 +123,7 @@ export function ProjectsSection({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeLightboxId, activeLightboxIndex, filteredProjects, isModalOpen, isAuthModalOpen]);
-
-  const openAuthModal = async () => {
-    setAuthError(null);
-    setLoginPassword('');
-    setIsAuthModalOpen(true);
-    setIsCheckingAuth(true);
-    try {
-      const status = await fetchAuthStatus(authToken);
-      setNeedsSetup(status.needsSetup);
-    } catch {
-      setNeedsSetup(false);
-    } finally {
-      setIsCheckingAuth(false);
-    }
-  };
-
-  const handleAuthSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-    setIsSubmittingAuth(true);
-    try {
-      const result = needsSetup
-        ? await setupAdminAccount(loginEmail, loginPassword)
-        : await loginAdmin(loginEmail, loginPassword);
-      onAuthChange(result.token, result.email);
-      setIsAuthModalOpen(false);
-      setLoginPassword('');
-    } catch (err) {
-      setAuthError(
-        err instanceof Error
-          ? err.message
-          : locale === 'en'
-            ? 'Authentication failed.'
-            : 'Autentikasi gagal.'
-      );
-    } finally {
-      setIsSubmittingAuth(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    if (authToken) {
-      await logoutAdmin(authToken);
-    }
-    onAuthChange(null, null);
-  };
+  }, [activeLightboxId, activeLightboxIndex, filteredProjects, isModalOpen]);
 
   const resetForm = () => {
     setEditingId(null);
@@ -213,8 +139,8 @@ export function ProjectsSection({
   };
 
   const openNewUploadModal = () => {
-    if (!isAuthenticated) {
-      void openAuthModal();
+    if (!isAdminUser) {
+      onOpenAuth();
       return;
     }
     resetForm();
@@ -222,8 +148,8 @@ export function ProjectsSection({
   };
 
   const openEditModal = (item: ProjectPhotoItem) => {
-    if (!isAuthenticated) {
-      void openAuthModal();
+    if (!isAdminUser) {
+      onOpenAuth();
       return;
     }
     setEditingId(item.id);
@@ -287,10 +213,8 @@ export function ProjectsSection({
     e.preventDefault();
     setFormError(null);
 
-    if (!authToken) {
-      setFormError(
-        locale === 'en' ? 'Admin login required.' : 'Login admin diperlukan.'
-      );
+    if (!isAdminUser) {
+      setFormError(locale === 'en' ? 'Admin login required.' : 'Login admin diperlukan.');
       return;
     }
 
@@ -324,62 +248,47 @@ export function ProjectsSection({
       };
 
       if (editingId) {
-        await updateBackendProject(authToken, editingId, payload);
+        await updateFirestoreProject(editingId, payload);
       } else {
-        await createBackendProject(authToken, payload);
+        await createFirestoreProject(payload);
       }
 
-      await loadAllProjects();
       closeModal();
     } catch (err) {
-      setFormError(
-        err instanceof Error
-          ? err.message
-          : locale === 'en'
-            ? 'Failed to save project to backend.'
-            : 'Gagal menyimpan proyek ke backend.'
-      );
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        // Keep msg
+      }
+      setFormError(msg);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteProject = async (id: string) => {
-    if (!authToken) {
-      void openAuthModal();
+    if (!isAdminUser) {
+      onOpenAuth();
       return;
     }
 
     try {
-      await deleteBackendProject(authToken, id);
+      await deleteFirestoreProject(id);
       if (activeLightboxId === id) {
         setActiveLightboxId(null);
       }
-      await loadAllProjects();
     } catch (err) {
-      setLoadError(
-        err instanceof Error
-          ? err.message
-          : locale === 'en'
-            ? 'Could not delete project photo.'
-            : 'Gagal menghapus foto proyek.'
-      );
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        // Keep msg
+      }
+      setLoadError(msg);
     }
-  };
-
-  const handleExportJson = () => {
-    const exportPayload = projects.map(({ source: _ignored, ...rest }) => rest);
-    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'projects-gallery.json';
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   };
 
   const filterKeys: CategoryFilter[] = ['all', 'infrastructure', 'pms-pos', 'security', 'event-av'];
@@ -387,67 +296,38 @@ export function ProjectsSection({
   return (
     <section
       id="projects"
-      className="border-b border-slate-200 bg-white py-14 dark:border-slate-800 dark:bg-slate-900 md:py-20"
+      data-animate="section"
+      className={`print-section border-b border-slate-200 bg-white py-14 print:bg-white print:py-5 dark:border-slate-800 dark:bg-slate-900 md:py-20 ${
+        projects.length === 0 ? 'print:hidden' : ''
+      }`}
     >
-      <div className="mx-auto max-w-6xl px-6">
-        {/* Section Header + Admin / Upload Toolbar */}
+      <div className="mx-auto max-w-6xl px-6 print:px-0">
+        {/* Section Header + Upload Toolbar */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
+            <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
               {t.projectsKicker}
             </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 dark:text-white">
+            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
               {t.projectsTitle}
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
               {t.projectsDesc}
             </p>
           </div>
 
-          <div className="no-print flex flex-wrap items-center gap-2.5 shrink-0">
-            {isAuthenticated ? (
-              <>
-                <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  {adminEmail}
-                </span>
-                <button
-                  type="button"
-                  onClick={openNewUploadModal}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <Plus className="h-4 w-4" aria-hidden="true" />
-                  <span>{locale === 'en' ? 'Upload Project Photo' : 'Unggah Foto Proyek'}</span>
-                </button>
-                {projects.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={handleExportJson}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
-                  >
-                    <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                    <span>{locale === 'en' ? 'Export JSON' : 'Ekspor JSON'}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleLogout()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
-                >
-                  <LogOut className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                  <span>{locale === 'en' ? 'Logout' : 'Keluar'}</span>
-                </button>
-              </>
-            ) : (
+          {isAdminUser && (
+            <div className="no-print flex flex-wrap items-center gap-2.5 shrink-0">
               <button
                 type="button"
-                onClick={() => void openAuthModal()}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-xs font-semibold text-slate-800 transition-colors duration-150 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0 cursor-pointer"
+                onClick={openNewUploadModal}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Lock className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                <span>{locale === 'en' ? 'Admin Login' : 'Login Admin'}</span>
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                <span>{locale === 'en' ? 'Upload Project Photo' : 'Unggah Foto Proyek'}</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Category Filter Tabs */}
@@ -501,7 +381,7 @@ export function ProjectsSection({
           <ProjectGridSkeleton count={3} />
         ) : projects.length === 0 ? (
           /* Empty State */
-          <div className="mt-10 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-950">
+          <div className="no-print mt-10 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-950">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
               <ImageIcon className="h-5 w-5" aria-hidden="true" />
             </div>
@@ -511,16 +391,16 @@ export function ProjectsSection({
                 : 'Belum ada foto proyek yang dipublikasikan'}
             </h3>
             <p className="mt-1.5 max-w-md text-sm text-slate-600 dark:text-slate-400">
-              {isAuthenticated
+              {isAdminUser
                 ? locale === 'en'
-                  ? 'Upload photos from your hotel IT installations, server racks, or Wi-Fi rollouts to display them here.'
-                  : 'Unggah foto instalasi IT hotel, rak server, atau implementasi Wi-Fi Anda agar tampil di halaman ini.'
+                  ? 'Upload photos from your hotel IT installations, server racks, or Wi-Fi rollouts to publish them directly to Firestore.'
+                  : 'Unggah foto instalasi IT hotel, rak server, atau implementasi Wi-Fi Anda untuk langsung disimpan ke Firestore.'
                 : locale === 'en'
-                  ? 'Sign in as admin to upload project photos directly to the backend gallery.'
-                  : 'Masuk sebagai admin untuk mengunggah foto proyek ke backend dan menampilkannya di sini.'}
+                  ? 'Sign in with your authorized admin account from the top-right corner to upload project photos.'
+                  : 'Masuk dengan akun admin dari pojok kanan atas untuk mengunggah foto proyek.'}
             </p>
             <div className="no-print mt-6">
-              {isAuthenticated ? (
+              {isAdminUser ? (
                 <button
                   type="button"
                   onClick={openNewUploadModal}
@@ -534,7 +414,7 @@ export function ProjectsSection({
               ) : (
                 <button
                   type="button"
-                  onClick={() => void openAuthModal()}
+                  onClick={onOpenAuth}
                   className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
                 >
                   <Lock className="h-4 w-4" aria-hidden="true" />
@@ -555,16 +435,16 @@ export function ProjectsSection({
           </div>
         ) : (
           /* Project Gallery Grid */
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-8 grid grid-cols-1 gap-6 print:mt-3 print:grid-cols-2 print:gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filteredProjects.map((project) => (
               <article
                 key={project.id}
-                className="print-break-inside-avoid group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow duration-150 hover:shadow-md dark:border-slate-800 dark:bg-slate-950"
+                className="print-break-inside-avoid group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow duration-150 hover:shadow-md print:rounded-lg print:border-slate-300 dark:border-slate-800 dark:bg-slate-950"
               >
                 <button
                   type="button"
                   onClick={() => setActiveLightboxId(project.id)}
-                  className="relative aspect-4/3 w-full overflow-hidden bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:bg-slate-800 cursor-pointer"
+                  className="relative aspect-4/3 w-full overflow-hidden bg-slate-100 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 print:aspect-16/9 dark:bg-slate-800 cursor-pointer"
                 >
                   {!brokenImages[project.id] ? (
                     <img
@@ -584,16 +464,16 @@ export function ProjectsSection({
                   )}
                 </button>
 
-                <div className="flex flex-1 flex-col justify-between p-5">
+                <div className="flex flex-1 flex-col justify-between p-5 print:p-3">
                   <div>
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    <p className="text-xs font-medium text-slate-500 print:text-[10px] dark:text-slate-400">
                       {project.property}
                       <span aria-hidden="true"> · </span>
                       <span className="font-mono tabular-nums">{project.year}</span>
                       <span aria-hidden="true"> · </span>
                       <span>{CATEGORY_LABELS[project.category][locale]}</span>
                     </p>
-                    <h3 className="mt-1.5 font-display text-lg font-bold leading-snug text-slate-950 dark:text-white">
+                    <h3 className="mt-1.5 font-display text-lg font-bold leading-snug text-slate-950 print:mt-0.5 print:text-xs dark:text-white">
                       <button
                         type="button"
                         onClick={() => setActiveLightboxId(project.id)}
@@ -603,13 +483,13 @@ export function ProjectsSection({
                       </button>
                     </h3>
                     {project.description && (
-                      <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                      <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600 print:mt-1 print:line-clamp-none print:text-[11px] print:leading-snug dark:text-slate-300">
                         {project.description}
                       </p>
                     )}
                   </div>
 
-                  {isAuthenticated && project.source === 'backend' && (
+                  {isAdminUser && (
                     <div className="no-print mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
                       <button
                         type="button"
@@ -638,146 +518,6 @@ export function ProjectsSection({
         )}
       </div>
 
-      {/* Admin Login / First-Run Setup Modal */}
-      {isAuthModalOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="auth-modal-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
-        >
-          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-7">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                  <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div>
-                  <h3
-                    id="auth-modal-title"
-                    className="font-display text-lg font-bold text-slate-950 dark:text-white"
-                  >
-                    {needsSetup
-                      ? locale === 'en'
-                        ? 'Claim Admin Access'
-                        : 'Aktivasi Akun Admin'
-                      : locale === 'en'
-                        ? 'Admin Sign In'
-                        : 'Login Admin'}
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {needsSetup
-                      ? locale === 'en'
-                        ? 'First-time setup: register your admin email & password.'
-                        : 'Pengaturan awal: daftarkan email & password admin Anda.'
-                      : locale === 'en'
-                        ? 'Sign in to upload and manage project photos.'
-                        : 'Masuk untuk mengunggah dan mengelola foto proyek.'}
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsAuthModalOpen(false)}
-                aria-label="Close login dialog"
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {isCheckingAuth ? (
-              <div className="mt-6 space-y-3">
-                <div className="skeleton-shimmer h-10 rounded-lg bg-slate-100 dark:bg-slate-800" />
-                <div className="skeleton-shimmer h-10 rounded-lg bg-slate-100 dark:bg-slate-800" />
-              </div>
-            ) : (
-              <form onSubmit={handleAuthSubmit} className="mt-6 space-y-4">
-                {authError && (
-                  <div
-                    role="alert"
-                    className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
-                  >
-                    {authError}
-                  </div>
-                )}
-
-                <div>
-                  <label
-                    htmlFor="admin-email"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
-                  >
-                    Email
-                  </label>
-                  <input
-                    id="admin-email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    placeholder="name@example.com"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="admin-password"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
-                  >
-                    {needsSetup
-                      ? locale === 'en'
-                        ? 'Create Password (min. 6 characters)'
-                        : 'Buat Password (min. 6 karakter)'
-                      : 'Password'}
-                  </label>
-                  <input
-                    id="admin-password"
-                    type="password"
-                    required
-                    minLength={6}
-                    autoComplete={needsSetup ? 'new-password' : 'current-password'}
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsAuthModalOpen(false)}
-                    className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
-                  >
-                    {locale === 'en' ? 'Cancel' : 'Batal'}
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmittingAuth}
-                    className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
-                  >
-                    {isSubmittingAuth
-                      ? locale === 'en'
-                        ? 'Verifying...'
-                        : 'Memverifikasi...'
-                      : needsSetup
-                        ? locale === 'en'
-                          ? 'Save & Sign In'
-                          : 'Simpan & Masuk'
-                        : locale === 'en'
-                          ? 'Sign In'
-                          : 'Masuk'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Upload / Edit Modal */}
       {isModalOpen && (
         <div
@@ -803,8 +543,8 @@ export function ProjectsSection({
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                   {locale === 'en'
-                    ? 'Uploaded photos are stored on the backend and immediately visible on your CV.'
-                    : 'Foto yang diunggah tersimpan di backend dan langsung tampil di halaman CV Anda.'}
+                    ? 'Photos are compressed automatically and saved directly to Cloud Firestore.'
+                    : 'Foto dikompresi otomatis dan disimpan langsung ke Cloud Firestore.'}
                 </p>
               </div>
               <button
@@ -892,6 +632,7 @@ export function ProjectsSection({
                   id="proj-title"
                   type="text"
                   required
+                  maxLength={140}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder={
@@ -915,6 +656,7 @@ export function ProjectsSection({
                     id="proj-property"
                     type="text"
                     required
+                    maxLength={140}
                     value={property}
                     onChange={(e) => setProperty(e.target.value)}
                     placeholder="e.g. Hotel Ciputra Jakarta"
@@ -932,6 +674,7 @@ export function ProjectsSection({
                   <input
                     id="proj-year"
                     type="text"
+                    maxLength={24}
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
                     placeholder="2024"
@@ -971,6 +714,7 @@ export function ProjectsSection({
                 <textarea
                   id="proj-desc"
                   rows={3}
+                  maxLength={1200}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder={
@@ -997,8 +741,8 @@ export function ProjectsSection({
                 >
                   {isSaving
                     ? locale === 'en'
-                      ? 'Uploading...'
-                      : 'Mengunggah...'
+                      ? 'Publishing...'
+                      : 'Menerbitkan...'
                     : editingId
                       ? locale === 'en'
                         ? 'Save Changes'
@@ -1086,7 +830,7 @@ export function ProjectsSection({
                 )}
               </div>
 
-              {isAuthenticated && activeLightboxItem.source === 'backend' && (
+              {isAdminUser && (
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"

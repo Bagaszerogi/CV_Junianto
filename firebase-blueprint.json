@@ -60,7 +60,7 @@
       "type": "object",
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 140 },
-        "property": { "type": "string", "minLength": 1, "maxLength": 140 },
+        "property": { "type": "string", "minLength": 0, "maxLength": 140 },
         "year": { "type": "string", "minLength": 1, "maxLength": 24, "pattern": "^[0-9A-Za-z\\s\\-]+$" },
         "category": { "type": "string", "enum": ["infrastructure", "pms-pos", "security", "event-av"] },
         "description": { "type": "string", "minLength": 0, "maxLength": 1200 },
@@ -158,14 +158,30 @@
       },
       "required": ["name", "role", "phone", "sortOrder", "authorId", "createdAt", "updatedAt"]
     },
+    "SiteContent": {
+      "title": "SiteContent",
+      "description": "Bilingual editable CV UI headings, kickers, descriptions, navigation labels, and footer copy.",
+      "type": "object",
+      "properties": {
+        "en": { "type": "object" },
+        "id": { "type": "object" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["en", "id", "authorId", "createdAt", "updatedAt"]
+    },
     "AdminRecord": {
       "title": "AdminRecord",
       "description": "Trusted admin UID registry document.",
       "type": "object",
       "properties": {
-        "role": { "type": "string", "enum": ["admin"] }
+        "email": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "role": { "type": "string", "enum": ["admin"] },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["role"]
+      "required": ["email", "role", "provider", "updatedAt"]
     }
   },
   "firestore": {
@@ -188,6 +204,10 @@
     "/references/{refId}": {
       "schema": { "$ref": "#/entities/ReferencePerson" },
       "description": "Publicly readable professional references managed by verified admins."
+    },
+    "/siteContent/{contentId}": {
+      "schema": { "$ref": "#/entities/SiteContent" },
+      "description": "Publicly readable bilingual CV labels, section titles, and descriptive text managed by verified admins."
     },
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },

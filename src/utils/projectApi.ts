@@ -12,6 +12,8 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import {
+  sendEmailVerification,
+  sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -54,6 +56,30 @@ const VALID_CATEGORIES = new Set<ProjectCategory>([
   'event-av',
 ]);
 
+export async function syncAdminRecord(user: User): Promise<void> {
+  const rawEmail = user.email?.trim() ?? '';
+  const normalized = rawEmail.toLowerCase();
+  if (!user.emailVerified || !ADMIN_EMAIL_ALLOWLIST.has(normalized) || !rawEmail) {
+    return;
+  }
+
+  const provider = user.providerData?.[0]?.providerId || 'firebase';
+  try {
+    await setDoc(
+      doc(db, 'admins', user.uid),
+      {
+        email: rawEmail,
+        role: 'admin',
+        provider: provider.slice(0, 40),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Non-fatal: verified email allowlist still authorizes admin access
+  }
+}
+
 export async function checkIsAdminUser(user: User | null): Promise<boolean> {
   if (!user) return false;
   const email = user.email?.trim().toLowerCase() ?? '';
@@ -70,12 +96,50 @@ export async function checkIsAdminUser(user: User | null): Promise<boolean> {
 
 export async function signInAdminWithGoogle(): Promise<User> {
   const credential = await signInWithPopup(auth, googleProvider);
-  return credential.user;
+  const user = credential.user;
+  const isAdmin = await checkIsAdminUser(user);
+  if (!isAdmin) {
+    const signedEmail = user.email ?? 'unknown';
+    await signOut(auth);
+    throw new Error(`AUTH_UNAUTHORIZED_EMAIL:${signedEmail}`);
+  }
+  await syncAdminRecord(user);
+  return user;
 }
 
-export async function signInAdminWithEmail(email: string, password: string): Promise<User> {
+export async function signInAdminWithEmail(
+  email: string,
+  password: string
+): Promise<{ user: User; isAdmin: boolean; needsVerification: boolean }> {
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
-  return credential.user;
+  const user = credential.user;
+  const normalized = user.email?.trim().toLowerCase() ?? '';
+  const isAdmin = await checkIsAdminUser(user);
+
+  if (isAdmin) {
+    await syncAdminRecord(user);
+    return { user, isAdmin: true, needsVerification: false };
+  }
+
+  if (ADMIN_EMAIL_ALLOWLIST.has(normalized) && !user.emailVerified) {
+    return { user, isAdmin: false, needsVerification: true };
+  }
+
+  const signedEmail = user.email ?? email.trim();
+  await signOut(auth);
+  throw new Error(`AUTH_UNAUTHORIZED_EMAIL:${signedEmail}`);
+}
+
+export async function sendAdminVerificationEmail(): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Authentication required.');
+  await sendEmailVerification(user);
+}
+
+export async function sendAdminPasswordReset(email: string): Promise<void> {
+  const cleanEmail = email.trim();
+  if (!cleanEmail) throw new Error('Please enter your email address first.');
+  await sendPasswordResetEmail(auth, cleanEmail);
 }
 
 export async function signOutAdmin(): Promise<void> {
@@ -87,7 +151,7 @@ export function subscribeProjects(
   onError: (err: Error) => void
 ): () => void {
   const projectsRef = collection(db, 'projects');
-  const q = query(projectsRef, orderBy('createdAt', 'desc'));
+  const q = query(projectsRef, orderBy('createdAt', 'asc'));
 
   return onSnapshot(
     q,
@@ -137,8 +201,8 @@ function sanitizeProjectFields(input: {
   const description = input.description.trim().slice(0, MAX_DESC_LEN);
   const imageDataUrl = input.imageDataUrl.trim();
 
-  if (!title) throw new Error('Project title is required.');
-  if (!property) throw new Error('Hotel / property name is required.');
+  if (!title) throw new Error('Project name is required.');
+  if (!year) throw new Error('Project year is required.');
   if (!DATA_IMAGE_PATTERN.test(imageDataUrl) || imageDataUrl.length > MAX_IMAGE_DATA_URL_LEN) {
     throw new Error('Image must be a compressed JPEG, PNG, or WebP under 750 KB.');
   }

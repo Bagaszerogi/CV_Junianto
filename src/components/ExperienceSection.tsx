@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { ChevronDown, ChevronUp, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { ExperienceStatus, Locale, UI_COPY } from '../data/cvData';
+import { SiteCopyLocale } from '../utils/cvFirestoreApi';
+import { EditableText } from './EditableText';
 import { ExperienceTimelineSkeleton } from './Skeletons';
 import {
   createExperienceInFirestore,
@@ -15,6 +17,8 @@ interface ExperienceSectionProps {
   locale: Locale;
   authReady: boolean;
   isAdminUser: boolean;
+  siteCopy: SiteCopyLocale;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
 }
 
 type RoleFilter = 'all' | 'leadership' | 'operations';
@@ -23,6 +27,8 @@ export function ExperienceSection({
   locale,
   authReady,
   isAdminUser,
+  siteCopy,
+  onSaveSiteCopyField,
 }: ExperienceSectionProps) {
   const [experiences, setExperiences] = useState<FirestoreExperienceItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -244,13 +250,29 @@ export function ExperienceSection({
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
-              {t.experienceKicker}
+              <EditableText
+                value={siteCopy.experienceKicker}
+                canEdit={isAdminUser}
+                maxLength={80}
+                onSave={(val) => onSaveSiteCopyField('experienceKicker', val)}
+              />
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
-              {t.experienceTitle}
+              <EditableText
+                value={siteCopy.experienceTitle}
+                canEdit={isAdminUser}
+                maxLength={120}
+                onSave={(val) => onSaveSiteCopyField('experienceTitle', val)}
+              />
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
-              {t.experienceDesc}
+              <EditableText
+                value={siteCopy.experienceDesc}
+                canEdit={isAdminUser}
+                multiline
+                maxLength={400}
+                onSave={(val) => onSaveSiteCopyField('experienceDesc', val)}
+              />
             </p>
           </div>
 
@@ -332,7 +354,21 @@ export function ExperienceSection({
                     {/* Left Meta Column */}
                     <div className="print:col-span-4 md:col-span-4">
                       <p className="font-mono text-xs font-medium text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
-                        {String(idx + 1).padStart(2, '0')}. {locale === 'en' ? exp.period : exp.periodId}
+                        {String(idx + 1).padStart(2, '0')}.{' '}
+                        <EditableText
+                          value={locale === 'en' ? exp.period : exp.periodId}
+                          canEdit={isAdminUser}
+                          maxLength={60}
+                          onSave={(val) =>
+                            saveExperienceToFirestore(
+                              {
+                                ...exp,
+                                ...(locale === 'en' ? { period: val } : { periodId: val }),
+                              },
+                              exp.fromFirestore
+                            )
+                          }
+                        />
                         <span aria-hidden="true"> · </span>
                         <span
                           className={
@@ -345,14 +381,54 @@ export function ExperienceSection({
                         </span>
                       </p>
                       <h3 className="mt-2 font-display text-xl font-bold tracking-tight text-slate-950 print:mt-1 print:text-sm dark:text-white">
-                        {exp.company}
+                        <EditableText
+                          value={exp.company}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) =>
+                            saveExperienceToFirestore({ ...exp, company: val }, exp.fromFirestore)
+                          }
+                        />
                       </h3>
                       <p className="mt-1 text-sm font-semibold text-blue-700 print:text-xs dark:text-blue-400">
-                        {locale === 'en' ? exp.role : exp.roleId}
+                        <EditableText
+                          value={locale === 'en' ? exp.role : exp.roleId}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) =>
+                            saveExperienceToFirestore(
+                              {
+                                ...exp,
+                                ...(locale === 'en' ? { role: val } : { roleId: val }),
+                              },
+                              exp.fromFirestore
+                            )
+                          }
+                        />
                       </p>
-                      <p className="mt-3 text-xs text-slate-500 print:mt-1 print:text-[10px] dark:text-slate-400">
-                        {locale === 'en' ? exp.scaleContext : exp.scaleContextId}
-                      </p>
+                      {(exp.scaleContext || exp.scaleContextId || isAdminUser) && (
+                        <p className="mt-3 text-xs text-slate-500 print:mt-1 print:text-[10px] dark:text-slate-400">
+                          <EditableText
+                            value={
+                              (locale === 'en' ? exp.scaleContext : exp.scaleContextId) ||
+                              'Add location / property scale'
+                            }
+                            canEdit={isAdminUser}
+                            maxLength={200}
+                            onSave={(val) =>
+                              saveExperienceToFirestore(
+                                {
+                                  ...exp,
+                                  ...(locale === 'en'
+                                    ? { scaleContext: val }
+                                    : { scaleContextId: val }),
+                                },
+                                exp.fromFirestore
+                              )
+                            }
+                          />
+                        </p>
+                      )}
 
                       <div className="no-print mt-4 flex flex-wrap items-center gap-2">
                         <button
@@ -432,7 +508,23 @@ export function ExperienceSection({
                                 aria-hidden="true"
                                 className="mt-2 h-px w-3 shrink-0 bg-slate-400 print:mt-1.5 print:w-2 dark:bg-slate-600"
                               />
-                              <span>{bullet}</span>
+                              <EditableText
+                                value={bullet}
+                                canEdit={isAdminUser}
+                                multiline
+                                maxLength={500}
+                                className="flex-1"
+                                onSave={(val) => {
+                                  const nextBullets = [...exp.bullets];
+                                  const nextBulletsId = [...exp.bulletsId];
+                                  if (locale === 'en') nextBullets[bIdx] = val;
+                                  else nextBulletsId[bIdx] = val;
+                                  return saveExperienceToFirestore(
+                                    { ...exp, bullets: nextBullets, bulletsId: nextBulletsId },
+                                    exp.fromFirestore
+                                  );
+                                }}
+                              />
                             </li>
                           ))}
                         </ul>

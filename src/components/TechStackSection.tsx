@@ -5,13 +5,17 @@ import {
   deleteTechStackFromFirestore,
   FirestoreTechCategory,
   saveTechStackToFirestore,
+  SiteCopyLocale,
   subscribeTechStacks,
 } from '../utils/cvFirestoreApi';
+import { EditableText } from './EditableText';
 
 interface TechStackSectionProps {
   locale: Locale;
   authReady: boolean;
   isAdminUser: boolean;
+  siteCopy: SiteCopyLocale;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
 }
 
 type StackFilter = 'all' | TechCategory['group'];
@@ -20,6 +24,8 @@ export function TechStackSection({
   locale,
   authReady,
   isAdminUser,
+  siteCopy,
+  onSaveSiteCopyField,
 }: TechStackSectionProps) {
   const [categories, setCategories] = useState<FirestoreTechCategory[]>([]);
   const [groupFilter, setGroupFilter] = useState<StackFilter>('all');
@@ -147,13 +153,29 @@ export function TechStackSection({
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
-              {t.stackKicker}
+              <EditableText
+                value={siteCopy.stackKicker}
+                canEdit={isAdminUser}
+                maxLength={80}
+                onSave={(val) => onSaveSiteCopyField('stackKicker', val)}
+              />
             </p>
             <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
-              {t.stackTitle}
+              <EditableText
+                value={siteCopy.stackTitle}
+                canEdit={isAdminUser}
+                maxLength={120}
+                onSave={(val) => onSaveSiteCopyField('stackTitle', val)}
+              />
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
-              {t.stackDesc}
+              <EditableText
+                value={siteCopy.stackDesc}
+                canEdit={isAdminUser}
+                multiline
+                maxLength={400}
+                onSave={(val) => onSaveSiteCopyField('stackDesc', val)}
+              />
             </p>
           </div>
 
@@ -212,7 +234,20 @@ export function TechStackSection({
             >
               <div className="flex items-baseline justify-between gap-4">
                 <h3 className="font-display text-base font-bold text-slate-950 print:text-xs dark:text-white">
-                  {locale === 'en' ? category.label : category.labelId}
+                  <EditableText
+                    value={locale === 'en' ? category.label : category.labelId}
+                    canEdit={isAdminUser}
+                    maxLength={100}
+                    onSave={(val) =>
+                      saveTechStackToFirestore(
+                        {
+                          ...category,
+                          ...(locale === 'en' ? { label: val } : { labelId: val }),
+                        },
+                        category.fromFirestore
+                      )
+                    }
+                  />
                 </h3>
                 <div className="flex items-center gap-2">
                   {isAdminUser && (
@@ -244,7 +279,25 @@ export function TechStackSection({
               </div>
 
               <p className="mt-3 text-sm leading-relaxed text-slate-700 print:mt-1 print:text-[11px] print:leading-snug dark:text-slate-300">
-                {category.items.join(' · ')}
+                <EditableText
+                  value={category.items.join(' · ')}
+                  canEdit={isAdminUser}
+                  multiline
+                  maxLength={1200}
+                  onSave={(val) => {
+                    const parsed = val
+                      .split(/[·,]+/)
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    if (parsed.length === 0) {
+                      throw new Error('Minimal satu keahlian wajib diisi.');
+                    }
+                    return saveTechStackToFirestore(
+                      { ...category, items: parsed },
+                      category.fromFirestore
+                    );
+                  }}
+                />
               </p>
             </div>
           ))}

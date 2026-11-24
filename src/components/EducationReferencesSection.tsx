@@ -1,19 +1,24 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Check, Copy, Pencil, Phone, Plus, Trash2, X } from 'lucide-react';
-import { Locale, UI_COPY } from '../data/cvData';
+import { Locale } from '../data/cvData';
 import {
   deleteReferenceFromFirestore,
   EducationData,
   FirestoreReferenceItem,
   saveReferenceToFirestore,
+  SiteCopyLocale,
   subscribeReferences,
 } from '../utils/cvFirestoreApi';
+import { EditableText } from './EditableText';
 
 interface EducationReferencesSectionProps {
   locale: Locale;
   authReady: boolean;
   isAdminUser: boolean;
   education: EducationData;
+  siteCopy: SiteCopyLocale;
+  onSaveEducationField: (patch: Partial<EducationData>) => Promise<void>;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onEditEducation: () => void;
 }
 
@@ -22,6 +27,9 @@ export function EducationReferencesSection({
   authReady,
   isAdminUser,
   education,
+  siteCopy,
+  onSaveEducationField,
+  onSaveSiteCopyField,
   onEditEducation,
 }: EducationReferencesSectionProps) {
   const [references, setReferences] = useState<FirestoreReferenceItem[]>([]);
@@ -37,8 +45,6 @@ export function EducationReferencesSection({
   const [refOrder, setRefOrder] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  const t = UI_COPY[locale].sections;
 
   useEffect(() => {
     if (!authReady) return;
@@ -147,10 +153,20 @@ export function EducationReferencesSection({
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
-                  {t.educationKicker}
+                  <EditableText
+                    value={siteCopy.educationKicker}
+                    canEdit={isAdminUser}
+                    maxLength={80}
+                    onSave={(val) => onSaveSiteCopyField('educationKicker', val)}
+                  />
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
-                  {t.educationTitle}
+                  <EditableText
+                    value={siteCopy.educationTitle}
+                    canEdit={isAdminUser}
+                    maxLength={120}
+                    onSave={(val) => onSaveSiteCopyField('educationTitle', val)}
+                  />
                 </h2>
               </div>
 
@@ -169,20 +185,52 @@ export function EducationReferencesSection({
             <div className="print-break-inside-avoid mt-6 rounded-2xl border border-slate-200/90 bg-slate-50/70 p-6 shadow-2xs transition-colors hover:border-slate-300 print:mt-3 print:rounded-lg print:bg-white print:p-3.5 dark:border-slate-800 dark:bg-slate-950/80 sm:p-7">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-xs font-medium text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
-                  {education.period}
+                  <EditableText
+                    value={education.period}
+                    canEdit={isAdminUser}
+                    maxLength={40}
+                    onSave={(val) => onSaveEducationField({ period: val })}
+                  />
                 </span>
                 <span className="rounded-md bg-blue-50 px-2.5 py-0.5 font-mono text-xs font-semibold text-blue-800 print:bg-transparent print:px-0 print:text-[10px] dark:bg-blue-950/60 dark:text-blue-300">
-                  {locale === 'en' ? education.gpaEn : education.gpaId}
+                  <EditableText
+                    value={locale === 'en' ? education.gpaEn : education.gpaId}
+                    canEdit={isAdminUser}
+                    maxLength={40}
+                    onSave={(val) =>
+                      onSaveEducationField(locale === 'en' ? { gpaEn: val } : { gpaId: val })
+                    }
+                  />
                 </span>
               </div>
               <h3 className="mt-3 font-display text-xl font-bold text-slate-950 print:mt-1 print:text-sm dark:text-white">
-                {education.institution}
+                <EditableText
+                  value={education.institution}
+                  canEdit={isAdminUser}
+                  maxLength={160}
+                  onSave={(val) => onSaveEducationField({ institution: val })}
+                />
               </h3>
               <p className="mt-1 text-sm font-semibold text-blue-700 print:text-xs dark:text-blue-400">
-                {locale === 'en' ? education.majorEn : education.majorId}
+                <EditableText
+                  value={locale === 'en' ? education.majorEn : education.majorId}
+                  canEdit={isAdminUser}
+                  maxLength={140}
+                  onSave={(val) =>
+                    onSaveEducationField(locale === 'en' ? { majorEn: val } : { majorId: val })
+                  }
+                />
               </p>
               <p className="mt-4 border-t border-slate-200/80 pt-4 text-sm leading-relaxed text-slate-600 print:mt-2 print:pt-2 print:text-[11px] print:leading-snug dark:border-slate-800 dark:text-slate-300">
-                {locale === 'en' ? education.focusEn : education.focusId}
+                <EditableText
+                  value={locale === 'en' ? education.focusEn : education.focusId}
+                  canEdit={isAdminUser}
+                  multiline
+                  maxLength={600}
+                  onSave={(val) =>
+                    onSaveEducationField(locale === 'en' ? { focusEn: val } : { focusId: val })
+                  }
+                />
               </p>
             </div>
           </div>
@@ -192,13 +240,28 @@ export function EducationReferencesSection({
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
-                  {t.referencesKicker}
+                  <EditableText
+                    value={siteCopy.referencesKicker}
+                    canEdit={isAdminUser}
+                    maxLength={80}
+                    onSave={(val) => onSaveSiteCopyField('referencesKicker', val)}
+                  />
                 </p>
                 <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
-                  {t.referencesTitle}
+                  <EditableText
+                    value={siteCopy.referencesTitle}
+                    canEdit={isAdminUser}
+                    maxLength={120}
+                    onSave={(val) => onSaveSiteCopyField('referencesTitle', val)}
+                  />
                 </h2>
                 <p className="mt-2 text-sm text-slate-600 print:hidden dark:text-slate-300">
-                  {t.referencesNote}
+                  <EditableText
+                    value={siteCopy.referencesNote}
+                    canEdit={isAdminUser}
+                    maxLength={300}
+                    onSave={(val) => onSaveSiteCopyField('referencesNote', val)}
+                  />
                 </p>
               </div>
 
@@ -232,10 +295,24 @@ export function EducationReferencesSection({
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h3 className="font-display text-base font-bold text-slate-950 print:text-xs dark:text-white">
-                        {ref.name}
+                        <EditableText
+                          value={ref.name}
+                          canEdit={isAdminUser}
+                          maxLength={120}
+                          onSave={(val) =>
+                            saveReferenceToFirestore({ ...ref, name: val }, ref.fromFirestore)
+                          }
+                        />
                       </h3>
                       <p className="mt-1 text-xs font-semibold text-blue-800 print:mt-0.5 print:text-[10px] dark:text-blue-400">
-                        {ref.role}
+                        <EditableText
+                          value={ref.role}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) =>
+                            saveReferenceToFirestore({ ...ref, role: val }, ref.fromFirestore)
+                          }
+                        />
                       </p>
                     </div>
                     {isAdminUser && (
@@ -268,7 +345,14 @@ export function EducationReferencesSection({
                       className="inline-flex items-center gap-2 font-mono text-xs font-medium text-slate-700 transition-colors hover:text-blue-700 tabular-nums print:text-[10px] dark:text-slate-300 dark:hover:text-blue-400"
                     >
                       <Phone className="h-3.5 w-3.5 text-slate-400 print:h-3 print:w-3 dark:text-slate-500" aria-hidden="true" />
-                      <span>{ref.phone}</span>
+                      <EditableText
+                        value={ref.phone}
+                        canEdit={isAdminUser}
+                        maxLength={40}
+                        onSave={(val) =>
+                          saveReferenceToFirestore({ ...ref, phone: val }, ref.fromFirestore)
+                        }
+                      />
                     </a>
 
                     <button

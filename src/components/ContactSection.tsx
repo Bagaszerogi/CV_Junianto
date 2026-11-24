@@ -1,23 +1,33 @@
 import { useState } from 'react';
 import { ArrowUp, ArrowUpRight, Check, Copy, Mail, MapPin, Phone, Printer } from 'lucide-react';
-import { Locale, UI_COPY } from '../data/cvData';
-import { CvProfileData } from '../utils/cvFirestoreApi';
+import { Locale } from '../data/cvData';
+import { CvProfileData, SiteCopyLocale } from '../utils/cvFirestoreApi';
 import { sanitizeEmailForHref, sanitizeWhatsAppHref } from '../utils/safeUrls';
+import { EditableText } from './EditableText';
 
 interface ContactSectionProps {
   locale: Locale;
   profile: CvProfileData;
+  siteCopy: SiteCopyLocale;
+  isAdminUser: boolean;
+  onSaveProfilePatch: (patch: Partial<CvProfileData>) => Promise<void>;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onPrint: () => void;
 }
 
-export function ContactSection({ locale, profile, onPrint }: ContactSectionProps) {
+export function ContactSection({
+  locale,
+  profile,
+  siteCopy,
+  isAdminUser,
+  onSaveProfilePatch,
+  onSaveSiteCopyField,
+  onPrint,
+}: ContactSectionProps) {
   const [senderName, setSenderName] = useState('');
   const [company, setCompany] = useState('');
   const [message, setMessage] = useState('');
   const [copiedField, setCopiedField] = useState<'email' | 'phone' | null>(null);
-
-  const navCopy = UI_COPY[locale].nav;
-  const t = UI_COPY[locale].sections;
 
   const digits = profile.phoneDisplay.replace(/\D/g, '');
   const phoneHref = digits.startsWith('0')
@@ -85,13 +95,29 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
             {/* Left Info & Quick-Copy Executive Contact */}
             <div className="lg:col-span-5">
               <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
-                {t.contactKicker}
+                <EditableText
+                  value={siteCopy.contactKicker}
+                  canEdit={isAdminUser}
+                  maxLength={80}
+                  onSave={(val) => onSaveSiteCopyField('contactKicker', val)}
+                />
               </p>
               <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 text-balance dark:text-white">
-                {t.contactTitle}
+                <EditableText
+                  value={siteCopy.contactTitle}
+                  canEdit={isAdminUser}
+                  maxLength={120}
+                  onSave={(val) => onSaveSiteCopyField('contactTitle', val)}
+                />
               </h2>
               <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                {t.contactDesc}
+                <EditableText
+                  value={siteCopy.contactDesc}
+                  canEdit={isAdminUser}
+                  multiline
+                  maxLength={400}
+                  onSave={(val) => onSaveSiteCopyField('contactDesc', val)}
+                />
               </p>
 
               <div className="mt-7 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/90 bg-white/80 px-5 shadow-2xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/70">
@@ -101,7 +127,13 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                     className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-200 dark:hover:text-blue-400"
                   >
                     <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                    <span className="truncate font-medium">{profile.email}</span>
+                    <EditableText
+                      value={profile.email}
+                      canEdit={isAdminUser}
+                      maxLength={140}
+                      className="truncate font-medium"
+                      onSave={(val) => onSaveProfilePatch({ email: val })}
+                    />
                   </a>
                   <button
                     type="button"
@@ -130,7 +162,12 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
                     className="flex items-center gap-3 font-mono text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-200 dark:hover:text-blue-400"
                   >
                     <Phone className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                    <span>{profile.phoneDisplay}</span>
+                    <EditableText
+                      value={profile.phoneDisplay}
+                      canEdit={isAdminUser}
+                      maxLength={40}
+                      onSave={(val) => onSaveProfilePatch({ phoneDisplay: val })}
+                    />
                   </a>
                   <button
                     type="button"
@@ -155,7 +192,12 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
 
                 <div className="flex items-start gap-3 py-3.5 text-sm text-slate-600 dark:text-slate-400">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
-                  <span>{profile.address}</span>
+                  <EditableText
+                    value={profile.address}
+                    canEdit={isAdminUser}
+                    maxLength={240}
+                    onSave={(val) => onSaveProfilePatch({ address: val })}
+                  />
                 </div>
               </div>
             </div>
@@ -164,12 +206,20 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
             <div className="lg:col-span-7">
               <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs transition-shadow hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-8">
                 <h3 className="font-display text-lg font-bold text-slate-950 dark:text-white">
-                  {locale === 'en' ? 'Quick Message Composer' : 'Kirim Pesan Cepat'}
+                  <EditableText
+                    value={siteCopy.composerTitle}
+                    canEdit={isAdminUser}
+                    maxLength={120}
+                    onSave={(val) => onSaveSiteCopyField('composerTitle', val)}
+                  />
                 </h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {locale === 'en'
-                    ? 'Compose your inquiry and launch directly in your email client or WhatsApp.'
-                    : 'Tulis pesan Anda dan kirim langsung melalui aplikasi Email atau WhatsApp.'}
+                  <EditableText
+                    value={siteCopy.composerDesc}
+                    canEdit={isAdminUser}
+                    maxLength={300}
+                    onSave={(val) => onSaveSiteCopyField('composerDesc', val)}
+                  />
                 </p>
 
                 <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -258,10 +308,27 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="font-display text-sm font-bold text-slate-900 dark:text-white">
-              {profile.name}
+              <EditableText
+                value={profile.name}
+                canEdit={isAdminUser}
+                maxLength={120}
+                onSave={(val) => onSaveProfilePatch({ name: val })}
+              />
             </p>
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {locale === 'en' ? profile.titleEn : profile.titleId} · {profile.address}
+              <EditableText
+                value={siteCopy.footerNote}
+                canEdit={isAdminUser}
+                maxLength={240}
+                onSave={(val) => onSaveSiteCopyField('footerNote', val)}
+              />
+              {' · '}
+              <EditableText
+                value={profile.address}
+                canEdit={isAdminUser}
+                maxLength={240}
+                onSave={(val) => onSaveProfilePatch({ address: val })}
+              />
             </p>
           </div>
 
@@ -270,16 +337,16 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
             className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium text-slate-600 dark:text-slate-300"
           >
             <a href="#profile" className="hover:text-blue-700 dark:hover:text-blue-400">
-              {navCopy.profile}
+              {siteCopy.navProfile}
             </a>
             <a href="#experience" className="hover:text-blue-700 dark:hover:text-blue-400">
-              {navCopy.experience}
+              {siteCopy.navExperience}
             </a>
             <a href="#projects" className="hover:text-blue-700 dark:hover:text-blue-400">
-              {navCopy.projects}
+              {siteCopy.navProjects}
             </a>
             <a href="#tech-stack" className="hover:text-blue-700 dark:hover:text-blue-400">
-              {navCopy.stack}
+              {siteCopy.navStack}
             </a>
           </nav>
 
@@ -290,7 +357,7 @@ export function ContactSection({ locale, profile, onPrint }: ContactSectionProps
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
             >
               <Printer className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{UI_COPY[locale].downloadPdf}</span>
+              <span>{siteCopy.downloadPdf}</span>
             </button>
 
             <a

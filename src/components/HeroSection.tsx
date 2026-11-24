@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import {
   Check,
@@ -11,10 +11,17 @@ import {
   Moon,
   Printer,
   Pencil,
+  Camera,
 } from 'lucide-react';
-import { Locale, UI_COPY } from '../data/cvData';
-import { CvProfileData } from '../utils/cvFirestoreApi';
+import { Locale } from '../data/cvData';
+import {
+  compressPortraitImage,
+  CvProfileData,
+  MetricItem,
+  SiteCopyLocale,
+} from '../utils/cvFirestoreApi';
 import { sanitizeEmailForHref, sanitizePortraitSrc, sanitizeWhatsAppHref } from '../utils/safeUrls';
+import { EditableText } from './EditableText';
 import { ProfileEditTab } from './ProfileEditModal';
 
 export type ThemeMode = 'light' | 'dark';
@@ -25,7 +32,10 @@ interface HeroSectionProps {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   profile: CvProfileData;
+  siteCopy: SiteCopyLocale;
   isAdminUser: boolean;
+  onSaveProfilePatch: (patch: Partial<CvProfileData>) => Promise<void>;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onOpenProfileEdit: (tab?: ProfileEditTab) => void;
   onPrint: () => void;
 }
@@ -36,14 +46,18 @@ export function HeroSection({
   theme,
   onThemeChange,
   profile,
+  siteCopy,
   isAdminUser,
+  onSaveProfilePatch,
+  onSaveSiteCopyField,
   onOpenProfileEdit,
   onPrint,
 }: HeroSectionProps) {
   const [imgError, setImgError] = useState(false);
   const [copiedField, setCopiedField] = useState<'email' | 'phone' | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const prefersReducedMotion = useReducedMotion();
-  const t = UI_COPY[locale];
 
   useEffect(() => {
     setImgError(false);
@@ -57,6 +71,37 @@ export function HeroSection({
     } catch {
       // Fallback ignored if clipboard blocked
     }
+  };
+
+  const handleQuickPhotoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !isAdminUser) return;
+    setIsUploadingPhoto(true);
+    try {
+      const compressed = await compressPortraitImage(file);
+      await onSaveProfilePatch({ portraitDataUrl: compressed });
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
+  const handleSaveMetricField = async (
+    idx: number,
+    field: 'value' | 'label' | 'detail',
+    nextVal: string
+  ) => {
+    const nextMetrics: MetricItem[] = profile.metrics.map((m, i) => {
+      if (i !== idx) return m;
+      if (field === 'value') {
+        return locale === 'en' ? { ...m, value: nextVal } : { ...m, valueId: nextVal };
+      }
+      if (field === 'label') {
+        return locale === 'en' ? { ...m, label: nextVal } : { ...m, labelId: nextVal };
+      }
+      return locale === 'en' ? { ...m, detail: nextVal } : { ...m, detailId: nextVal };
+    });
+    await onSaveProfilePatch({ metrics: nextMetrics });
   };
 
   const digits = profile.phoneDisplay.replace(/\D/g, '');
@@ -92,7 +137,14 @@ export function HeroSection({
               {/* Toolbar row: Kicker + Theme & Language Switches */}
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <p className="text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400">
-                  {locale === 'en' ? profile.kickerEn : profile.kickerId}
+                  <EditableText
+                    value={locale === 'en' ? profile.kickerEn : profile.kickerId}
+                    canEdit={isAdminUser}
+                    maxLength={160}
+                    onSave={(val) =>
+                      onSaveProfilePatch(locale === 'en' ? { kickerEn: val } : { kickerId: val })
+                    }
+                  />
                 </p>
 
                 <div className="no-print flex items-center gap-2">
@@ -163,15 +215,35 @@ export function HeroSection({
               </div>
 
               <h1 className="mt-5 font-display text-4xl font-bold tracking-tight text-slate-950 text-balance print:mt-2 print:text-2xl dark:text-white sm:text-5xl">
-                {profile.name}
+                <EditableText
+                  value={profile.name}
+                  canEdit={isAdminUser}
+                  maxLength={120}
+                  onSave={(val) => onSaveProfilePatch({ name: val })}
+                />
               </h1>
 
               <p className="mt-2 text-lg font-semibold text-blue-700 print:mt-1 print:text-sm dark:text-blue-400">
-                {locale === 'en' ? profile.titleEn : profile.titleId}
+                <EditableText
+                  value={locale === 'en' ? profile.titleEn : profile.titleId}
+                  canEdit={isAdminUser}
+                  maxLength={140}
+                  onSave={(val) =>
+                    onSaveProfilePatch(locale === 'en' ? { titleEn: val } : { titleId: val })
+                  }
+                />
               </p>
 
               <p className="mt-6 max-w-2xl text-base leading-relaxed text-slate-600 print:mt-3 print:text-xs print:leading-snug dark:text-slate-300">
-                {locale === 'en' ? profile.summaryEn : profile.summaryId}
+                <EditableText
+                  value={locale === 'en' ? profile.summaryEn : profile.summaryId}
+                  canEdit={isAdminUser}
+                  multiline
+                  maxLength={1500}
+                  onSave={(val) =>
+                    onSaveProfilePatch(locale === 'en' ? { summaryEn: val } : { summaryId: val })
+                  }
+                />
               </p>
             </div>
 
@@ -183,7 +255,12 @@ export function HeroSection({
                 className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Printer className="h-4 w-4" aria-hidden="true" />
-                <span>{t.downloadPdf}</span>
+                <EditableText
+                  value={siteCopy.downloadPdf}
+                  canEdit={isAdminUser}
+                  maxLength={80}
+                  onSave={(val) => onSaveSiteCopyField('downloadPdf', val)}
+                />
               </button>
 
               <a
@@ -191,7 +268,12 @@ export function HeroSection({
                 className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0"
               >
                 <Mail className="h-4 w-4" aria-hidden="true" />
-                <span>{locale === 'en' ? 'Send Email' : 'Kirim Email'}</span>
+                <EditableText
+                  value={siteCopy.heroSendEmail}
+                  canEdit={isAdminUser}
+                  maxLength={50}
+                  onSave={(val) => onSaveSiteCopyField('heroSendEmail', val)}
+                />
               </a>
 
               <a
@@ -229,7 +311,7 @@ export function HeroSection({
                   className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-800 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-300 dark:hover:bg-blue-900/60 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>{locale === 'en' ? 'Edit Profile & Photo' : 'Ubah Profil & Foto'}</span>
+                  <span>{locale === 'en' ? 'Edit All Profile Fields' : 'Editor Lengkap Profil'}</span>
                 </button>
               )}
             </div>
@@ -241,7 +323,7 @@ export function HeroSection({
               <div>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-4 print:gap-3">
-                    <div className="relative h-22 w-22 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs print:h-16 print:w-16 print:rounded-full print:border-slate-300 dark:border-slate-700 dark:bg-slate-800 sm:h-24 sm:w-24">
+                    <div className="group/photo relative h-22 w-22 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs print:h-16 print:w-16 print:rounded-full print:border-slate-300 dark:border-slate-700 dark:bg-slate-800 sm:h-24 sm:w-24">
                       {!imgError ? (
                         <img
                           src={sanitizePortraitSrc(profile.portraitDataUrl)}
@@ -255,23 +337,63 @@ export function HeroSection({
                           {initials || 'JB'}
                         </div>
                       )}
+
+                      {isAdminUser && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isUploadingPhoto}
+                            onClick={() => photoInputRef.current?.click()}
+                            aria-label="Change portrait photo"
+                            className="no-print absolute inset-0 flex flex-col items-center justify-center bg-slate-950/55 text-[10px] font-semibold text-white opacity-0 transition-opacity group-hover/photo:opacity-100 cursor-pointer"
+                          >
+                            <Camera className="mb-0.5 h-4 w-4" aria-hidden="true" />
+                            <span>{isUploadingPhoto ? '...' : locale === 'en' ? 'Photo' : 'Ganti'}</span>
+                          </button>
+                          <input
+                            ref={photoInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleQuickPhotoUpload}
+                            className="hidden"
+                          />
+                        </>
+                      )}
                     </div>
 
                     <div className="min-w-0">
                       <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-emerald-700 print:hidden dark:text-emerald-400">
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
-                        <span>{locale === 'en' ? 'Active Assignment' : 'Penugasan Aktif'}</span>
+                        <EditableText
+                          value={siteCopy.heroActiveBadge}
+                          canEdit={isAdminUser}
+                          maxLength={60}
+                          onSave={(val) => onSaveSiteCopyField('heroActiveBadge', val)}
+                        />
                       </div>
                       <p className="mt-1 font-display text-lg font-bold tracking-tight text-slate-950 print:mt-0 print:text-sm dark:text-white">
-                        {profile.currentCompany}
+                        <EditableText
+                          value={profile.currentCompany}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) => onSaveProfilePatch({ currentCompany: val })}
+                        />
                       </p>
                       <p className="mt-0.5 text-sm font-medium text-blue-800 print:text-xs dark:text-blue-400">
-                        {profile.currentRole}
+                        <EditableText
+                          value={profile.currentRole}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) => onSaveProfilePatch({ currentRole: val })}
+                        />
                       </p>
                       <p className="mt-1 text-xs text-slate-500 print:text-[10px] dark:text-slate-400">
-                        {locale === 'en'
-                          ? '336 Rooms · 15 Meeting Rooms · 2 Ballrooms'
-                          : '336 Kamar · 15 Ruang Rapat · 2 Ballroom'}
+                        <EditableText
+                          value={siteCopy.heroPropertyScale}
+                          canEdit={isAdminUser}
+                          maxLength={140}
+                          onSave={(val) => onSaveSiteCopyField('heroPropertyScale', val)}
+                        />
                       </p>
                     </div>
                   </div>
@@ -282,16 +404,22 @@ export function HeroSection({
                   <div className="flex items-center justify-between gap-3 py-3 print:py-1.5">
                     <a
                       href={phoneHref}
-                      className="flex items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 print:text-slate-800 dark:text-slate-200 dark:hover:text-blue-400"
+                      className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 print:text-slate-800 dark:text-slate-200 dark:hover:text-blue-400"
                     >
                       <Phone className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                      <span className="font-mono tabular-nums">{profile.phoneDisplay}</span>
+                      <EditableText
+                        value={profile.phoneDisplay}
+                        canEdit={isAdminUser}
+                        maxLength={40}
+                        className="font-mono tabular-nums"
+                        onSave={(val) => onSaveProfilePatch({ phoneDisplay: val })}
+                      />
                     </a>
                     <button
                       type="button"
                       onClick={() => handleCopy(profile.phoneDisplay, 'phone')}
                       aria-label="Copy phone number"
-                      className="no-print inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                      className="no-print inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
                     >
                       {copiedField === 'phone' ? (
                         <>
@@ -315,7 +443,13 @@ export function HeroSection({
                       className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 print:text-slate-800 dark:text-slate-200 dark:hover:text-blue-400"
                     >
                       <Mail className="h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                      <span className="truncate">{profile.email}</span>
+                      <EditableText
+                        value={profile.email}
+                        canEdit={isAdminUser}
+                        maxLength={140}
+                        className="truncate"
+                        onSave={(val) => onSaveProfilePatch({ email: val })}
+                      />
                     </a>
                     <button
                       type="button"
@@ -342,18 +476,24 @@ export function HeroSection({
                   <div className="flex items-start gap-3 pt-3 print:pt-1.5">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                     <span className="leading-snug text-slate-600 print:text-slate-700 dark:text-slate-300">
-                      {profile.address}
+                      <EditableText
+                        value={profile.address}
+                        canEdit={isAdminUser}
+                        maxLength={240}
+                        onSave={(val) => onSaveProfilePatch({ address: val })}
+                      />
                     </span>
                   </div>
                 </div>
               </div>
 
               <div className="no-print mt-5 flex items-center justify-between border-t border-slate-200/80 pt-4 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <span>
-                  {locale === 'en'
-                    ? 'Harvard A4 ATS Format Ready'
-                    : 'Siap Cetak Format Harvard A4'}
-                </span>
+                <EditableText
+                  value={siteCopy.heroDossierFooter}
+                  canEdit={isAdminUser}
+                  maxLength={100}
+                  onSave={(val) => onSaveSiteCopyField('heroDossierFooter', val)}
+                />
                 <span className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
                   EN / ID
                 </span>
@@ -367,13 +507,28 @@ export function HeroSection({
           {profile.metrics.map((metric, idx) => (
             <div key={idx} className="bg-slate-50 px-5 py-4 print:bg-white print:px-3 print:py-2.5 dark:bg-slate-950">
               <p className="font-display text-2xl font-bold tracking-tight text-slate-900 tabular-nums print:text-base dark:text-white">
-                {locale === 'en' ? metric.value : metric.valueId}
+                <EditableText
+                  value={locale === 'en' ? metric.value : metric.valueId}
+                  canEdit={isAdminUser}
+                  maxLength={40}
+                  onSave={(val) => handleSaveMetricField(idx, 'value', val)}
+                />
               </p>
               <p className="mt-1 text-sm font-medium text-slate-800 print:mt-0.5 print:text-[11px] dark:text-slate-200">
-                {locale === 'en' ? metric.label : metric.labelId}
+                <EditableText
+                  value={locale === 'en' ? metric.label : metric.labelId}
+                  canEdit={isAdminUser}
+                  maxLength={80}
+                  onSave={(val) => handleSaveMetricField(idx, 'label', val)}
+                />
               </p>
               <p className="mt-0.5 text-xs text-slate-500 print:text-[10px] dark:text-slate-400">
-                {locale === 'en' ? metric.detail : metric.detailId}
+                <EditableText
+                  value={locale === 'en' ? metric.detail : metric.detailId}
+                  canEdit={isAdminUser}
+                  maxLength={120}
+                  onSave={(val) => handleSaveMetricField(idx, 'detail', val)}
+                />
               </p>
             </div>
           ))}

@@ -166,7 +166,7 @@ service cloud.firestore {
           'updatedAt'
         ]) &&
         data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
-        data.property is string && data.property.size() >= 1 && data.property.size() <= 140 &&
+        data.property is string && data.property.size() <= 140 &&
         data.year is string && data.year.size() >= 1 && data.year.size() <= 24 && data.year.matches('^[0-9A-Za-z\\s\\-]+$') &&
         data.category is string && data.category in ['infrastructure', 'pms-pos', 'security', 'event-av'] &&
         data.description is string && data.description.size() <= 1200 &&
@@ -174,6 +174,82 @@ service cloud.firestore {
         data.imageDataUrl.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidLocaleCopy(c) {
+      return c is map &&
+        c.keys().hasAll([
+          'navProfile', 'navExperience', 'navProjects', 'navStack', 'navContact',
+          'downloadPdf', 'heroActiveBadge', 'heroPropertyScale', 'heroDossierFooter', 'heroSendEmail',
+          'experienceKicker', 'experienceTitle', 'experienceDesc',
+          'projectsKicker', 'projectsTitle', 'projectsDesc',
+          'stackKicker', 'stackTitle', 'stackDesc',
+          'educationKicker', 'educationTitle',
+          'referencesKicker', 'referencesTitle', 'referencesNote',
+          'contactKicker', 'contactTitle', 'contactDesc',
+          'composerTitle', 'composerDesc', 'footerNote'
+        ]) &&
+        c.keys().hasOnly([
+          'navProfile', 'navExperience', 'navProjects', 'navStack', 'navContact',
+          'downloadPdf', 'heroActiveBadge', 'heroPropertyScale', 'heroDossierFooter', 'heroSendEmail',
+          'experienceKicker', 'experienceTitle', 'experienceDesc',
+          'projectsKicker', 'projectsTitle', 'projectsDesc',
+          'stackKicker', 'stackTitle', 'stackDesc',
+          'educationKicker', 'educationTitle',
+          'referencesKicker', 'referencesTitle', 'referencesNote',
+          'contactKicker', 'contactTitle', 'contactDesc',
+          'composerTitle', 'composerDesc', 'footerNote'
+        ]) &&
+        c.navProfile is string && c.navProfile.size() >= 1 && c.navProfile.size() <= 40 &&
+        c.navExperience is string && c.navExperience.size() >= 1 && c.navExperience.size() <= 40 &&
+        c.navProjects is string && c.navProjects.size() >= 1 && c.navProjects.size() <= 40 &&
+        c.navStack is string && c.navStack.size() >= 1 && c.navStack.size() <= 40 &&
+        c.navContact is string && c.navContact.size() >= 1 && c.navContact.size() <= 40 &&
+        c.downloadPdf is string && c.downloadPdf.size() >= 1 && c.downloadPdf.size() <= 80 &&
+        c.heroActiveBadge is string && c.heroActiveBadge.size() >= 1 && c.heroActiveBadge.size() <= 60 &&
+        c.heroPropertyScale is string && c.heroPropertyScale.size() >= 1 && c.heroPropertyScale.size() <= 140 &&
+        c.heroDossierFooter is string && c.heroDossierFooter.size() >= 1 && c.heroDossierFooter.size() <= 100 &&
+        c.heroSendEmail is string && c.heroSendEmail.size() >= 1 && c.heroSendEmail.size() <= 50 &&
+        c.experienceKicker is string && c.experienceKicker.size() >= 1 && c.experienceKicker.size() <= 80 &&
+        c.experienceTitle is string && c.experienceTitle.size() >= 1 && c.experienceTitle.size() <= 120 &&
+        c.experienceDesc is string && c.experienceDesc.size() >= 1 && c.experienceDesc.size() <= 400 &&
+        c.projectsKicker is string && c.projectsKicker.size() >= 1 && c.projectsKicker.size() <= 80 &&
+        c.projectsTitle is string && c.projectsTitle.size() >= 1 && c.projectsTitle.size() <= 120 &&
+        c.projectsDesc is string && c.projectsDesc.size() >= 1 && c.projectsDesc.size() <= 400 &&
+        c.stackKicker is string && c.stackKicker.size() >= 1 && c.stackKicker.size() <= 80 &&
+        c.stackTitle is string && c.stackTitle.size() >= 1 && c.stackTitle.size() <= 120 &&
+        c.stackDesc is string && c.stackDesc.size() >= 1 && c.stackDesc.size() <= 400 &&
+        c.educationKicker is string && c.educationKicker.size() >= 1 && c.educationKicker.size() <= 80 &&
+        c.educationTitle is string && c.educationTitle.size() >= 1 && c.educationTitle.size() <= 120 &&
+        c.referencesKicker is string && c.referencesKicker.size() >= 1 && c.referencesKicker.size() <= 80 &&
+        c.referencesTitle is string && c.referencesTitle.size() >= 1 && c.referencesTitle.size() <= 120 &&
+        c.referencesNote is string && c.referencesNote.size() >= 1 && c.referencesNote.size() <= 300 &&
+        c.contactKicker is string && c.contactKicker.size() >= 1 && c.contactKicker.size() <= 80 &&
+        c.contactTitle is string && c.contactTitle.size() >= 1 && c.contactTitle.size() <= 120 &&
+        c.contactDesc is string && c.contactDesc.size() >= 1 && c.contactDesc.size() <= 400 &&
+        c.composerTitle is string && c.composerTitle.size() >= 1 && c.composerTitle.size() <= 120 &&
+        c.composerDesc is string && c.composerDesc.size() >= 1 && c.composerDesc.size() <= 300 &&
+        c.footerNote is string && c.footerNote.size() >= 1 && c.footerNote.size() <= 240;
+    }
+
+    function isValidSiteContent(data) {
+      return data.keys().hasAll(['en', 'id', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['en', 'id', 'authorId', 'createdAt', 'updatedAt']) &&
+        isValidLocaleCopy(data.en) &&
+        isValidLocaleCopy(data.id) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data) {
+      return data.keys().hasAll(['email', 'role', 'provider', 'updatedAt']) &&
+        data.keys().hasOnly(['email', 'role', 'provider', 'updatedAt']) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
+        data.email == request.auth.token.email &&
+        data.role is string && data.role == 'admin' &&
+        data.provider is string && data.provider.size() >= 1 && data.provider.size() <= 40 &&
         data.updatedAt is timestamp;
     }
 
@@ -427,10 +503,41 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(refId);
     }
 
-    // Admin UID Registry (read-only for self, never writable from client)
+    // Public CV Site Copy (navigation, section headers, labels editable by verified admins)
+    match /siteContent/{contentId} {
+      allow get: if isValidId(contentId);
+      allow list: if true;
+
+      allow create: if isAdmin() &&
+        isValidId(contentId) &&
+        isValidSiteContent(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(contentId) &&
+        isValidSiteContent(incoming()) &&
+        incoming().authorId == existing().authorId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['en', 'id', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    // Admin UID Registry (readable by self, synced only by verified allowlisted admins)
     match /admins/{adminId} {
       allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
-      allow list, create, update, delete: if false;
+      allow list: if false;
+      allow create, update: if isSignedIn() &&
+        isValidId(adminId) &&
+        request.auth.uid == adminId &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] &&
+        isValidAdminRecord(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
     }
   }
 }

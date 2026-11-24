@@ -16,10 +16,118 @@ import {
   KEY_METRICS,
   REFERENCES,
   TECH_STACK,
+  UI_COPY,
   type ReferenceItem,
   type TechCategory,
 } from '../data/cvData';
 import { isValidEmailAddress, sanitizePortraitSrc } from './safeUrls';
+
+export interface SiteCopyLocale {
+  navProfile: string;
+  navExperience: string;
+  navProjects: string;
+  navStack: string;
+  navContact: string;
+  downloadPdf: string;
+  heroActiveBadge: string;
+  heroPropertyScale: string;
+  heroDossierFooter: string;
+  heroSendEmail: string;
+  experienceKicker: string;
+  experienceTitle: string;
+  experienceDesc: string;
+  projectsKicker: string;
+  projectsTitle: string;
+  projectsDesc: string;
+  stackKicker: string;
+  stackTitle: string;
+  stackDesc: string;
+  educationKicker: string;
+  educationTitle: string;
+  referencesKicker: string;
+  referencesTitle: string;
+  referencesNote: string;
+  contactKicker: string;
+  contactTitle: string;
+  contactDesc: string;
+  composerTitle: string;
+  composerDesc: string;
+  footerNote: string;
+}
+
+export interface SiteContentData {
+  en: SiteCopyLocale;
+  id: SiteCopyLocale;
+  fromFirestore: boolean;
+}
+
+export const DEFAULT_SITE_CONTENT: SiteContentData = {
+  en: {
+    navProfile: UI_COPY.en.nav.profile,
+    navExperience: UI_COPY.en.nav.experience,
+    navProjects: UI_COPY.en.nav.projects,
+    navStack: UI_COPY.en.nav.stack,
+    navContact: UI_COPY.en.nav.contact,
+    downloadPdf: UI_COPY.en.downloadPdf,
+    heroActiveBadge: 'Active Assignment',
+    heroPropertyScale: '336 Rooms · 15 Meeting Rooms · 2 Ballrooms',
+    heroDossierFooter: 'Harvard A4 ATS Format Ready',
+    heroSendEmail: 'Send Email',
+    experienceKicker: UI_COPY.en.sections.experienceKicker,
+    experienceTitle: UI_COPY.en.sections.experienceTitle,
+    experienceDesc: UI_COPY.en.sections.experienceDesc,
+    projectsKicker: UI_COPY.en.sections.projectsKicker,
+    projectsTitle: UI_COPY.en.sections.projectsTitle,
+    projectsDesc: UI_COPY.en.sections.projectsDesc,
+    stackKicker: UI_COPY.en.sections.stackKicker,
+    stackTitle: UI_COPY.en.sections.stackTitle,
+    stackDesc: UI_COPY.en.sections.stackDesc,
+    educationKicker: UI_COPY.en.sections.educationKicker,
+    educationTitle: UI_COPY.en.sections.educationTitle,
+    referencesKicker: UI_COPY.en.sections.referencesKicker,
+    referencesTitle: UI_COPY.en.sections.referencesTitle,
+    referencesNote: UI_COPY.en.sections.referencesNote,
+    contactKicker: UI_COPY.en.sections.contactKicker,
+    contactTitle: UI_COPY.en.sections.contactTitle,
+    contactDesc: UI_COPY.en.sections.contactDesc,
+    composerTitle: 'Quick Message Composer',
+    composerDesc: 'Compose your inquiry and launch directly in your email client or WhatsApp.',
+    footerNote: 'Hospitality IT Infrastructure & Operations Portfolio',
+  },
+  id: {
+    navProfile: UI_COPY.id.nav.profile,
+    navExperience: UI_COPY.id.nav.experience,
+    navProjects: UI_COPY.id.nav.projects,
+    navStack: UI_COPY.id.nav.stack,
+    navContact: UI_COPY.id.nav.contact,
+    downloadPdf: UI_COPY.id.downloadPdf,
+    heroActiveBadge: 'Penugasan Aktif',
+    heroPropertyScale: '336 Kamar · 15 Ruang Rapat · 2 Ballroom',
+    heroDossierFooter: 'Siap Cetak Format Harvard A4',
+    heroSendEmail: 'Kirim Email',
+    experienceKicker: UI_COPY.id.sections.experienceKicker,
+    experienceTitle: UI_COPY.id.sections.experienceTitle,
+    experienceDesc: UI_COPY.id.sections.experienceDesc,
+    projectsKicker: UI_COPY.id.sections.projectsKicker,
+    projectsTitle: UI_COPY.id.sections.projectsTitle,
+    projectsDesc: UI_COPY.id.sections.projectsDesc,
+    stackKicker: UI_COPY.id.sections.stackKicker,
+    stackTitle: UI_COPY.id.sections.stackTitle,
+    stackDesc: UI_COPY.id.sections.stackDesc,
+    educationKicker: UI_COPY.id.sections.educationKicker,
+    educationTitle: UI_COPY.id.sections.educationTitle,
+    referencesKicker: UI_COPY.id.sections.referencesKicker,
+    referencesTitle: UI_COPY.id.sections.referencesTitle,
+    referencesNote: UI_COPY.id.sections.referencesNote,
+    contactKicker: UI_COPY.id.sections.contactKicker,
+    contactTitle: UI_COPY.id.sections.contactTitle,
+    contactDesc: UI_COPY.id.sections.contactDesc,
+    composerTitle: 'Kirim Pesan Cepat',
+    composerDesc: 'Tulis pesan Anda dan kirim langsung melalui aplikasi Email atau WhatsApp.',
+    footerNote: 'Portofolio Infrastruktur & Operasional IT Perhotelan',
+  },
+  fromFirestore: false,
+};
 
 export interface MetricItem {
   value: string;
@@ -491,4 +599,117 @@ export function compressPortraitImage(file: File, maxDimension = 560): Promise<s
     };
     reader.readAsDataURL(file);
   });
+}
+
+const SITE_COPY_LIMITS: Record<keyof SiteCopyLocale, number> = {
+  navProfile: 40,
+  navExperience: 40,
+  navProjects: 40,
+  navStack: 40,
+  navContact: 40,
+  downloadPdf: 80,
+  heroActiveBadge: 60,
+  heroPropertyScale: 140,
+  heroDossierFooter: 100,
+  heroSendEmail: 50,
+  experienceKicker: 80,
+  experienceTitle: 120,
+  experienceDesc: 400,
+  projectsKicker: 80,
+  projectsTitle: 120,
+  projectsDesc: 400,
+  stackKicker: 80,
+  stackTitle: 120,
+  stackDesc: 400,
+  educationKicker: 80,
+  educationTitle: 120,
+  referencesKicker: 80,
+  referencesTitle: 120,
+  referencesNote: 300,
+  contactKicker: 80,
+  contactTitle: 120,
+  contactDesc: 400,
+  composerTitle: 120,
+  composerDesc: 300,
+  footerNote: 240,
+};
+
+function sanitizeLocaleCopy(
+  raw: Record<string, unknown> | undefined,
+  fallback: SiteCopyLocale
+): SiteCopyLocale {
+  const result = { ...fallback };
+  (Object.keys(SITE_COPY_LIMITS) as (keyof SiteCopyLocale)[]).forEach((key) => {
+    const val = raw?.[key];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      result[key] = val.trim().slice(0, SITE_COPY_LIMITS[key]);
+    }
+  });
+  return result;
+}
+
+export function subscribeSiteContent(
+  onData: (data: SiteContentData) => void,
+  onError: (err: Error) => void
+): () => void {
+  const ref = doc(db, 'siteContent', 'main');
+  return onSnapshot(
+    ref,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData({ ...DEFAULT_SITE_CONTENT, fromFirestore: false });
+        return;
+      }
+      const d = snapshot.data();
+      const rawEn = typeof d.en === 'object' && d.en !== null ? (d.en as Record<string, unknown>) : undefined;
+      const rawId = typeof d.id === 'object' && d.id !== null ? (d.id as Record<string, unknown>) : undefined;
+      onData({
+        en: sanitizeLocaleCopy(rawEn, DEFAULT_SITE_CONTENT.en),
+        id: sanitizeLocaleCopy(rawId, DEFAULT_SITE_CONTENT.id),
+        fromFirestore: true,
+      });
+    },
+    (error) => {
+      try {
+        handleFirestoreError(error, OperationType.GET, 'siteContent/main');
+      } catch (wrapped) {
+        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+      }
+    }
+  );
+}
+
+export async function saveSiteContentToFirestore(
+  data: SiteContentData,
+  alreadyInFirestore: boolean
+): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Authentication required.');
+
+  const en = sanitizeLocaleCopy(data.en as unknown as Record<string, unknown>, DEFAULT_SITE_CONTENT.en);
+  const id = sanitizeLocaleCopy(data.id as unknown as Record<string, unknown>, DEFAULT_SITE_CONTENT.id);
+
+  try {
+    if (alreadyInFirestore) {
+      await updateDoc(doc(db, 'siteContent', 'main'), {
+        en,
+        id,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(doc(db, 'siteContent', 'main'), {
+        en,
+        id,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE,
+      'siteContent/main'
+    );
+  }
 }

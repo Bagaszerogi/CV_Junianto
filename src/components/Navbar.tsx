@@ -1,13 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { type User } from 'firebase/auth';
 import { ChevronDown, LogIn, LogOut, Menu, Pencil, Printer, X } from 'lucide-react';
-import { Locale, UI_COPY } from '../data/cvData';
+import { Locale } from '../data/cvData';
+import { SiteCopyLocale } from '../utils/cvFirestoreApi';
+import { EditableText } from './EditableText';
 
 interface NavbarProps {
   locale: Locale;
   brandShort: string;
+  siteCopy: SiteCopyLocale;
   firebaseUser: User | null;
   isAdminUser: boolean;
+  onSaveBrandShort: (nextValue: string) => Promise<void>;
+  onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onOpenAuth: () => void;
   onOpenProfileEdit: () => void;
   onLogout: () => void;
@@ -17,8 +22,11 @@ interface NavbarProps {
 export function Navbar({
   locale,
   brandShort,
+  siteCopy,
   firebaseUser,
   isAdminUser,
+  onSaveBrandShort,
+  onSaveSiteCopyField,
   onOpenAuth,
   onOpenProfileEdit,
   onLogout,
@@ -27,14 +35,13 @@ export function Navbar({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const t = UI_COPY[locale];
 
-  const navItems = [
-    { href: '#profile', label: t.nav.profile },
-    { href: '#experience', label: t.nav.experience },
-    { href: '#projects', label: t.nav.projects },
-    { href: '#tech-stack', label: t.nav.stack },
-    { href: '#contact', label: t.nav.contact },
+  const navItems: { href: string; field: keyof SiteCopyLocale; label: string }[] = [
+    { href: '#profile', field: 'navProfile', label: siteCopy.navProfile },
+    { href: '#experience', field: 'navExperience', label: siteCopy.navExperience },
+    { href: '#projects', field: 'navProjects', label: siteCopy.navProjects },
+    { href: '#tech-stack', field: 'navStack', label: siteCopy.navStack },
+    { href: '#contact', field: 'navContact', label: siteCopy.navContact },
   ];
 
   useEffect(() => {
@@ -56,7 +63,12 @@ export function Navbar({
           href="#profile"
           className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
         >
-          {brandShort}
+          <EditableText
+            value={brandShort}
+            canEdit={isAdminUser}
+            maxLength={60}
+            onSave={onSaveBrandShort}
+          />
         </a>
 
         {/* Zone 2: 5 concise single-line navigation links */}
@@ -70,7 +82,12 @@ export function Navbar({
               href={item.href}
               className="whitespace-nowrap shrink-0 py-1 text-slate-600 transition-colors duration-150 hover:text-slate-950 hover:underline hover:underline-offset-4 dark:text-slate-300 dark:hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
             >
-              {item.label}
+              <EditableText
+                value={item.label}
+                canEdit={isAdminUser}
+                maxLength={40}
+                onSave={(val) => onSaveSiteCopyField(item.field, val)}
+              />
             </a>
           ))}
         </nav>
@@ -150,7 +167,7 @@ export function Navbar({
                     className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
                   >
                     <Printer className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                    <span>{t.downloadPdf}</span>
+                    <span>{siteCopy.downloadPdf}</span>
                   </button>
 
                   <button

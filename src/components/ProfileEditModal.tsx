@@ -429,10 +429,15 @@ export function ProfileEditModal({
                     </label>
                     <input
                       type="text"
-                      value={metric.value}
+                      required
+                      maxLength={40}
+                      value={locale === 'en' ? metric.value : metric.valueId}
                       onChange={(e) => {
                         const updated = [...draft.metrics];
-                        updated[idx] = { ...updated[idx], value: e.target.value, valueId: e.target.value };
+                        updated[idx] =
+                          locale === 'en'
+                            ? { ...updated[idx], value: e.target.value }
+                            : { ...updated[idx], valueId: e.target.value };
                         setDraft({ ...draft, metrics: updated });
                       }}
                       className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
@@ -444,6 +449,8 @@ export function ProfileEditModal({
                     </label>
                     <input
                       type="text"
+                      required
+                      maxLength={80}
                       value={locale === 'en' ? metric.label : metric.labelId}
                       onChange={(e) => {
                         const updated = [...draft.metrics];
@@ -456,26 +463,65 @@ export function ProfileEditModal({
                       className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                      {locale === 'en' ? 'Sub-detail' : 'Keterangan'}
-                    </label>
-                    <input
-                      type="text"
-                      value={locale === 'en' ? metric.detail : metric.detailId}
-                      onChange={(e) => {
-                        const updated = [...draft.metrics];
-                        updated[idx] =
-                          locale === 'en'
-                            ? { ...updated[idx], detail: e.target.value }
-                            : { ...updated[idx], detailId: e.target.value };
-                        setDraft({ ...draft, metrics: updated });
-                      }}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                    />
+                  <div className="flex flex-col justify-between gap-1">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        {locale === 'en' ? 'Sub-detail' : 'Keterangan'}
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={120}
+                        value={locale === 'en' ? metric.detail : metric.detailId}
+                        onChange={(e) => {
+                          const updated = [...draft.metrics];
+                          updated[idx] =
+                            locale === 'en'
+                              ? { ...updated[idx], detail: e.target.value }
+                              : { ...updated[idx], detailId: e.target.value };
+                          setDraft({ ...draft, metrics: updated });
+                        }}
+                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      />
+                    </div>
+                    {draft.metrics.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = draft.metrics.filter((_, i) => i !== idx);
+                          setDraft({ ...draft, metrics: updated });
+                        }}
+                        className="self-end text-[11px] font-semibold text-red-600 hover:underline dark:text-red-400 cursor-pointer"
+                      >
+                        {locale === 'en' ? 'Remove' : 'Hapus'}
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
+              {draft.metrics.length < 6 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraft({
+                      ...draft,
+                      metrics: [
+                        ...draft.metrics,
+                        {
+                          value: 'New KPI',
+                          valueId: 'KPI Baru',
+                          label: 'Metric Label',
+                          labelId: 'Judul Metrik',
+                          detail: 'Short context',
+                          detailId: 'Keterangan singkat',
+                        },
+                      ],
+                    })
+                  }
+                  className="rounded-lg border border-dashed border-slate-300 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:border-blue-500 dark:border-slate-700 dark:text-blue-400 cursor-pointer"
+                >
+                  {locale === 'en' ? '+ Add Metric' : '+ Tambah Metrik'}
+                </button>
+              )}
             </div>
           )}
 

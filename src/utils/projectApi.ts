@@ -3,6 +3,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  getDocFromServer,
   onSnapshot,
   orderBy,
   query,
@@ -12,10 +13,12 @@ import {
   updateDoc,
 } from 'firebase/firestore';
 import {
+  getRedirectResult,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
   type User,
 } from 'firebase/auth';
@@ -27,6 +30,12 @@ import {
   handleFirestoreError,
   OperationType,
 } from '../firebase';
+import { isValidEmailAddress } from './safeUrls';
+import {
+  readCvIndex,
+  registerEntityInCvIndex,
+  schedulePublishedSnapshotSync,
+} from './inviteApi';
 
 export type ProjectCategory = 'infrastructure' | 'pms-pos' | 'security' | 'event-av';
 
@@ -56,27 +65,12 @@ const VALID_CATEGORIES = new Set<ProjectCategory>([
   'event-av',
 ]);
 
-export async function syncAdminRecord(user: User): Promise<void> {
-  const rawEmail = user.email?.trim() ?? '';
-  const normalized = rawEmail.toLowerCase();
-  if (!user.emailVerified || !ADMIN_EMAIL_ALLOWLIST.has(normalized) || !rawEmail) {
-    return;
-  }
-
-  const provider = user.providerData?.[0]?.providerId || 'firebase';
+export function isRunningInIframe(): boolean {
+  if (typeof window === 'undefined') return false;
   try {
-    await setDoc(
-      doc(db, 'admins', user.uid),
-      {
-        email: rawEmail,
-        role: 'admin',
-        provider: provider.slice(0, 40),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    return window.self !== window.top;
   } catch {
-    // Non-fatal: verified email allowlist still authorizes admin access
+    return true;
   }
 }
 
@@ -87,16 +81,168 @@ export async function checkIsAdminUser(user: User | null): Promise<boolean> {
     return true;
   }
   try {
-    const adminSnap = await getDoc(doc(db, 'admins', user.uid));
-    return adminSnap.exists();
+    const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
+    if (uidSnap.exists()) return true;
   } catch {
-    return false;
+    try {
+      const uidCached = await getDoc(doc(db, 'admins', user.uid));
+      if (uidCached.exists()) return true;
+    } catch {
+      // Continue to email check
+    }
+  }
+  if (user.emailVerified && email) {
+    try {
+      const emailSnap = await getDocFromServer(doc(db, 'admins', email));
+      if (emailSnap.exists()) return true;
+    } catch {
+      try {
+        const emailCached = await getDoc(doc(db, 'admins', email));
+        if (emailCached.exists()) return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+export async function syncAdminRecord(
+  user: User
+): Promise<{ synced: boolean; error?: string }> {
+  const rawEmail = user.email?.trim() ?? '';
+  const normalized = rawEmail.toLowerCase();
+  if (!user.emailVerified || !rawEmail) {
+    return { synced: false, error: 'Account email is not verified.' };
+  }
+
+  const allowed = await checkIsAdminUser(user);
+  if (!allowed) {
+    return { synced: false, error: 'Account is not registered as an admin.' };
+  }
+
+  const provider = user.providerData?.[0]?.providerId || 'firebase';
+  try {
+    await setDoc(doc(db, 'admins', user.uid), {
+      email: normalized,
+      role: 'admin',
+      provider: provider.slice(0, 40),
+      updatedAt: serverTimestamp(),
+    });
+    return { synced: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn('Admin registry sync warning:', msg);
+    return { synced: false, error: msg };
+  }
+}
+
+export async function listFirestoreAdminEmails(): Promise<{
+  coreEmails: string[];
+  addedEmails: string[];
+}> {
+  const coreEmails = Array.from(ADMIN_EMAIL_ALLOWLIST);
+  try {
+    const snap = await getDocFromServer(doc(db, 'adminsRegistry', 'emails'));
+    if (!snap.exists()) {
+      return { coreEmails, addedEmails: [] };
+    }
+    const rawEmails = snap.data()?.emails;
+    const addedEmails = Array.isArray(rawEmails)
+      ? rawEmails
+          .filter((item): item is string => typeof item === 'string' && isValidEmailAddress(item))
+          .map((e) => e.trim().toLowerCase())
+          .filter((e) => !ADMIN_EMAIL_ALLOWLIST.has(e))
+      : [];
+    return { coreEmails, addedEmails };
+  } catch {
+    return { coreEmails, addedEmails: [] };
+  }
+}
+
+export async function addAdminEmailToFirestore(rawEmail: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Authentication required.');
+
+  const cleanEmail = rawEmail.trim().toLowerCase();
+  if (!isValidEmailAddress(cleanEmail)) {
+    throw new Error('Masukkan alamat email yang valid.');
+  }
+
+  const emailDocRef = doc(db, 'admins', cleanEmail);
+  try {
+    await setDoc(emailDocRef, {
+      email: cleanEmail,
+      role: 'admin',
+      provider: 'firestore-admin',
+      addedBy: currentUser.uid,
+      updatedAt: serverTimestamp(),
+    });
+
+    const regRef = doc(db, 'adminsRegistry', 'emails');
+    const regSnap = await getDocFromServer(regRef);
+    const prevList =
+      regSnap.exists() && Array.isArray(regSnap.data()?.emails)
+        ? (regSnap.data().emails as unknown[])
+            .filter((x): x is string => typeof x === 'string')
+            .map((x) => x.trim().toLowerCase())
+        : [];
+    const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
+
+    if (!regSnap.exists() || typeof regSnap.data()?.authorId !== 'string') {
+      await setDoc(regRef, {
+        emails: nextList,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(regRef, {
+        emails: nextList,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, `admins/${cleanEmail}`);
+  }
+}
+
+export async function removeAdminEmailFromFirestore(rawEmail: string): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Authentication required.');
+
+  const cleanEmail = rawEmail.trim().toLowerCase();
+  if (ADMIN_EMAIL_ALLOWLIST.has(cleanEmail)) {
+    throw new Error('Email admin utama tidak dapat dihapus.');
+  }
+  if (currentUser.email?.trim().toLowerCase() === cleanEmail) {
+    throw new Error('Tidak dapat menghapus email yang sedang Anda gunakan.');
+  }
+
+  try {
+    await deleteDoc(doc(db, 'admins', cleanEmail));
+
+    const regRef = doc(db, 'adminsRegistry', 'emails');
+    const regSnap = await getDocFromServer(regRef);
+    if (regSnap.exists() && Array.isArray(regSnap.data()?.emails)) {
+      const nextList = (regSnap.data().emails as unknown[])
+        .filter((x): x is string => typeof x === 'string')
+        .map((x) => x.trim().toLowerCase())
+        .filter((x) => x !== cleanEmail);
+      await updateDoc(regRef, {
+        emails: nextList,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, `admins/${cleanEmail}`);
   }
 }
 
 export async function signInAdminWithGoogle(): Promise<User> {
   const credential = await signInWithPopup(auth, googleProvider);
   const user = credential.user;
+  await user.getIdToken(true);
   const isAdmin = await checkIsAdminUser(user);
   if (!isAdmin) {
     const signedEmail = user.email ?? 'unknown';
@@ -107,21 +253,57 @@ export async function signInAdminWithGoogle(): Promise<User> {
   return user;
 }
 
+export async function signInAdminWithGoogleRedirect(): Promise<void> {
+  if (isRunningInIframe()) {
+    throw new Error(
+      'Redirect sign-in cannot run inside an embedded iframe. Open the deployed site directly or allow popups.'
+    );
+  }
+  await signInWithRedirect(auth, googleProvider);
+}
+
+export async function consumeGoogleRedirectResult(): Promise<{
+  user: User | null;
+  error: string | null;
+}> {
+  try {
+    const result = await getRedirectResult(auth);
+    if (!result?.user) {
+      return { user: null, error: null };
+    }
+    const user = result.user;
+    await user.getIdToken(true);
+    const isAdmin = await checkIsAdminUser(user);
+    if (!isAdmin) {
+      const signedEmail = user.email ?? 'unknown';
+      await signOut(auth);
+      return { user: null, error: `AUTH_UNAUTHORIZED_EMAIL:${signedEmail}` };
+    }
+    await syncAdminRecord(user);
+    return { user, error: null };
+  } catch (err) {
+    return {
+      user: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 export async function signInAdminWithEmail(
   email: string,
   password: string
 ): Promise<{ user: User; isAdmin: boolean; needsVerification: boolean }> {
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
   const user = credential.user;
-  const normalized = user.email?.trim().toLowerCase() ?? '';
   const isAdmin = await checkIsAdminUser(user);
 
   if (isAdmin) {
+    await user.getIdToken(true);
     await syncAdminRecord(user);
     return { user, isAdmin: true, needsVerification: false };
   }
 
-  if (ADMIN_EMAIL_ALLOWLIST.has(normalized) && !user.emailVerified) {
+  if (!user.emailVerified) {
     return { user, isAdmin: false, needsVerification: true };
   }
 
@@ -150,6 +332,7 @@ export function subscribeProjects(
   onData: (projects: ProjectPhotoItem[]) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const projectsRef = collection(db, 'projects');
   const q = query(projectsRef, orderBy('createdAt', 'asc'));
 
@@ -176,11 +359,45 @@ export function subscribeProjects(
       onData(items);
     },
     (error) => {
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'projects');
-      } catch (wrapped) {
-        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
-      }
+      if (!auth.currentUser) return;
+      void (async () => {
+        const idx = await readCvIndex();
+        if (idx) {
+          const items: ProjectPhotoItem[] = [];
+          await Promise.all(
+            idx.projectIds.map(async (id) => {
+              try {
+                const snap = await getDocFromServer(doc(db, 'projects', id));
+                if (!snap.exists()) return;
+                const data = snap.data();
+                const ts = data.createdAt instanceof Timestamp ? data.createdAt.toMillis() : Date.now();
+                items.push({
+                  id: snap.id,
+                  title: typeof data.title === 'string' ? data.title : '',
+                  property: typeof data.property === 'string' ? data.property : '',
+                  year: typeof data.year === 'string' ? data.year : '',
+                  category: VALID_CATEGORIES.has(data.category as ProjectCategory)
+                    ? (data.category as ProjectCategory)
+                    : 'infrastructure',
+                  description: typeof data.description === 'string' ? data.description : '',
+                  imageDataUrl: typeof data.imageDataUrl === 'string' ? data.imageDataUrl : '',
+                  authorId: typeof data.authorId === 'string' ? data.authorId : '',
+                  createdAt: ts,
+                });
+              } catch {
+                // Ignore
+              }
+            })
+          );
+          onData(items.sort((a, b) => a.createdAt - b.createdAt));
+          return;
+        }
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'projects');
+        } catch (wrapped) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      })();
     }
   );
 }
@@ -234,6 +451,8 @@ export async function createFirestoreProject(input: {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    await registerEntityInCvIndex('projectIds', projectId, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -262,10 +481,24 @@ export async function updateFirestoreProject(
   const path = `projects/${projectId}`;
 
   try {
-    await updateDoc(doc(db, 'projects', projectId), {
-      ...sanitized,
-      updatedAt: serverTimestamp(),
-    });
+    const docRef = doc(db, 'projects', projectId);
+    const snap = await getDocFromServer(docRef);
+    const existing = snap.exists() ? snap.data() : null;
+    if (existing && typeof existing.authorId === 'string' && existing.createdAt != null) {
+      await updateDoc(docRef, {
+        ...sanitized,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(docRef, {
+        ...sanitized,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await registerEntityInCvIndex('projectIds', projectId, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }
@@ -283,6 +516,8 @@ export async function deleteFirestoreProject(projectId: string): Promise<void> {
   const path = `projects/${projectId}`;
   try {
     await deleteDoc(doc(db, 'projects', projectId));
+    await registerEntityInCvIndex('projectIds', projectId, 'remove');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

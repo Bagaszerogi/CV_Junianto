@@ -2,15 +2,21 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocFromServer,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import { EXPERIENCES, ExperienceItem, ExperienceStatus } from '../data/cvData';
+import { upsertFirestoreDoc } from './cvFirestoreApi';
+import {
+  readCvIndex,
+  registerEntityInCvIndex,
+  schedulePublishedSnapshotSync,
+} from './inviteApi';
 
 export interface FirestoreExperienceItem extends ExperienceItem {
   fromFirestore: boolean;
@@ -23,6 +29,7 @@ export function subscribeExperiences(
   onData: (items: FirestoreExperienceItem[], hasFirestoreDocs: boolean) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const expRef = collection(db, 'experiences');
   const q = query(expRef, orderBy('sortOrder', 'asc'));
 
@@ -86,11 +93,77 @@ export function subscribeExperiences(
       onData(merged, true);
     },
     (error) => {
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'experiences');
-      } catch (wrapped) {
-        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
-      }
+      if (!auth.currentUser) return;
+      void (async () => {
+        const idx = await readCvIndex();
+        if (idx) {
+          const firestoreMap = new Map<string, FirestoreExperienceItem>();
+          EXPERIENCES.forEach((item) => firestoreMap.set(item.id, { ...item, fromFirestore: false }));
+          await Promise.all(
+            idx.experienceIds.map(async (id) => {
+              try {
+                const snap = await getDocFromServer(doc(db, 'experiences', id));
+                if (!snap.exists()) return;
+                const data = snap.data();
+                firestoreMap.set(snap.id, {
+                  id: snap.id,
+                  company: typeof data.company === 'string' ? data.company : '',
+                  role: typeof data.role === 'string' ? data.role : '',
+                  roleId:
+                    typeof data.roleId === 'string'
+                      ? data.roleId
+                      : typeof data.role === 'string'
+                        ? data.role
+                        : '',
+                  status: VALID_STATUS.has(data.status as ExperienceStatus)
+                    ? (data.status as ExperienceStatus)
+                    : 'completed',
+                  category: VALID_CATEGORIES.has(data.category as 'leadership' | 'operations')
+                    ? (data.category as 'leadership' | 'operations')
+                    : 'operations',
+                  period: typeof data.period === 'string' ? data.period : '',
+                  periodId:
+                    typeof data.periodId === 'string'
+                      ? data.periodId
+                      : typeof data.period === 'string'
+                        ? data.period
+                        : '',
+                  scaleContext: typeof data.scaleContext === 'string' ? data.scaleContext : '',
+                  scaleContextId:
+                    typeof data.scaleContextId === 'string'
+                      ? data.scaleContextId
+                      : typeof data.scaleContext === 'string'
+                        ? data.scaleContext
+                        : '',
+                  bullets: Array.isArray(data.bullets)
+                    ? data.bullets.filter((b): b is string => typeof b === 'string')
+                    : [],
+                  bulletsId: Array.isArray(data.bulletsId)
+                    ? data.bulletsId.filter((b): b is string => typeof b === 'string')
+                    : [],
+                  systems: Array.isArray(data.systems)
+                    ? data.systems.filter((s): s is string => typeof s === 'string')
+                    : [],
+                  sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
+                  fromFirestore: true,
+                });
+              } catch {
+                // Ignore
+              }
+            })
+          );
+          onData(
+            Array.from(firestoreMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
+            true
+          );
+          return;
+        }
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'experiences');
+        } catch (wrapped) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      })();
     }
   );
 }
@@ -162,19 +235,9 @@ export async function saveExperienceToFirestore(
   const path = `experiences/${sanitizedId}`;
 
   try {
-    if (alreadyInFirestore) {
-      await updateDoc(doc(db, 'experiences', sanitizedId), {
-        ...sanitized,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(doc(db, 'experiences', sanitizedId), {
-        ...sanitized,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await upsertFirestoreDoc(doc(db, 'experiences', sanitizedId), sanitized, path);
+    await registerEntityInCvIndex('experienceIds', sanitizedId, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, path);
   }
@@ -199,6 +262,8 @@ export async function createExperienceInFirestore(
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+    await registerEntityInCvIndex('experienceIds', id, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.CREATE, path);
   }
@@ -216,6 +281,8 @@ export async function deleteExperienceFromFirestore(id: string): Promise<void> {
   const path = `experiences/${id}`;
   try {
     await deleteDoc(doc(db, 'experiences', id));
+    await registerEntityInCvIndex('experienceIds', id, 'remove');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }

@@ -56,6 +56,7 @@ export function HeroSection({
   const [imgError, setImgError] = useState(false);
   const [copiedField, setCopiedField] = useState<'email' | 'phone' | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const prefersReducedMotion = useReducedMotion();
 
@@ -77,10 +78,20 @@ export function HeroSection({
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file || !isAdminUser) return;
+    setPhotoError(null);
     setIsUploadingPhoto(true);
     try {
       const compressed = await compressPortraitImage(file);
       await onSaveProfilePatch({ portraitDataUrl: compressed });
+    } catch (err) {
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        // Keep msg
+      }
+      setPhotoError(msg);
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -362,15 +373,19 @@ export function HeroSection({
                     </div>
 
                     <div className="min-w-0">
-                      <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold tracking-wide text-emerald-700 print:hidden dark:text-emerald-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
+                      {photoError && (
+                        <p className="mb-1 text-[11px] font-medium text-red-600 dark:text-red-400">
+                          {photoError}
+                        </p>
+                      )}
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-700 print:hidden dark:text-blue-400">
                         <EditableText
                           value={siteCopy.heroActiveBadge}
                           canEdit={isAdminUser}
                           maxLength={60}
                           onSave={(val) => onSaveSiteCopyField('heroActiveBadge', val)}
                         />
-                      </div>
+                      </p>
                       <p className="mt-1 font-display text-lg font-bold tracking-tight text-slate-950 print:mt-0 print:text-sm dark:text-white">
                         <EditableText
                           value={profile.currentCompany}

@@ -12,6 +12,29 @@ service cloud.firestore {
       return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function isValidInviteTokenId(token) {
+      return token is string && token.size() >= 6 && token.size() <= 64 && token.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidVaultKey(vaultKey) {
+      return vaultKey is string && vaultKey.size() >= 24 && vaultKey.size() <= 64 && vaultKey.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidVaultAssetId(assetId) {
+      return assetId is string && assetId.size() >= 27 && assetId.size() <= 196 && assetId.matches('^[a-zA-Z0-9_\\-]{24,64}__[a-zA-Z0-9_\\-]{1,128}$');
+    }
+
+    function isValidEmailStr(val) {
+      return val is string && val.size() >= 3 && val.size() <= 140 && val.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
+    }
+
+    function isValidAdminKey(id) {
+      return id is string && id.size() >= 1 && id.size() <= 140 && (
+        id.matches('^[a-zA-Z0-9_\\-]+$') ||
+        (isValidEmailStr(id) && id == id.lower())
+      );
+    }
+
     function incoming() {
       return request.resource.data;
     }
@@ -24,12 +47,23 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isVerifiedEmail() {
+      return request.auth.token.email_verified == true && request.auth.token.email is string;
+    }
+
+    function isCoreAdmin() {
+      return isSignedIn() && isVerifiedEmail() &&
+        request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'];
+    }
+
     function isAdmin() {
       return isSignedIn() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (
-          request.auth.token.email_verified == true &&
-          request.auth.token.email in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com']
+          isVerifiedEmail() && (
+            request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] ||
+            exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+          )
         )
       );
     }
@@ -243,14 +277,105 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
-    function isValidAdminRecord(data) {
+    function isValidAdminRecord(data, adminId) {
       return data.keys().hasAll(['email', 'role', 'provider', 'updatedAt']) &&
-        data.keys().hasOnly(['email', 'role', 'provider', 'updatedAt']) &&
-        data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
-        data.email == request.auth.token.email &&
+        data.keys().hasOnly(['email', 'role', 'provider', 'addedBy', 'updatedAt']) &&
+        isValidEmailStr(data.email) &&
         data.role is string && data.role == 'admin' &&
         data.provider is string && data.provider.size() >= 1 && data.provider.size() <= 40 &&
+        (!('addedBy' in data) || (data.addedBy is string && data.addedBy.size() >= 1 && data.addedBy.size() <= 128)) &&
+        data.updatedAt is timestamp &&
+        (
+          (isVerifiedEmail() && adminId == request.auth.uid && data.email.lower() == request.auth.token.email.lower()) ||
+          (isValidEmailStr(adminId) && adminId == adminId.lower() && data.email.lower() == adminId)
+        );
+    }
+
+    function isValidAdminsRegistry(data) {
+      return data.keys().hasAll(['emails', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['emails', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.emails is list && data.emails.size() <= 50 &&
+        (data.emails.size() == 0 || isValidEmailStr(data.emails[0])) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
         data.updatedAt is timestamp;
+    }
+
+    function isValidCvIndex(data) {
+      return data.keys().hasAll([
+          'vaultKey', 'experienceIds', 'projectIds', 'techStackIds',
+          'referenceIds', 'inviteTokens', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'vaultKey', 'experienceIds', 'projectIds', 'techStackIds',
+          'referenceIds', 'inviteTokens', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        isValidVaultKey(data.vaultKey) &&
+        data.experienceIds is list && data.experienceIds.size() <= 60 &&
+        data.projectIds is list && data.projectIds.size() <= 60 &&
+        data.techStackIds is list && data.techStackIds.size() <= 60 &&
+        data.referenceIds is list && data.referenceIds.size() <= 60 &&
+        data.inviteTokens is list && data.inviteTokens.size() <= 100 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidInviteTokenDoc(data) {
+      return data.keys().hasAll([
+          'label', 'active', 'expiresAt', 'vaultKey', 'createdByEmail',
+          'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'label', 'active', 'expiresAt', 'vaultKey', 'createdByEmail',
+          'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 120 &&
+        data.active is bool &&
+        (data.expiresAt == null || data.expiresAt is timestamp) &&
+        isValidVaultKey(data.vaultKey) &&
+        isValidEmailStr(data.createdByEmail) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCvShareBundle(data) {
+      return data.keys().hasAll([
+          'profile', 'siteContent', 'experiences', 'techStacks',
+          'references', 'projectMeta', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'profile', 'siteContent', 'experiences', 'techStacks',
+          'references', 'projectMeta', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.profile is map &&
+        data.siteContent is map &&
+        data.experiences is list && data.experiences.size() <= 60 &&
+        data.techStacks is list && data.techStacks.size() <= 60 &&
+        data.references is list && data.references.size() <= 60 &&
+        data.projectMeta is list && data.projectMeta.size() <= 60 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCvProjectAsset(data) {
+      return data.keys().hasAll(['projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt']) &&
+        isValidId(data.projectId) &&
+        data.imageDataUrl is string && data.imageDataUrl.size() >= 24 && data.imageDataUrl.size() <= 750000 &&
+        data.imageDataUrl.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function preservesImmutableAuditFields() {
+      return (
+        (!('authorId' in existing()) ? incoming().authorId == request.auth.uid : incoming().authorId == existing().authorId) &&
+        (!('createdAt' in existing()) ? incoming().createdAt == request.time : incoming().createdAt == existing().createdAt)
+      );
     }
 
     function isValidExperience(data) {
@@ -333,10 +458,10 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
-    // Public CV Profile & Education (readable by visitors, editable by verified admins)
+    // Private Admin-Only Master CV Profile & Education
     match /profile/{profileId} {
-      allow get: if isValidId(profileId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(profileId);
+      allow list: if false;
 
       allow create: if isAdmin() &&
         isValidId(profileId) &&
@@ -348,10 +473,9 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(profileId) &&
         isValidProfile(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'name',
           'brandShort',
           'titleEn',
@@ -370,15 +494,15 @@ service cloud.firestore {
           'metrics',
           'education',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if false;
     }
 
-    // Public CV Project Gallery
+    // Private Admin-Only Master CV Project Gallery
     match /projects/{projectId} {
-      allow get: if isValidId(projectId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(projectId);
+      allow list: if isCoreAdmin();
 
       allow create: if isAdmin() &&
         isValidId(projectId) &&
@@ -390,10 +514,9 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(projectId) &&
         isValidProject(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'title',
           'property',
           'year',
@@ -401,15 +524,15 @@ service cloud.firestore {
           'description',
           'imageDataUrl',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidId(projectId);
     }
 
-    // Public CV Work Experience Timeline
+    // Private Admin-Only Master CV Work Experience Timeline
     match /experiences/{experienceId} {
-      allow get: if isValidId(experienceId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(experienceId);
+      allow list: if isCoreAdmin();
 
       allow create: if isAdmin() &&
         isValidId(experienceId) &&
@@ -421,10 +544,9 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(experienceId) &&
         isValidExperience(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'company',
           'role',
           'roleId',
@@ -439,15 +561,15 @@ service cloud.firestore {
           'systems',
           'sortOrder',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidId(experienceId);
     }
 
-    // Public CV Tech Stack Expertise
+    // Private Admin-Only Master CV Tech Stack Expertise
     match /techStacks/{stackId} {
-      allow get: if isValidId(stackId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(stackId);
+      allow list: if isCoreAdmin();
 
       allow create: if isAdmin() &&
         isValidId(stackId) &&
@@ -459,25 +581,24 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(stackId) &&
         isValidTechStack(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'group',
           'label',
           'labelId',
           'items',
           'sortOrder',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidId(stackId);
     }
 
-    // Public CV Professional References
+    // Private Admin-Only Master CV Professional References
     match /references/{refId} {
-      allow get: if isValidId(refId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(refId);
+      allow list: if isCoreAdmin();
 
       allow create: if isAdmin() &&
         isValidId(refId) &&
@@ -489,24 +610,23 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(refId) &&
         isValidReference(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'name',
           'role',
           'phone',
           'sortOrder',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidId(refId);
     }
 
-    // Public CV Site Copy (navigation, section headers, labels editable by verified admins)
+    // Private Admin-Only Master CV Site Copy
     match /siteContent/{contentId} {
-      allow get: if isValidId(contentId);
-      allow list: if true;
+      allow get: if isAdmin() && isValidId(contentId);
+      allow list: if false;
 
       allow create: if isAdmin() &&
         isValidId(contentId) &&
@@ -518,25 +638,177 @@ service cloud.firestore {
       allow update: if isAdmin() &&
         isValidId(contentId) &&
         isValidSiteContent(incoming()) &&
-        incoming().authorId == existing().authorId &&
-        incoming().createdAt == existing().createdAt &&
+        preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['en', 'id', 'updatedAt']);
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly(['en', 'id', 'updatedAt']));
 
       allow delete: if false;
     }
 
-    // Admin UID Registry (readable by self, synced only by verified allowlisted admins)
+    // Admin Index tracking CV document IDs, active invite tokens, and sharing vaultKey
+    match /cvIndex/{indexId} {
+      allow get: if isAdmin() && isValidId(indexId);
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidId(indexId) &&
+        isValidCvIndex(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(indexId) &&
+        isValidCvIndex(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'vaultKey',
+          'experienceIds',
+          'projectIds',
+          'techStackIds',
+          'referenceIds',
+          'inviteTokens',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    // Invite Links (non-listable; readable via single-doc get ONLY if active and unexpired)
+    match /invites/{token} {
+      allow get: if isAdmin() || (
+        isValidInviteTokenId(token) &&
+        existing().active == true &&
+        (existing().expiresAt == null || existing().expiresAt > request.time)
+      );
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidInviteTokenId(token) &&
+        isValidInviteTokenDoc(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidInviteTokenId(token) &&
+        isValidInviteTokenDoc(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'label',
+          'active',
+          'expiresAt',
+          'vaultKey',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidInviteTokenId(token);
+    }
+
+    // Published CV Share Snapshots (non-listable; keyed by unguessable vaultKey)
+    match /cvShares/{vaultKey} {
+      allow get: if isAdmin() || isValidVaultKey(vaultKey);
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidVaultKey(vaultKey) &&
+        isValidCvShareBundle(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidVaultKey(vaultKey) &&
+        isValidCvShareBundle(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'profile',
+          'siteContent',
+          'experiences',
+          'techStacks',
+          'references',
+          'projectMeta',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidVaultKey(vaultKey);
+    }
+
+    // Published Project Images (non-listable; keyed by vaultKey__projectId)
+    match /cvProjectAssets/{assetId} {
+      allow get: if isAdmin() || isValidVaultAssetId(assetId);
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidVaultAssetId(assetId) &&
+        isValidCvProjectAsset(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidVaultAssetId(assetId) &&
+        isValidCvProjectAsset(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'projectId',
+          'imageDataUrl',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidVaultAssetId(assetId);
+    }
+
+    // Admin UID & Email Registry
     match /admins/{adminId} {
-      allow get: if isSignedIn() && isValidId(adminId) && request.auth.uid == adminId;
+      allow get: if isSignedIn() && isValidAdminKey(adminId) && (
+        request.auth.uid == adminId ||
+        (isVerifiedEmail() && request.auth.token.email.lower() == adminId) ||
+        isAdmin()
+      );
       allow list: if false;
       allow create, update: if isSignedIn() &&
-        isValidId(adminId) &&
-        request.auth.uid == adminId &&
-        request.auth.token.email_verified == true &&
-        request.auth.token.email in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] &&
-        isValidAdminRecord(incoming()) &&
+        isValidAdminKey(adminId) &&
+        isValidAdminRecord(incoming(), adminId) &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            isVerifiedEmail() &&
+            request.auth.uid == adminId &&
+            (
+              request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] ||
+              exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
+            )
+          ) ||
+          (
+            isAdmin() &&
+            isValidEmailStr(adminId) &&
+            adminId == adminId.lower()
+          )
+        );
+      allow delete: if isAdmin() && isValidAdminKey(adminId);
+    }
+
+    // Private Admin Email Directory
+    match /adminsRegistry/{registryId} {
+      allow get: if isAdmin() && isValidId(registryId);
+      allow list: if false;
+      allow create: if isAdmin() &&
+        isValidId(registryId) &&
+        isValidAdminsRegistry(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
+      allow update: if isAdmin() &&
+        isValidId(registryId) &&
+        isValidAdminsRegistry(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['emails', 'updatedAt']);
       allow delete: if false;
     }
   }

@@ -17,6 +17,7 @@ interface EducationReferencesSectionProps {
   isAdminUser: boolean;
   education: EducationData;
   siteCopy: SiteCopyLocale;
+  invitedReferences?: FirestoreReferenceItem[];
   onSaveEducationField: (patch: Partial<EducationData>) => Promise<void>;
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onEditEducation: () => void;
@@ -28,11 +29,12 @@ export function EducationReferencesSection({
   isAdminUser,
   education,
   siteCopy,
+  invitedReferences,
   onSaveEducationField,
   onSaveSiteCopyField,
   onEditEducation,
 }: EducationReferencesSectionProps) {
-  const [references, setReferences] = useState<FirestoreReferenceItem[]>([]);
+  const [references, setReferences] = useState<FirestoreReferenceItem[]>(invitedReferences ?? []);
   const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -47,7 +49,12 @@ export function EducationReferencesSection({
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!isAdminUser && invitedReferences) {
+      setReferences(invitedReferences);
+      setLoadError(null);
+      return;
+    }
+    if (!authReady || !isAdminUser) return;
     const unsubscribe = subscribeReferences(
       (items) => {
         setReferences(items);
@@ -58,7 +65,7 @@ export function EducationReferencesSection({
       }
     );
     return () => unsubscribe();
-  }, [authReady]);
+  }, [authReady, invitedReferences, isAdminUser]);
 
   const handleCopyPhone = async (phone: string) => {
     try {

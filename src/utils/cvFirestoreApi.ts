@@ -2,6 +2,8 @@ import {
   collection,
   deleteDoc,
   doc,
+  DocumentReference,
+  getDocFromServer,
   onSnapshot,
   orderBy,
   query,
@@ -21,6 +23,11 @@ import {
   type TechCategory,
 } from '../data/cvData';
 import { isValidEmailAddress, sanitizePortraitSrc } from './safeUrls';
+import {
+  readCvIndex,
+  registerEntityInCvIndex,
+  schedulePublishedSnapshotSync,
+} from './inviteApi';
 
 export interface SiteCopyLocale {
   navProfile: string;
@@ -222,6 +229,7 @@ export function subscribeProfile(
   onData: (profile: CvProfileData) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const ref = doc(db, 'profile', 'main');
   return onSnapshot(
     ref,
@@ -265,6 +273,7 @@ export function subscribeProfile(
       });
     },
     (error) => {
+      if (!auth.currentUser) return;
       try {
         handleFirestoreError(error, OperationType.GET, 'profile/main');
       } catch (wrapped) {
@@ -332,22 +341,56 @@ export async function saveProfileToFirestore(
     throw new Error('At least one KPI metric is required.');
   }
 
+  const docRef = doc(db, 'profile', 'main');
   try {
-    if (alreadyInFirestore) {
-      await updateDoc(doc(db, 'profile', 'main'), {
-        ...payload,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(doc(db, 'profile', 'main'), {
-        ...payload,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await upsertFirestoreDoc(docRef, payload, 'profile/main');
+    schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, 'profile/main');
+    handleFirestoreError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE,
+      'profile/main'
+    );
+  }
+}
+
+export async function upsertFirestoreDoc(
+  docRef: DocumentReference,
+  payload: Record<string, unknown>,
+  _path: string
+): Promise<void> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Authentication required.');
+
+  const snap = await getDocFromServer(docRef);
+  if (!snap.exists()) {
+    await setDoc(docRef, {
+      ...payload,
+      authorId: currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    return;
+  }
+
+  const existing = snap.data();
+  const hasAuditFields =
+    typeof existing?.authorId === 'string' &&
+    existing.authorId.length > 0 &&
+    existing?.createdAt != null;
+
+  if (hasAuditFields) {
+    await updateDoc(docRef, {
+      ...payload,
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    await setDoc(docRef, {
+      ...payload,
+      authorId: currentUser.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   }
 }
 
@@ -355,6 +398,7 @@ export function subscribeTechStacks(
   onData: (items: FirestoreTechCategory[]) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const q = query(collection(db, 'techStacks'), orderBy('sortOrder', 'asc'));
   return onSnapshot(
     q,
@@ -393,11 +437,52 @@ export function subscribeTechStacks(
       onData(Array.from(mergedMap.values()).sort((a, b) => a.sortOrder - b.sortOrder));
     },
     (error) => {
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'techStacks');
-      } catch (wrapped) {
-        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
-      }
+      if (!auth.currentUser) return;
+      void (async () => {
+        const idx = await readCvIndex();
+        if (idx) {
+          const mergedMap = new Map<string, FirestoreTechCategory>();
+          TECH_STACK.forEach((item, i) => {
+            mergedMap.set(item.id, { ...item, sortOrder: i, fromFirestore: false });
+          });
+          await Promise.all(
+            idx.techStackIds.map(async (id) => {
+              try {
+                const snap = await getDocFromServer(doc(db, 'techStacks', id));
+                if (!snap.exists()) return;
+                const d = snap.data();
+                mergedMap.set(snap.id, {
+                  id: snap.id,
+                  group: VALID_TECH_GROUPS.has(d.group as TechCategory['group'])
+                    ? (d.group as TechCategory['group'])
+                    : 'core',
+                  label: typeof d.label === 'string' ? d.label : '',
+                  labelId:
+                    typeof d.labelId === 'string'
+                      ? d.labelId
+                      : typeof d.label === 'string'
+                        ? d.label
+                        : '',
+                  items: Array.isArray(d.items)
+                    ? d.items.filter((x): x is string => typeof x === 'string')
+                    : [],
+                  sortOrder: typeof d.sortOrder === 'number' ? d.sortOrder : 99,
+                  fromFirestore: true,
+                });
+              } catch {
+                // Ignore
+              }
+            })
+          );
+          onData(Array.from(mergedMap.values()).sort((a, b) => a.sortOrder - b.sortOrder));
+          return;
+        }
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'techStacks');
+        } catch (wrapped) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      })();
     }
   );
 }
@@ -425,19 +510,9 @@ export async function saveTechStackToFirestore(
   };
 
   try {
-    if (alreadyInFirestore) {
-      await updateDoc(doc(db, 'techStacks', cleanId), {
-        ...payload,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(doc(db, 'techStacks', cleanId), {
-        ...payload,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await upsertFirestoreDoc(doc(db, 'techStacks', cleanId), payload, `techStacks/${cleanId}`);
+    await registerEntityInCvIndex('techStackIds', cleanId, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, `techStacks/${cleanId}`);
   }
@@ -447,6 +522,8 @@ export async function deleteTechStackFromFirestore(id: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
     await deleteDoc(doc(db, 'techStacks', id));
+    await registerEntityInCvIndex('techStackIds', id, 'remove');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `techStacks/${id}`);
   }
@@ -456,6 +533,7 @@ export function subscribeReferences(
   onData: (items: FirestoreReferenceItem[]) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const q = query(collection(db, 'references'), orderBy('sortOrder', 'asc'));
   return onSnapshot(
     q,
@@ -498,11 +576,55 @@ export function subscribeReferences(
       onData(Array.from(mergedMap.values()).sort((a, b) => a.sortOrder - b.sortOrder));
     },
     (error) => {
-      try {
-        handleFirestoreError(error, OperationType.LIST, 'references');
-      } catch (wrapped) {
-        onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
-      }
+      if (!auth.currentUser) return;
+      void (async () => {
+        const idx = await readCvIndex();
+        if (idx) {
+          const mergedMap = new Map<string, FirestoreReferenceItem>();
+          REFERENCES.forEach((r, i) => {
+            mergedMap.set(`ref_default_${i}`, {
+              ...r,
+              id: `ref_default_${i}`,
+              sortOrder: i,
+              fromFirestore: false,
+            });
+          });
+          await Promise.all(
+            idx.referenceIds.map(async (id) => {
+              try {
+                const snap = await getDocFromServer(doc(db, 'references', id));
+                if (!snap.exists()) return;
+                const d = snap.data();
+                const phone = typeof d.phone === 'string' ? d.phone : '';
+                const digits = phone.replace(/\D/g, '');
+                const phoneHref = digits.startsWith('0')
+                  ? `tel:+62${digits.slice(1)}`
+                  : digits
+                    ? `tel:+${digits}`
+                    : '#';
+                mergedMap.set(snap.id, {
+                  id: snap.id,
+                  name: typeof d.name === 'string' ? d.name : '',
+                  role: typeof d.role === 'string' ? d.role : '',
+                  phone,
+                  phoneHref,
+                  sortOrder: typeof d.sortOrder === 'number' ? d.sortOrder : 99,
+                  fromFirestore: true,
+                });
+              } catch {
+                // Ignore
+              }
+            })
+          );
+          onData(Array.from(mergedMap.values()).sort((a, b) => a.sortOrder - b.sortOrder));
+          return;
+        }
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'references');
+        } catch (wrapped) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      })();
     }
   );
 }
@@ -528,19 +650,9 @@ export async function saveReferenceToFirestore(
   };
 
   try {
-    if (alreadyInFirestore) {
-      await updateDoc(doc(db, 'references', cleanId), {
-        ...payload,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(doc(db, 'references', cleanId), {
-        ...payload,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await upsertFirestoreDoc(doc(db, 'references', cleanId), payload, `references/${cleanId}`);
+    await registerEntityInCvIndex('referenceIds', cleanId, 'add');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, `references/${cleanId}`);
   }
@@ -550,6 +662,8 @@ export async function deleteReferenceFromFirestore(id: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
     await deleteDoc(doc(db, 'references', id));
+    await registerEntityInCvIndex('referenceIds', id, 'remove');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `references/${id}`);
   }
@@ -589,9 +703,20 @@ export function compressPortraitImage(file: File, maxDimension = 560): Promise<s
 
         let quality = 0.85;
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
-        while (dataUrl.length > 520_000 && quality > 0.4) {
+        while (dataUrl.length > 520_000 && quality > 0.35) {
           quality -= 0.1;
           dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
+        if (dataUrl.length > 580_000) {
+          const smallCanvas = document.createElement('canvas');
+          const smallTarget = Math.min(target, 360);
+          smallCanvas.width = smallTarget;
+          smallCanvas.height = smallTarget;
+          const smallCtx = smallCanvas.getContext('2d');
+          if (smallCtx) {
+            smallCtx.drawImage(canvas, 0, 0, smallTarget, smallTarget);
+            dataUrl = smallCanvas.toDataURL('image/jpeg', 0.72);
+          }
         }
         resolve(dataUrl);
       };
@@ -652,6 +777,7 @@ export function subscribeSiteContent(
   onData: (data: SiteContentData) => void,
   onError: (err: Error) => void
 ): () => void {
+  if (!auth.currentUser) return () => {};
   const ref = doc(db, 'siteContent', 'main');
   return onSnapshot(
     ref,
@@ -670,6 +796,7 @@ export function subscribeSiteContent(
       });
     },
     (error) => {
+      if (!auth.currentUser) return;
       try {
         handleFirestoreError(error, OperationType.GET, 'siteContent/main');
       } catch (wrapped) {
@@ -690,21 +817,8 @@ export async function saveSiteContentToFirestore(
   const id = sanitizeLocaleCopy(data.id as unknown as Record<string, unknown>, DEFAULT_SITE_CONTENT.id);
 
   try {
-    if (alreadyInFirestore) {
-      await updateDoc(doc(db, 'siteContent', 'main'), {
-        en,
-        id,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(doc(db, 'siteContent', 'main'), {
-        en,
-        id,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await upsertFirestoreDoc(doc(db, 'siteContent', 'main'), { en, id }, 'siteContent/main');
+    schedulePublishedSnapshotSync();
   } catch (error) {
     handleFirestoreError(
       error,

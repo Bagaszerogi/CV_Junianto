@@ -31,6 +31,7 @@ interface ProjectsSectionProps {
   authReady: boolean;
   isAdminUser: boolean;
   siteCopy: SiteCopyLocale;
+  invitedProjects?: ProjectPhotoItem[];
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
   onOpenAuth: () => void;
 }
@@ -49,11 +50,12 @@ export function ProjectsSection({
   authReady,
   isAdminUser,
   siteCopy,
+  invitedProjects,
   onSaveSiteCopyField,
   onOpenAuth,
 }: ProjectsSectionProps) {
-  const [projects, setProjects] = useState<ProjectPhotoItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [projects, setProjects] = useState<ProjectPhotoItem[]>(invitedProjects ?? []);
+  const [isLoading, setIsLoading] = useState(!invitedProjects);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryFilter>('all');
 
@@ -79,7 +81,13 @@ export function ProjectsSection({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!isAdminUser && invitedProjects) {
+      setProjects(invitedProjects);
+      setIsLoading(false);
+      setLoadError(null);
+      return;
+    }
+    if (!authReady || !isAdminUser) return;
     setIsLoading(true);
     setLoadError(null);
 
@@ -102,7 +110,7 @@ export function ProjectsSection({
     );
 
     return () => unsubscribe();
-  }, [authReady]);
+  }, [authReady, invitedProjects, isAdminUser]);
 
   const filteredProjects = projects.filter((item) =>
     filter === 'all' ? true : item.category === filter
@@ -336,6 +344,10 @@ export function ProjectsSection({
   const showCategoryFilters = projects.some(
     (p) => Boolean(p.property) || Boolean(p.description) || p.category !== 'infrastructure'
   );
+
+  if (!isAdminUser && !isLoading && projects.length === 0) {
+    return null;
+  }
 
   return (
     <section

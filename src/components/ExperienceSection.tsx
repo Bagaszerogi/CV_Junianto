@@ -18,6 +18,7 @@ interface ExperienceSectionProps {
   authReady: boolean;
   isAdminUser: boolean;
   siteCopy: SiteCopyLocale;
+  invitedItems?: FirestoreExperienceItem[];
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
 }
 
@@ -28,10 +29,11 @@ export function ExperienceSection({
   authReady,
   isAdminUser,
   siteCopy,
+  invitedItems,
   onSaveSiteCopyField,
 }: ExperienceSectionProps) {
-  const [experiences, setExperiences] = useState<FirestoreExperienceItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [experiences, setExperiences] = useState<FirestoreExperienceItem[]>(invitedItems ?? []);
+  const [isLoading, setIsLoading] = useState(!invitedItems);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<RoleFilter>('all');
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({});
@@ -59,7 +61,13 @@ export function ExperienceSection({
   const t = UI_COPY[locale].sections;
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!isAdminUser && invitedItems) {
+      setExperiences(invitedItems);
+      setIsLoading(false);
+      setLoadError(null);
+      return;
+    }
+    if (!authReady || !isAdminUser) return;
     setIsLoading(true);
     setLoadError(null);
 
@@ -82,7 +90,7 @@ export function ExperienceSection({
     );
 
     return () => unsubscribe();
-  }, [authReady]);
+  }, [authReady, invitedItems, isAdminUser]);
 
   const filteredExperiences = experiences.filter((item) =>
     filter === 'all' ? true : item.category === filter

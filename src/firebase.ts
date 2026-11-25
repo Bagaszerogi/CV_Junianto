@@ -7,9 +7,17 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('email');
+googleProvider.addScope('profile');
 googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
+
+export const FIREBASE_PUBLIC_META = {
+  projectId: firebaseConfig.projectId,
+  authDomain: firebaseConfig.authDomain,
+  firestoreDatabaseId: firebaseConfig.firestoreDatabaseId,
+};
 
 export const ADMIN_EMAIL_ALLOWLIST = new Set([
   'it@hotelciputra.com',

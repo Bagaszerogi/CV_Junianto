@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { type User } from 'firebase/auth';
-import { ChevronDown, LogIn, LogOut, Menu, Pencil, Printer, X } from 'lucide-react';
+import { ChevronDown, Link2, LogOut, Menu, Pencil, Printer, X } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import { SiteCopyLocale } from '../utils/cvFirestoreApi';
 import { EditableText } from './EditableText';
@@ -13,8 +13,8 @@ interface NavbarProps {
   isAdminUser: boolean;
   onSaveBrandShort: (nextValue: string) => Promise<void>;
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
-  onOpenAuth: () => void;
   onOpenProfileEdit: () => void;
+  onOpenInvites: () => void;
   onLogout: () => void;
   onPrint: () => void;
 }
@@ -27,8 +27,8 @@ export function Navbar({
   isAdminUser,
   onSaveBrandShort,
   onSaveSiteCopyField,
-  onOpenAuth,
   onOpenProfileEdit,
+  onOpenInvites,
   onLogout,
   onPrint,
 }: NavbarProps) {
@@ -92,16 +92,16 @@ export function Navbar({
           ))}
         </nav>
 
-        {/* Zone 3: Top-right Login / Admin Menu action */}
+        {/* Zone 3: Top-right Print PDF (invited viewer) or Admin Menu */}
         <div className="flex items-center gap-3 shrink-0" ref={menuRef}>
           {!firebaseUser ? (
             <button
               type="button"
-              onClick={onOpenAuth}
+              onClick={onPrint}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <LogIn className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{locale === 'en' ? 'Login' : 'Masuk'}</span>
+              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              <span>{locale === 'en' ? 'Print / PDF' : 'Cetak PDF'}</span>
             </button>
           ) : (
             <div className="relative">
@@ -141,21 +141,37 @@ export function Navbar({
                   </div>
 
                   {isAdminUser && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onOpenProfileEdit();
-                      }}
-                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
-                      <span>
-                        {locale === 'en'
-                          ? 'Edit Profile, Photo & Contact'
-                          : 'Ubah Profil, Foto & Kontak'}
-                      </span>
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onOpenInvites();
+                        }}
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-blue-700 hover:bg-blue-50/70 dark:text-blue-400 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>
+                          {locale === 'en' ? 'Manage Invite Links' : 'Kelola Link Undangan'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          onOpenProfileEdit();
+                        }}
+                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-slate-500" aria-hidden="true" />
+                        <span>
+                          {locale === 'en'
+                            ? 'Edit Profile, Photo & Contact'
+                            : 'Ubah Profil, Foto & Kontak'}
+                        </span>
+                      </button>
+                    </>
                   )}
 
                   <button

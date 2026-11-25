@@ -2,7 +2,7 @@
   "entities": {
     "CvProfile": {
       "title": "CvProfile",
-      "description": "Primary CV identity, portrait photo, contact details, metrics strip, and education record.",
+      "description": "Primary CV identity, portrait photo, contact details, metrics strip, and education record (admin-private master).",
       "type": "object",
       "properties": {
         "name": { "type": "string", "minLength": 1, "maxLength": 120 },
@@ -56,7 +56,7 @@
     },
     "Project": {
       "title": "Project",
-      "description": "A hospitality IT project photo and summary displayed on the public CV portfolio.",
+      "description": "A hospitality IT project photo and summary managed by verified admins.",
       "type": "object",
       "properties": {
         "title": { "type": "string", "minLength": 1, "maxLength": 140 },
@@ -88,7 +88,7 @@
     },
     "Experience": {
       "title": "Experience",
-      "description": "A work experience entry displayed on the CV timeline, editable by verified admins.",
+      "description": "A work experience entry managed by verified admins.",
       "type": "object",
       "properties": {
         "company": { "type": "string", "minLength": 1, "maxLength": 140 },
@@ -145,7 +145,7 @@
     },
     "ReferencePerson": {
       "title": "ReferencePerson",
-      "description": "Professional reference contact displayed on the CV.",
+      "description": "Professional reference contact managed by verified admins.",
       "type": "object",
       "properties": {
         "name": { "type": "string", "minLength": 1, "maxLength": 120 },
@@ -173,45 +173,175 @@
     },
     "AdminRecord": {
       "title": "AdminRecord",
-      "description": "Trusted admin UID registry document.",
+      "description": "Trusted admin UID or lowercase email registry document.",
       "type": "object",
       "properties": {
         "email": { "type": "string", "minLength": 3, "maxLength": 140 },
         "role": { "type": "string", "enum": ["admin"] },
         "provider": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "addedBy": { "type": "string", "minLength": 1, "maxLength": 128 },
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["email", "role", "provider", "updatedAt"]
+    },
+    "AdminsRegistry": {
+      "title": "AdminsRegistry",
+      "description": "Private directory of Firestore-registered admin email addresses.",
+      "type": "object",
+      "properties": {
+        "emails": { "type": "array" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["emails", "authorId", "createdAt", "updatedAt"]
+    },
+    "CvIndex": {
+      "title": "CvIndex",
+      "description": "Admin index of CV document IDs and active vaultKey used for direct document reads and snapshot syncing.",
+      "type": "object",
+      "properties": {
+        "vaultKey": { "type": "string", "minLength": 24, "maxLength": 64 },
+        "experienceIds": { "type": "array" },
+        "projectIds": { "type": "array" },
+        "techStackIds": { "type": "array" },
+        "referenceIds": { "type": "array" },
+        "inviteTokens": { "type": "array" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "vaultKey",
+        "experienceIds",
+        "projectIds",
+        "techStackIds",
+        "referenceIds",
+        "inviteTokens",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "InviteToken": {
+      "title": "InviteToken",
+      "description": "Recruiter/HRD private invitation token document granting access only when active and unexpired.",
+      "type": "object",
+      "properties": {
+        "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "active": { "type": "boolean" },
+        "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+        "vaultKey": { "type": "string", "minLength": 24, "maxLength": 64 },
+        "createdByEmail": { "type": "string", "minLength": 3, "maxLength": 140 },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "label",
+        "active",
+        "expiresAt",
+        "vaultKey",
+        "createdByEmail",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CvShareBundle": {
+      "title": "CvShareBundle",
+      "description": "Published CV payload keyed by an unguessable vaultKey only readable by holders of an active invite token.",
+      "type": "object",
+      "properties": {
+        "profile": { "type": "object" },
+        "siteContent": { "type": "object" },
+        "experiences": { "type": "array" },
+        "techStacks": { "type": "array" },
+        "references": { "type": "array" },
+        "projectMeta": { "type": "array" },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "profile",
+        "siteContent",
+        "experiences",
+        "techStacks",
+        "references",
+        "projectMeta",
+        "authorId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CvProjectAsset": {
+      "title": "CvProjectAsset",
+      "description": "Published project image asset keyed by vaultKey__projectId for invited CV viewing.",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "imageDataUrl": {
+          "type": "string",
+          "minLength": 24,
+          "maxLength": 750000,
+          "pattern": "^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+        },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["projectId", "imageDataUrl", "authorId", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
     "/profile/{profileId}": {
       "schema": { "$ref": "#/entities/CvProfile" },
-      "description": "Publicly readable CV profile, portrait photo, contact details, metrics, and education."
+      "description": "Private admin-only master CV profile, portrait photo, contact details, metrics, and education."
     },
     "/projects/{projectId}": {
       "schema": { "$ref": "#/entities/Project" },
-      "description": "Publicly readable hospitality IT project gallery managed by verified admins."
+      "description": "Private admin-only master hospitality IT project gallery."
     },
     "/experiences/{experienceId}": {
       "schema": { "$ref": "#/entities/Experience" },
-      "description": "Publicly readable work experience timeline managed by verified admins."
+      "description": "Private admin-only master work experience timeline."
     },
     "/techStacks/{stackId}": {
       "schema": { "$ref": "#/entities/TechStackItem" },
-      "description": "Publicly readable technology stack categories managed by verified admins."
+      "description": "Private admin-only master technology stack categories."
     },
     "/references/{refId}": {
       "schema": { "$ref": "#/entities/ReferencePerson" },
-      "description": "Publicly readable professional references managed by verified admins."
+      "description": "Private admin-only master professional references."
     },
     "/siteContent/{contentId}": {
       "schema": { "$ref": "#/entities/SiteContent" },
-      "description": "Publicly readable bilingual CV labels, section titles, and descriptive text managed by verified admins."
+      "description": "Private admin-only master bilingual CV labels and descriptive text."
+    },
+    "/cvIndex/{indexId}": {
+      "schema": { "$ref": "#/entities/CvIndex" },
+      "description": "Admin-only index tracking CV document IDs, invite tokens, and the active sharing vaultKey."
+    },
+    "/invites/{token}": {
+      "schema": { "$ref": "#/entities/InviteToken" },
+      "description": "Non-listable invitation tokens verifiable by single-document get only when active and unexpired."
+    },
+    "/cvShares/{vaultKey}": {
+      "schema": { "$ref": "#/entities/CvShareBundle" },
+      "description": "Non-listable published CV snapshot keyed by an unguessable vaultKey."
+    },
+    "/cvProjectAssets/{assetId}": {
+      "schema": { "$ref": "#/entities/CvProjectAsset" },
+      "description": "Non-listable published project images keyed by vaultKey__projectId."
     },
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },
-      "description": "Admin role registry readable only by the matching authenticated user."
+      "description": "Admin UID or lowercase email registry readable by the matching user or verified admins."
+    },
+    "/adminsRegistry/{registryId}": {
+      "schema": { "$ref": "#/entities/AdminsRegistry" },
+      "description": "Private admin directory listing emails granted edit permissions."
     }
   }
 }

@@ -15,6 +15,7 @@ interface TechStackSectionProps {
   authReady: boolean;
   isAdminUser: boolean;
   siteCopy: SiteCopyLocale;
+  invitedItems?: FirestoreTechCategory[];
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
 }
 
@@ -25,9 +26,10 @@ export function TechStackSection({
   authReady,
   isAdminUser,
   siteCopy,
+  invitedItems,
   onSaveSiteCopyField,
 }: TechStackSectionProps) {
-  const [categories, setCategories] = useState<FirestoreTechCategory[]>([]);
+  const [categories, setCategories] = useState<FirestoreTechCategory[]>(invitedItems ?? []);
   const [groupFilter, setGroupFilter] = useState<StackFilter>('all');
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -45,7 +47,12 @@ export function TechStackSection({
   const t = UI_COPY[locale].sections;
 
   useEffect(() => {
-    if (!authReady) return;
+    if (!isAdminUser && invitedItems) {
+      setCategories(invitedItems);
+      setLoadError(null);
+      return;
+    }
+    if (!authReady || !isAdminUser) return;
     const unsubscribe = subscribeTechStacks(
       (items) => {
         setCategories(items);
@@ -56,7 +63,7 @@ export function TechStackSection({
       }
     );
     return () => unsubscribe();
-  }, [authReady]);
+  }, [authReady, invitedItems, isAdminUser]);
 
   const visibleCategories = categories.filter((cat) =>
     groupFilter === 'all' ? true : cat.group === groupFilter

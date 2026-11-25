@@ -2,6 +2,17 @@ export type Locale = 'en' | 'id';
 
 export type ExperienceStatus = 'active' | 'completed';
 
+export interface CareerStage {
+  id: string;
+  role: string;
+  roleId: string;
+  status: ExperienceStatus;
+  period: string;
+  periodId: string;
+  bullets: string[];
+  bulletsId: string[];
+}
+
 export interface ExperienceItem {
   id: string;
   company: string;
@@ -17,6 +28,7 @@ export interface ExperienceItem {
   bulletsId: string[];
   systems: string[];
   sortOrder: number;
+  careerStages?: CareerStage[];
 }
 
 export interface TechCategory {
@@ -42,8 +54,8 @@ export const CV_PROFILE = {
     id: 'Spesialis Infrastruktur IT & Sistem Perhotelan',
   },
   kicker: {
-    en: 'Harvard-Standard Curriculum Vitae · Hospitality IT Operations',
-    id: 'Curriculum Vitae Standar Harvard · Operasional IT Perhotelan',
+    en: 'Executive Curriculum Vitae · Hospitality IT Operations',
+    id: 'Curriculum Vitae Profesional · Operasional IT Perhotelan',
   },
   currentRole: {
     company: 'Hotel Ciputra Jakarta',
@@ -304,7 +316,7 @@ export const UI_COPY = {
       stack: 'Skills',
       contact: 'Contact',
     },
-    downloadPdf: 'Download / Print Harvard CV',
+    downloadPdf: 'Download PDF',
     sections: {
       experienceKicker: 'Career Timeline',
       experienceTitle: 'Professional Experience',
@@ -349,7 +361,7 @@ export const UI_COPY = {
       stack: 'Keahlian',
       contact: 'Kontak',
     },
-    downloadPdf: 'Cetak / Simpan CV Harvard',
+    downloadPdf: 'Unduh PDF',
     sections: {
       experienceKicker: 'Rekam Jejak Karier',
       experienceTitle: 'Pengalaman Profesional',

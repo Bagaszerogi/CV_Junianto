@@ -378,6 +378,20 @@ service cloud.firestore {
       );
     }
 
+    function isValidCareerStage(s) {
+      return s is map &&
+        s.keys().hasAll(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
+        s.keys().hasOnly(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
+        isValidId(s.id) &&
+        s.role is string && s.role.size() >= 1 && s.role.size() <= 140 &&
+        s.roleId is string && s.roleId.size() >= 1 && s.roleId.size() <= 140 &&
+        s.status is string && s.status in ['active', 'completed'] &&
+        s.period is string && s.period.size() >= 1 && s.period.size() <= 60 &&
+        s.periodId is string && s.periodId.size() >= 1 && s.periodId.size() <= 60 &&
+        s.bullets is list && s.bullets.size() >= 1 && s.bullets.size() <= 15 && s.bullets[0] is string && s.bullets[0].size() >= 1 && s.bullets[0].size() <= 500 &&
+        s.bulletsId is list && s.bulletsId.size() >= 1 && s.bulletsId.size() <= 15 && s.bulletsId[0] is string && s.bulletsId[0].size() >= 1 && s.bulletsId[0].size() <= 500;
+    }
+
     function isValidExperience(data) {
       return data.keys().hasAll([
           'company',
@@ -411,6 +425,7 @@ service cloud.firestore {
           'bulletsId',
           'systems',
           'sortOrder',
+          'careerStages',
           'authorId',
           'createdAt',
           'updatedAt'
@@ -428,6 +443,19 @@ service cloud.firestore {
         data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 && data.bulletsId[0] is string && data.bulletsId[0].size() >= 1 && data.bulletsId[0].size() <= 500 &&
         data.systems is list && data.systems.size() <= 25 && (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() >= 1 && data.systems[0].size() <= 80)) &&
         data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        (!('careerStages' in data) || (
+          data.careerStages is list &&
+          data.careerStages.size() >= 1 &&
+          data.careerStages.size() <= 8 &&
+          isValidCareerStage(data.careerStages[0]) &&
+          (data.careerStages.size() < 2 || isValidCareerStage(data.careerStages[1])) &&
+          (data.careerStages.size() < 3 || isValidCareerStage(data.careerStages[2])) &&
+          (data.careerStages.size() < 4 || isValidCareerStage(data.careerStages[3])) &&
+          (data.careerStages.size() < 5 || isValidCareerStage(data.careerStages[4])) &&
+          (data.careerStages.size() < 6 || isValidCareerStage(data.careerStages[5])) &&
+          (data.careerStages.size() < 7 || isValidCareerStage(data.careerStages[6])) &&
+          (data.careerStages.size() < 8 || isValidCareerStage(data.careerStages[7]))
+        )) &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -560,6 +588,7 @@ service cloud.firestore {
           'bulletsId',
           'systems',
           'sortOrder',
+          'careerStages',
           'updatedAt'
         ]));
 

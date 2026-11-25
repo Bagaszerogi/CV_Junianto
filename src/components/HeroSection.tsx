@@ -333,24 +333,24 @@ export function HeroSection({
             <div className="print-dossier-card flex h-full flex-col justify-between rounded-2xl border border-slate-200/90 bg-slate-50/75 p-6 shadow-xs transition-colors print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-4 dark:border-slate-800 dark:bg-slate-950/90 sm:p-7">
               <div>
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-4 print:gap-3">
-                    <div className="group/photo relative h-22 w-22 shrink-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs print:h-16 print:w-16 print:rounded-full print:border-slate-300 dark:border-slate-700 dark:bg-slate-800 sm:h-24 sm:w-24">
-                      {!imgError ? (
-                        <img
-                          src={sanitizePortraitSrc(profile.portraitDataUrl)}
-                          alt={`${profile.name} portrait`}
-                          referrerPolicy="no-referrer"
-                          onError={() => setImgError(true)}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center bg-slate-100 font-display text-2xl font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                          {initials || 'JB'}
-                        </div>
-                      )}
+                  <div className="flex items-start gap-4 print:gap-3">
+                    <div className="flex shrink-0 flex-col items-center gap-1.5">
+                      <div className="group/photo relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs print:h-20 print:w-20 print:rounded-xl print:border-slate-300 dark:border-slate-700 dark:bg-slate-800 sm:h-28 sm:w-28">
+                        {!imgError ? (
+                          <img
+                            src={sanitizePortraitSrc(profile.portraitDataUrl)}
+                            alt={`${profile.name} portrait`}
+                            referrerPolicy="no-referrer"
+                            onError={() => setImgError(true)}
+                            className="h-full w-full object-cover object-top"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-slate-100 font-display text-2xl font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            {initials || 'JB'}
+                          </div>
+                        )}
 
-                      {isAdminUser && (
-                        <>
+                        {isAdminUser && (
                           <button
                             type="button"
                             disabled={isUploadingPhoto}
@@ -360,6 +360,28 @@ export function HeroSection({
                           >
                             <Camera className="mb-0.5 h-4 w-4" aria-hidden="true" />
                             <span>{isUploadingPhoto ? '...' : locale === 'en' ? 'Photo' : 'Ganti'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {isAdminUser && (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isUploadingPhoto}
+                            onClick={() => photoInputRef.current?.click()}
+                            className="no-print inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 shadow-2xs transition-colors hover:border-blue-400 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:text-blue-400 cursor-pointer"
+                          >
+                            <Camera className="h-3 w-3" aria-hidden="true" />
+                            <span>
+                              {isUploadingPhoto
+                                ? locale === 'en'
+                                  ? 'Uploading...'
+                                  : 'Mengunggah...'
+                                : locale === 'en'
+                                  ? 'Change Photo'
+                                  : 'Ubah Foto'}
+                            </span>
                           </button>
                           <input
                             ref={photoInputRef}

@@ -153,21 +153,21 @@ export function ProfileEditModal({
             <div className="space-y-4">
               {/* Portrait Photo Upload */}
               <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
-                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-full border-2 border-slate-300 bg-slate-200 dark:border-slate-700 dark:bg-slate-800">
+                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border-2 border-slate-300 bg-slate-200 dark:border-slate-700 dark:bg-slate-800">
                   <img
                     src={sanitizePortraitSrc(draft.portraitDataUrl)}
                     alt="Portrait preview"
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover object-top"
                   />
                 </div>
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    {locale === 'en' ? 'Profile Portrait Photo' : 'Foto Profil CV'}
+                    {locale === 'en' ? 'Profile Portrait Photo (1:1 Square)' : 'Foto Profil CV (Kotak 1:1)'}
                   </p>
                   <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
                     {locale === 'en'
-                      ? 'Automatically cropped 1:1 and compressed for fast loading.'
-                      : 'Otomatis dipotong 1:1 dan dikompresi agar ringan dan cepat.'}
+                      ? 'Automatically framed 1:1 square (upper-center portrait) and compressed for sharp printing.'
+                      : 'Otomatis dipotong kotak 1:1 (proporsi wajah) dan dikompresi agar tajam saat cetak A4.'}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button

@@ -1,5 +1,6 @@
 import { FormEvent, useState } from 'react';
-import { ArrowRight, KeyRound, Lock, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { ArrowRight, KeyRound, Moon, ShieldCheck, Sun } from 'lucide-react';
+import { PrivateSealLogo } from './BrandLogo';
 import { ThemeMode } from './HeroSection';
 
 export type GateStatus = 'checking' | 'locked' | 'denied';
@@ -54,9 +55,9 @@ export function PrivateGateView({
             type="button"
             onClick={handleEmblemTap}
             aria-label="Document security seal"
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-2xs transition-colors hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 cursor-default"
+            className="flex h-9 w-9 items-center justify-center rounded-xl transition-opacity hover:opacity-90 cursor-default"
           >
-            <Lock className="h-4 w-4" aria-hidden="true" />
+            <PrivateSealLogo className="h-9 w-9" />
           </button>
           <span className="font-mono text-[11px] font-semibold tracking-wider text-slate-500 uppercase dark:text-slate-400">
             {locale === 'en' ? 'Private Portfolio' : 'Portofolio Privat'}

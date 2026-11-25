@@ -78,7 +78,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentData = {
     downloadPdf: UI_COPY.en.downloadPdf,
     heroActiveBadge: 'Active Assignment',
     heroPropertyScale: '336 Rooms · 15 Meeting Rooms · 2 Ballrooms',
-    heroDossierFooter: 'Harvard A4 ATS Format Ready',
+    heroDossierFooter: 'A4 Executive Print Ready',
     heroSendEmail: 'Send Email',
     experienceKicker: UI_COPY.en.sections.experienceKicker,
     experienceTitle: UI_COPY.en.sections.experienceTitle,
@@ -110,7 +110,7 @@ export const DEFAULT_SITE_CONTENT: SiteContentData = {
     downloadPdf: UI_COPY.id.downloadPdf,
     heroActiveBadge: 'Penugasan Aktif',
     heroPropertyScale: '336 Kamar · 15 Ruang Rapat · 2 Ballroom',
-    heroDossierFooter: 'Siap Cetak Format Harvard A4',
+    heroDossierFooter: 'Siap Cetak Format A4',
     heroSendEmail: 'Kirim Email',
     experienceKicker: UI_COPY.id.sections.experienceKicker,
     experienceTitle: UI_COPY.id.sections.experienceTitle,
@@ -247,8 +247,14 @@ export function subscribeProfile(
         brandShort: typeof d.brandShort === 'string' ? d.brandShort : DEFAULT_PROFILE_DATA.brandShort,
         titleEn: typeof d.titleEn === 'string' ? d.titleEn : DEFAULT_PROFILE_DATA.titleEn,
         titleId: typeof d.titleId === 'string' ? d.titleId : DEFAULT_PROFILE_DATA.titleId,
-        kickerEn: typeof d.kickerEn === 'string' ? d.kickerEn : DEFAULT_PROFILE_DATA.kickerEn,
-        kickerId: typeof d.kickerId === 'string' ? d.kickerId : DEFAULT_PROFILE_DATA.kickerId,
+        kickerEn:
+          typeof d.kickerEn === 'string'
+            ? d.kickerEn.replace(/Harvard-Standard Curriculum Vitae/gi, 'Executive Curriculum Vitae')
+            : DEFAULT_PROFILE_DATA.kickerEn,
+        kickerId:
+          typeof d.kickerId === 'string'
+            ? d.kickerId.replace(/Curriculum Vitae Standar Harvard/gi, 'Curriculum Vitae Profesional')
+            : DEFAULT_PROFILE_DATA.kickerId,
         currentCompany: typeof d.currentCompany === 'string' ? d.currentCompany : DEFAULT_PROFILE_DATA.currentCompany,
         currentRole: typeof d.currentRole === 'string' ? d.currentRole : DEFAULT_PROFILE_DATA.currentRole,
         summaryEn: typeof d.summaryEn === 'string' ? d.summaryEn : DEFAULT_PROFILE_DATA.summaryEn,
@@ -688,7 +694,7 @@ export function compressPortraitImage(file: File, maxDimension = 560): Promise<s
       img.onload = () => {
         const size = Math.min(img.width, img.height);
         const sx = Math.floor((img.width - size) / 2);
-        const sy = Math.floor((img.height - size) / 2);
+        const sy = img.height > img.width ? Math.floor((img.height - size) * 0.18) : 0;
         const target = Math.min(size, maxDimension);
 
         const canvas = document.createElement('canvas');
@@ -759,6 +765,16 @@ const SITE_COPY_LIMITS: Record<keyof SiteCopyLocale, number> = {
   footerNote: 240,
 };
 
+function normalizeLegacyHarvardCopy(key: keyof SiteCopyLocale, val: string): string {
+  if (key === 'downloadPdf' && /harvard/i.test(val)) {
+    return /cetak|simpan|unduh/i.test(val) ? 'Unduh PDF' : 'Download PDF';
+  }
+  if (key === 'heroDossierFooter' && /harvard/i.test(val)) {
+    return /siap cetak/i.test(val) ? 'Siap Cetak Format A4' : 'A4 Executive Print Ready';
+  }
+  return val;
+}
+
 function sanitizeLocaleCopy(
   raw: Record<string, unknown> | undefined,
   fallback: SiteCopyLocale
@@ -767,7 +783,8 @@ function sanitizeLocaleCopy(
   (Object.keys(SITE_COPY_LIMITS) as (keyof SiteCopyLocale)[]).forEach((key) => {
     const val = raw?.[key];
     if (typeof val === 'string' && val.trim().length > 0) {
-      result[key] = val.trim().slice(0, SITE_COPY_LIMITS[key]);
+      const cleaned = normalizeLegacyHarvardCopy(key, val.trim());
+      result[key] = cleaned.slice(0, SITE_COPY_LIMITS[key]);
     }
   });
   return result;

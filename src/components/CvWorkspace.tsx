@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type User } from 'firebase/auth';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
-import { Database, Link2, Pencil, ShieldAlert, Sparkles } from 'lucide-react';
+import { ArrowUp, Database, Link2, Pencil, ShieldAlert, Sparkles } from 'lucide-react';
 import { ADMIN_EMAIL_ALLOWLIST } from '../firebase';
 import { Locale } from '../data/cvData';
 import {
@@ -68,6 +68,7 @@ export default function CvWorkspace({
     tab: ProfileEditTab;
   }>({ open: false, tab: 'identity' });
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const lenisRef = useRef<Lenis | null>(null);
 
   // Sync invited snapshot when not in admin edit mode
   useEffect(() => {
@@ -117,6 +118,7 @@ export default function CvWorkspace({
       easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       smoothWheel: true,
     });
+    lenisRef.current = lenis;
 
     lenis.on('scroll', ScrollTrigger.update);
 
@@ -166,12 +168,22 @@ export default function CvWorkspace({
       document.removeEventListener('click', handleAnchorClick);
       ctx.revert();
       gsap.ticker.remove(tickerCallback);
+      lenisRef.current = null;
       lenis.destroy();
     };
   }, []);
 
   const handlePrint = () => {
+    gsap.set('[data-animate="section"]', { clearProps: 'transform,opacity' });
     window.print();
+  };
+
+  const handleBackToTop = () => {
+    if (lenisRef.current) {
+      lenisRef.current.scrollTo(0, { duration: 0.8 });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const openProfileEdit = (tab: ProfileEditTab = 'identity') => {
@@ -372,6 +384,17 @@ export default function CvWorkspace({
         locale={locale}
         onClose={() => setInviteModalOpen(false)}
       />
+
+      {/* Always-floating Back to Top Button (bottom-right) */}
+      <button
+        type="button"
+        onClick={handleBackToTop}
+        aria-label={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
+        title={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
+        className="no-print fixed right-5 bottom-5 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 text-slate-800 shadow-lg backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-blue-600 hover:bg-blue-700 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-blue-500 dark:hover:bg-blue-600 cursor-pointer"
+      >
+        <ArrowUp className="h-5 w-5" aria-hidden="true" />
+      </button>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { ArrowUp, ArrowUpRight, Check, Copy, Mail, MapPin, Phone, Printer } from 'lucide-react';
+import { ArrowUpRight, Check, Copy, Mail, MapPin, Phone, Printer } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import { CvProfileData, SiteCopyLocale } from '../utils/cvFirestoreApi';
 import { sanitizeEmailForHref, sanitizeWhatsAppHref } from '../utils/safeUrls';
+import { BrandLogo } from './BrandLogo';
 import { EditableText } from './EditableText';
 
 interface ContactSectionProps {
@@ -306,30 +307,33 @@ export function ContactSection({
 
       <footer className="no-print border-t border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="font-display text-sm font-bold text-slate-900 dark:text-white">
-              <EditableText
-                value={profile.name}
-                canEdit={isAdminUser}
-                maxLength={120}
-                onSave={(val) => onSaveProfilePatch({ name: val })}
-              />
-            </p>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              <EditableText
-                value={siteCopy.footerNote}
-                canEdit={isAdminUser}
-                maxLength={240}
-                onSave={(val) => onSaveSiteCopyField('footerNote', val)}
-              />
-              {' · '}
-              <EditableText
-                value={profile.address}
-                canEdit={isAdminUser}
-                maxLength={240}
-                onSave={(val) => onSaveProfilePatch({ address: val })}
-              />
-            </p>
+          <div className="flex items-start gap-3">
+            <BrandLogo className="mt-0.5 h-9 w-9 shrink-0" />
+            <div>
+              <p className="font-display text-sm font-bold text-slate-900 dark:text-white">
+                <EditableText
+                  value={profile.name}
+                  canEdit={isAdminUser}
+                  maxLength={120}
+                  onSave={(val) => onSaveProfilePatch({ name: val })}
+                />
+              </p>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <EditableText
+                  value={siteCopy.footerNote}
+                  canEdit={isAdminUser}
+                  maxLength={240}
+                  onSave={(val) => onSaveSiteCopyField('footerNote', val)}
+                />
+                {' · '}
+                <EditableText
+                  value={profile.address}
+                  canEdit={isAdminUser}
+                  maxLength={240}
+                  onSave={(val) => onSaveProfilePatch({ address: val })}
+                />
+              </p>
+            </div>
           </div>
 
           <nav
@@ -359,14 +363,6 @@ export function ContactSection({
               <Printer className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{siteCopy.downloadPdf}</span>
             </button>
-
-            <a
-              href="#profile"
-              aria-label={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
-            >
-              <ArrowUp className="h-4 w-4" aria-hidden="true" />
-            </a>
           </div>
         </div>
       </footer>

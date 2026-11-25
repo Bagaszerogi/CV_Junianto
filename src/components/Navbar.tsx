@@ -4,6 +4,7 @@ import { ChevronDown, Link2, LogOut, Menu, Pencil, Printer, X } from 'lucide-rea
 import { Locale } from '../data/cvData';
 import { SiteCopyLocale } from '../utils/cvFirestoreApi';
 import { EditableText } from './EditableText';
+import { BrandLogo } from './BrandLogo';
 
 interface NavbarProps {
   locale: Locale;
@@ -58,11 +59,12 @@ export function Navbar({
   return (
     <header className="no-print sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-8 px-6">
-        {/* Zone 1: Single text element Brand Title */}
+        {/* Zone 1: Architectural Brand Monogram + Title */}
         <a
           href="#profile"
-          className="font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
+          className="inline-flex items-center gap-2.5 font-display text-lg font-bold tracking-tight text-slate-900 dark:text-slate-50 whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700"
         >
+          <BrandLogo className="h-8 w-8 shrink-0" />
           <EditableText
             value={brandShort}
             canEdit={isAdminUser}

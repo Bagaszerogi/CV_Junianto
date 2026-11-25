@@ -18,6 +18,7 @@ import type {
   TechCategory,
 } from '../data/cvData';
 import type {
+  SiteCopyLocale,
   CvProfileData,
   EducationData,
   FirestoreReferenceItem,
@@ -25,7 +26,7 @@ import type {
   MetricItem,
   SiteContentData,
 } from './cvFirestoreApi';
-import type { FirestoreExperienceItem } from './experienceApi';
+import { parseCareerStages, type FirestoreExperienceItem } from './experienceApi';
 import type { ProjectCategory, ProjectPhotoItem } from './projectApi';
 
 export interface InviteRecord {
@@ -363,6 +364,9 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
       bulletsId: Array.isArray(data.bulletsId) ? data.bulletsId.map(String) : [],
       systems: Array.isArray(data.systems) ? data.systems.map(String) : [],
       sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
+      ...(parseCareerStages(data.careerStages)
+        ? { careerStages: parseCareerStages(data.careerStages) }
+        : {}),
     });
   });
 
@@ -744,11 +748,11 @@ export async function resolveInviteToken(
         : DEFAULT_PROFILE_DATA.titleId,
     kickerEn:
       typeof rawProfile.kickerEn === 'string'
-        ? rawProfile.kickerEn
+        ? rawProfile.kickerEn.replace(/Harvard-Standard Curriculum Vitae/gi, 'Executive Curriculum Vitae')
         : DEFAULT_PROFILE_DATA.kickerEn,
     kickerId:
       typeof rawProfile.kickerId === 'string'
-        ? rawProfile.kickerId
+        ? rawProfile.kickerId.replace(/Curriculum Vitae Standar Harvard/gi, 'Curriculum Vitae Profesional')
         : DEFAULT_PROFILE_DATA.kickerId,
     currentCompany:
       typeof rawProfile.currentCompany === 'string'
@@ -827,9 +831,26 @@ export async function resolveInviteToken(
   const rawSite = (typeof sd.siteContent === 'object' && sd.siteContent !== null
     ? sd.siteContent
     : {}) as Partial<SiteContentData>;
+  const normalizeCopyLocale = (
+    loc: Partial<SiteCopyLocale> | undefined,
+    fallback: SiteCopyLocale
+  ): SiteCopyLocale => {
+    const merged = { ...fallback, ...(loc ?? {}) };
+    if (/harvard/i.test(merged.downloadPdf)) {
+      merged.downloadPdf = /cetak|simpan|unduh/i.test(merged.downloadPdf)
+        ? 'Unduh PDF'
+        : 'Download PDF';
+    }
+    if (/harvard/i.test(merged.heroDossierFooter)) {
+      merged.heroDossierFooter = /siap cetak/i.test(merged.heroDossierFooter)
+        ? 'Siap Cetak Format A4'
+        : 'A4 Executive Print Ready';
+    }
+    return merged;
+  };
   const siteContent: SiteContentData = {
-    en: { ...DEFAULT_SITE_CONTENT.en, ...(rawSite.en ?? {}) },
-    id: { ...DEFAULT_SITE_CONTENT.id, ...(rawSite.id ?? {}) },
+    en: normalizeCopyLocale(rawSite.en, DEFAULT_SITE_CONTENT.en),
+    id: normalizeCopyLocale(rawSite.id, DEFAULT_SITE_CONTENT.id),
     fromFirestore: true,
   };
 
@@ -851,6 +872,7 @@ export async function resolveInviteToken(
         bulletsId: Array.isArray(d.bulletsId) ? d.bulletsId.map(String) : [],
         systems: Array.isArray(d.systems) ? d.systems.map(String) : [],
         sortOrder: typeof d.sortOrder === 'number' ? d.sortOrder : idx,
+        careerStages: parseCareerStages(d.careerStages),
         fromFirestore: true,
       }))
     : [];

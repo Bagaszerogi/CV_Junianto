@@ -4,6 +4,7 @@ import {
   doc,
   getDocFromServer,
   getDocsFromServer,
+  onSnapshot,
   orderBy,
   query,
   serverTimestamp,
@@ -42,6 +43,7 @@ export interface InviteRecord {
 
 export interface ResolvedInviteSession {
   token: string;
+  vaultKey: string;
   label: string;
   expiresAtMs: number | null;
   profile: CvProfileData;
@@ -50,6 +52,12 @@ export interface ResolvedInviteSession {
   projects: ProjectPhotoItem[];
   techStacks: FirestoreTechCategory[];
   references: FirestoreReferenceItem[];
+}
+
+export interface GlobalSyncState {
+  status: 'idle' | 'syncing' | 'synced' | 'error';
+  lastSyncedAt: number | null;
+  error: string | null;
 }
 
 interface CvIndexDoc {
@@ -88,6 +96,33 @@ const VALID_TECH_GROUPS = new Set<TechCategory['group']>([
 ]);
 
 let snapshotSyncTimer: number | null = null;
+let globalSyncState: GlobalSyncState = {
+  status: 'idle',
+  lastSyncedAt: null,
+  error: null,
+};
+const syncListeners = new Set<(state: GlobalSyncState) => void>();
+
+function emitGlobalSyncState(next: GlobalSyncState): void {
+  globalSyncState = next;
+  syncListeners.forEach((listener) => {
+    try {
+      listener(globalSyncState);
+    } catch {
+      // Ignore subscriber errors
+    }
+  });
+}
+
+export function subscribeGlobalSyncStatus(
+  listener: (state: GlobalSyncState) => void
+): () => void {
+  syncListeners.add(listener);
+  listener(globalSyncState);
+  return () => {
+    syncListeners.delete(listener);
+  };
+}
 
 function randomTokenString(length: number, prefix = ''): string {
   const alphabet = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -273,229 +308,241 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
   const user = auth.currentUser;
   if (!user) throw new Error('Authentication required.');
 
-  const index = await ensureCvIndex();
-  const vaultKey = targetVaultKey && VAULT_KEY_PATTERN.test(targetVaultKey)
-    ? targetVaultKey
-    : index.vaultKey;
+  emitGlobalSyncState({ ...globalSyncState, status: 'syncing', error: null });
+  try {
+    const index = await ensureCvIndex();
+    const vaultKey = targetVaultKey && VAULT_KEY_PATTERN.test(targetVaultKey)
+      ? targetVaultKey
+      : index.vaultKey;
 
-  const [
-    { DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT },
-    { EXPERIENCES, TECH_STACK, REFERENCES },
-  ] = await Promise.all([
-    import('./cvFirestoreApi'),
-    import('../data/cvData'),
-  ]);
+    const [
+      { DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT },
+      { EXPERIENCES, TECH_STACK, REFERENCES },
+    ] = await Promise.all([
+      import('./cvFirestoreApi'),
+      import('../data/cvData'),
+    ]);
 
-  const [profileSnap, siteSnap, expDocs, stackDocs, refDocs, projDocs] = await Promise.all([
-    getDocFromServer(doc(db, 'profile', 'main')).catch(() => null),
-    getDocFromServer(doc(db, 'siteContent', 'main')).catch(() => null),
-    fetchAdminDocsByIds('experiences', index.experienceIds),
-    fetchAdminDocsByIds('techStacks', index.techStackIds),
-    fetchAdminDocsByIds('references', index.referenceIds),
-    fetchAdminDocsByIds('projects', index.projectIds),
-  ]);
+    const [profileSnap, siteSnap, expDocs, stackDocs, refDocs, projDocs] = await Promise.all([
+      getDocFromServer(doc(db, 'profile', 'main')).catch(() => null),
+      getDocFromServer(doc(db, 'siteContent', 'main')).catch(() => null),
+      fetchAdminDocsByIds('experiences', index.experienceIds),
+      fetchAdminDocsByIds('techStacks', index.techStackIds),
+      fetchAdminDocsByIds('references', index.referenceIds),
+      fetchAdminDocsByIds('projects', index.projectIds),
+    ]);
 
-  const rawProfile = profileSnap?.exists() ? profileSnap.data() : null;
-  const profilePayload = rawProfile
-    ? {
-        name: rawProfile.name ?? DEFAULT_PROFILE_DATA.name,
-        brandShort: rawProfile.brandShort ?? DEFAULT_PROFILE_DATA.brandShort,
-        titleEn: rawProfile.titleEn ?? DEFAULT_PROFILE_DATA.titleEn,
-        titleId: rawProfile.titleId ?? DEFAULT_PROFILE_DATA.titleId,
-        kickerEn: rawProfile.kickerEn ?? DEFAULT_PROFILE_DATA.kickerEn,
-        kickerId: rawProfile.kickerId ?? DEFAULT_PROFILE_DATA.kickerId,
-        currentCompany: rawProfile.currentCompany ?? DEFAULT_PROFILE_DATA.currentCompany,
-        currentRole: rawProfile.currentRole ?? DEFAULT_PROFILE_DATA.currentRole,
-        summaryEn: rawProfile.summaryEn ?? DEFAULT_PROFILE_DATA.summaryEn,
-        summaryId: rawProfile.summaryId ?? DEFAULT_PROFILE_DATA.summaryId,
-        phoneDisplay: rawProfile.phoneDisplay ?? DEFAULT_PROFILE_DATA.phoneDisplay,
-        whatsappHref: rawProfile.whatsappHref ?? DEFAULT_PROFILE_DATA.whatsappHref,
-        email: rawProfile.email ?? DEFAULT_PROFILE_DATA.email,
-        address: rawProfile.address ?? DEFAULT_PROFILE_DATA.address,
-        portraitDataUrl: rawProfile.portraitDataUrl ?? DEFAULT_PROFILE_DATA.portraitDataUrl,
-        metrics: Array.isArray(rawProfile.metrics) ? rawProfile.metrics : DEFAULT_PROFILE_DATA.metrics,
-        education:
-          typeof rawProfile.education === 'object' && rawProfile.education !== null
-            ? rawProfile.education
-            : DEFAULT_PROFILE_DATA.education,
-      }
-    : {
-        name: DEFAULT_PROFILE_DATA.name,
-        brandShort: DEFAULT_PROFILE_DATA.brandShort,
-        titleEn: DEFAULT_PROFILE_DATA.titleEn,
-        titleId: DEFAULT_PROFILE_DATA.titleId,
-        kickerEn: DEFAULT_PROFILE_DATA.kickerEn,
-        kickerId: DEFAULT_PROFILE_DATA.kickerId,
-        currentCompany: DEFAULT_PROFILE_DATA.currentCompany,
-        currentRole: DEFAULT_PROFILE_DATA.currentRole,
-        summaryEn: DEFAULT_PROFILE_DATA.summaryEn,
-        summaryId: DEFAULT_PROFILE_DATA.summaryId,
-        phoneDisplay: DEFAULT_PROFILE_DATA.phoneDisplay,
-        whatsappHref: DEFAULT_PROFILE_DATA.whatsappHref,
-        email: DEFAULT_PROFILE_DATA.email,
-        address: DEFAULT_PROFILE_DATA.address,
-        portraitDataUrl: DEFAULT_PROFILE_DATA.portraitDataUrl,
-        metrics: DEFAULT_PROFILE_DATA.metrics,
-        education: DEFAULT_PROFILE_DATA.education,
-      };
+    const rawProfile = profileSnap?.exists() ? profileSnap.data() : null;
+    const profilePayload = rawProfile
+      ? {
+          name: rawProfile.name ?? DEFAULT_PROFILE_DATA.name,
+          brandShort: rawProfile.brandShort ?? DEFAULT_PROFILE_DATA.brandShort,
+          titleEn: rawProfile.titleEn ?? DEFAULT_PROFILE_DATA.titleEn,
+          titleId: rawProfile.titleId ?? DEFAULT_PROFILE_DATA.titleId,
+          kickerEn: rawProfile.kickerEn ?? DEFAULT_PROFILE_DATA.kickerEn,
+          kickerId: rawProfile.kickerId ?? DEFAULT_PROFILE_DATA.kickerId,
+          currentCompany: rawProfile.currentCompany ?? DEFAULT_PROFILE_DATA.currentCompany,
+          currentRole: rawProfile.currentRole ?? DEFAULT_PROFILE_DATA.currentRole,
+          summaryEn: rawProfile.summaryEn ?? DEFAULT_PROFILE_DATA.summaryEn,
+          summaryId: rawProfile.summaryId ?? DEFAULT_PROFILE_DATA.summaryId,
+          phoneDisplay: rawProfile.phoneDisplay ?? DEFAULT_PROFILE_DATA.phoneDisplay,
+          whatsappHref: rawProfile.whatsappHref ?? DEFAULT_PROFILE_DATA.whatsappHref,
+          email: rawProfile.email ?? DEFAULT_PROFILE_DATA.email,
+          address: rawProfile.address ?? DEFAULT_PROFILE_DATA.address,
+          portraitDataUrl: rawProfile.portraitDataUrl ?? DEFAULT_PROFILE_DATA.portraitDataUrl,
+          metrics: Array.isArray(rawProfile.metrics) ? rawProfile.metrics : DEFAULT_PROFILE_DATA.metrics,
+          education:
+            typeof rawProfile.education === 'object' && rawProfile.education !== null
+              ? rawProfile.education
+              : DEFAULT_PROFILE_DATA.education,
+        }
+      : {
+          name: DEFAULT_PROFILE_DATA.name,
+          brandShort: DEFAULT_PROFILE_DATA.brandShort,
+          titleEn: DEFAULT_PROFILE_DATA.titleEn,
+          titleId: DEFAULT_PROFILE_DATA.titleId,
+          kickerEn: DEFAULT_PROFILE_DATA.kickerEn,
+          kickerId: DEFAULT_PROFILE_DATA.kickerId,
+          currentCompany: DEFAULT_PROFILE_DATA.currentCompany,
+          currentRole: DEFAULT_PROFILE_DATA.currentRole,
+          summaryEn: DEFAULT_PROFILE_DATA.summaryEn,
+          summaryId: DEFAULT_PROFILE_DATA.summaryId,
+          phoneDisplay: DEFAULT_PROFILE_DATA.phoneDisplay,
+          whatsappHref: DEFAULT_PROFILE_DATA.whatsappHref,
+          email: DEFAULT_PROFILE_DATA.email,
+          address: DEFAULT_PROFILE_DATA.address,
+          portraitDataUrl: DEFAULT_PROFILE_DATA.portraitDataUrl,
+          metrics: DEFAULT_PROFILE_DATA.metrics,
+          education: DEFAULT_PROFILE_DATA.education,
+        };
 
-  const rawSite = siteSnap?.exists() ? siteSnap.data() : null;
-  const sitePayload = rawSite
-    ? { en: rawSite.en ?? DEFAULT_SITE_CONTENT.en, id: rawSite.id ?? DEFAULT_SITE_CONTENT.id }
-    : { en: DEFAULT_SITE_CONTENT.en, id: DEFAULT_SITE_CONTENT.id };
+    const rawSite = siteSnap?.exists() ? siteSnap.data() : null;
+    const sitePayload = rawSite
+      ? { en: rawSite.en ?? DEFAULT_SITE_CONTENT.en, id: rawSite.id ?? DEFAULT_SITE_CONTENT.id }
+      : { en: DEFAULT_SITE_CONTENT.en, id: DEFAULT_SITE_CONTENT.id };
 
-  const expMap = new Map<string, ExperienceItem>();
-  EXPERIENCES.forEach((e) => expMap.set(e.id, e));
-  expDocs.forEach(({ id, data }) => {
-    expMap.set(id, {
-      id,
-      company: String(data.company ?? ''),
-      role: String(data.role ?? ''),
-      roleId: String(data.roleId ?? data.role ?? ''),
-      status: VALID_EXP_STATUS.has(data.status as ExperienceStatus)
-        ? (data.status as ExperienceStatus)
-        : 'completed',
-      category: data.category === 'leadership' ? 'leadership' : 'operations',
-      period: String(data.period ?? ''),
-      periodId: String(data.periodId ?? data.period ?? ''),
-      scaleContext: String(data.scaleContext ?? ''),
-      scaleContextId: String(data.scaleContextId ?? data.scaleContext ?? ''),
-      bullets: Array.isArray(data.bullets) ? data.bullets.map(String) : [],
-      bulletsId: Array.isArray(data.bulletsId) ? data.bulletsId.map(String) : [],
-      systems: Array.isArray(data.systems) ? data.systems.map(String) : [],
-      sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
-      ...(parseCareerStages(data.careerStages)
-        ? { careerStages: parseCareerStages(data.careerStages) }
-        : {}),
-    });
-  });
-
-  const stackMap = new Map<string, TechCategory & { sortOrder: number }>();
-  TECH_STACK.forEach((s, idx) => stackMap.set(s.id, { ...s, sortOrder: idx }));
-  stackDocs.forEach(({ id, data }) => {
-    stackMap.set(id, {
-      id,
-      group: VALID_TECH_GROUPS.has(data.group as TechCategory['group'])
-        ? (data.group as TechCategory['group'])
-        : 'core',
-      label: String(data.label ?? ''),
-      labelId: String(data.labelId ?? data.label ?? ''),
-      items: Array.isArray(data.items) ? data.items.map(String) : [],
-      sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
-    });
-  });
-
-  const refMap = new Map<string, { id: string; name: string; role: string; phone: string; sortOrder: number }>();
-  REFERENCES.forEach((r, idx) =>
-    refMap.set(`ref_default_${idx}`, {
-      id: `ref_default_${idx}`,
-      name: r.name,
-      role: r.role,
-      phone: r.phone,
-      sortOrder: idx,
-    })
-  );
-  refDocs.forEach(({ id, data }) => {
-    refMap.set(id, {
-      id,
-      name: String(data.name ?? ''),
-      role: String(data.role ?? ''),
-      phone: String(data.phone ?? ''),
-      sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
-    });
-  });
-
-  const projectMeta: SharedProjectMeta[] = [];
-  await Promise.all(
-    projDocs.slice(0, 60).map(async ({ id, data }) => {
-      const imageDataUrl = typeof data.imageDataUrl === 'string' ? data.imageDataUrl : '';
-      if (!imageDataUrl) return;
-      projectMeta.push({
+    const expMap = new Map<string, ExperienceItem>();
+    EXPERIENCES.forEach((e) => expMap.set(e.id, e));
+    expDocs.forEach(({ id, data }) => {
+      const stages = parseCareerStages(data.careerStages);
+      expMap.set(id, {
         id,
-        title: String(data.title ?? ''),
-        property: String(data.property ?? ''),
-        year: String(data.year ?? ''),
-        category: VALID_PROJECT_CATS.has(data.category as ProjectCategory)
-          ? (data.category as ProjectCategory)
-          : 'infrastructure',
-        description: String(data.description ?? ''),
-        createdAtMs: toMillis(data.createdAt) ?? Date.now(),
+        company: String(data.company ?? ''),
+        role: String(data.role ?? ''),
+        roleId: String(data.roleId ?? data.role ?? ''),
+        status: VALID_EXP_STATUS.has(data.status as ExperienceStatus)
+          ? (data.status as ExperienceStatus)
+          : 'completed',
+        category: data.category === 'leadership' ? 'leadership' : 'operations',
+        period: String(data.period ?? ''),
+        periodId: String(data.periodId ?? data.period ?? ''),
+        scaleContext: String(data.scaleContext ?? ''),
+        scaleContextId: String(data.scaleContextId ?? data.scaleContext ?? ''),
+        bullets: Array.isArray(data.bullets) ? data.bullets.map(String) : [],
+        bulletsId: Array.isArray(data.bulletsId) ? data.bulletsId.map(String) : [],
+        systems: Array.isArray(data.systems) ? data.systems.map(String) : [],
+        sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
+        ...(stages ? { careerStages: stages } : {}),
       });
-
-      const assetId = `${vaultKey}__${id}`;
-      const assetRef = doc(db, 'cvProjectAssets', assetId);
-      const assetSnap = await getDocFromServer(assetRef).catch(() => null);
-      if (assetSnap?.exists() && typeof assetSnap.data()?.authorId === 'string') {
-        await updateDoc(assetRef, {
-          projectId: id,
-          imageDataUrl,
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        await setDoc(assetRef, {
-          projectId: id,
-          imageDataUrl,
-          authorId: user.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    })
-  );
-
-  const shareRef = doc(db, 'cvShares', vaultKey);
-  const shareSnap = await getDocFromServer(shareRef).catch(() => null);
-  const shareData = {
-    profile: profilePayload,
-    siteContent: sitePayload,
-    experiences: Array.from(expMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
-    techStacks: Array.from(stackMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
-    references: Array.from(refMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
-    projectMeta: projectMeta.sort((a, b) => a.createdAtMs - b.createdAtMs),
-  };
-
-  if (shareSnap?.exists() && typeof shareSnap.data()?.authorId === 'string') {
-    await updateDoc(shareRef, {
-      ...shareData,
-      updatedAt: serverTimestamp(),
     });
-  } else {
-    await setDoc(shareRef, {
-      ...shareData,
-      authorId: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+
+    const stackMap = new Map<string, TechCategory & { sortOrder: number }>();
+    TECH_STACK.forEach((s, idx) => stackMap.set(s.id, { ...s, sortOrder: idx }));
+    stackDocs.forEach(({ id, data }) => {
+      stackMap.set(id, {
+        id,
+        group: VALID_TECH_GROUPS.has(data.group as TechCategory['group'])
+          ? (data.group as TechCategory['group'])
+          : 'core',
+        label: String(data.label ?? ''),
+        labelId: String(data.labelId ?? data.label ?? ''),
+        items: Array.isArray(data.items) ? data.items.map(String) : [],
+        sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
+      });
     });
+
+    const refMap = new Map<string, { id: string; name: string; role: string; phone: string; sortOrder: number }>();
+    REFERENCES.forEach((r, idx) =>
+      refMap.set(`ref_default_${idx}`, {
+        id: `ref_default_${idx}`,
+        name: r.name,
+        role: r.role,
+        phone: r.phone,
+        sortOrder: idx,
+      })
+    );
+    refDocs.forEach(({ id, data }) => {
+      refMap.set(id, {
+        id,
+        name: String(data.name ?? ''),
+        role: String(data.role ?? ''),
+        phone: String(data.phone ?? ''),
+        sortOrder: typeof data.sortOrder === 'number' ? data.sortOrder : 99,
+      });
+    });
+
+    const projectMeta: SharedProjectMeta[] = [];
+    await Promise.all(
+      projDocs.slice(0, 60).map(async ({ id, data }) => {
+        const imageDataUrl = typeof data.imageDataUrl === 'string' ? data.imageDataUrl : '';
+        if (!imageDataUrl) return;
+        projectMeta.push({
+          id,
+          title: String(data.title ?? ''),
+          property: String(data.property ?? ''),
+          year: String(data.year ?? ''),
+          category: VALID_PROJECT_CATS.has(data.category as ProjectCategory)
+            ? (data.category as ProjectCategory)
+            : 'infrastructure',
+          description: String(data.description ?? ''),
+          createdAtMs: toMillis(data.createdAt) ?? Date.now(),
+        });
+
+        const assetId = `${vaultKey}__${id}`;
+        const assetRef = doc(db, 'cvProjectAssets', assetId);
+        const assetSnap = await getDocFromServer(assetRef).catch(() => null);
+        if (assetSnap?.exists() && typeof assetSnap.data()?.authorId === 'string') {
+          await updateDoc(assetRef, {
+            projectId: id,
+            imageDataUrl,
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          await setDoc(assetRef, {
+            projectId: id,
+            imageDataUrl,
+            authorId: user.uid,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      })
+    );
+
+    const shareRef = doc(db, 'cvShares', vaultKey);
+    const shareSnap = await getDocFromServer(shareRef).catch(() => null);
+    const shareData = {
+      profile: profilePayload,
+      siteContent: sitePayload,
+      experiences: Array.from(expMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
+      techStacks: Array.from(stackMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
+      references: Array.from(refMap.values()).sort((a, b) => a.sortOrder - b.sortOrder),
+      projectMeta: projectMeta.sort((a, b) => a.createdAtMs - b.createdAtMs),
+    };
+
+    if (shareSnap?.exists() && typeof shareSnap.data()?.authorId === 'string') {
+      await updateDoc(shareRef, {
+        ...shareData,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await setDoc(shareRef, {
+        ...shareData,
+        authorId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    await updateDoc(doc(db, 'cvIndex', 'admin'), {
+      experienceIds: Array.from(expMap.keys()).slice(0, 60),
+      projectIds: projectMeta.map((p) => p.id).slice(0, 60),
+      techStackIds: Array.from(stackMap.keys()).slice(0, 60),
+      referenceIds: Array.from(refMap.keys()).slice(0, 60),
+      updatedAt: serverTimestamp(),
+    }).catch(() => undefined);
+
+    emitGlobalSyncState({
+      status: 'synced',
+      lastSyncedAt: Date.now(),
+      error: null,
+    });
+    return vaultKey;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    emitGlobalSyncState({
+      ...globalSyncState,
+      status: 'error',
+      error: msg,
+    });
+    throw err;
   }
-
-  // Keep cvIndex IDs refreshed
-  await updateDoc(doc(db, 'cvIndex', 'admin'), {
-    experienceIds: Array.from(expMap.keys()).slice(0, 60),
-    projectIds: projectMeta.map((p) => p.id).slice(0, 60),
-    techStackIds: Array.from(stackMap.keys()).slice(0, 60),
-    referenceIds: Array.from(refMap.keys()).slice(0, 60),
-    updatedAt: serverTimestamp(),
-  }).catch(() => undefined);
-
-  return vaultKey;
 }
 
 export function schedulePublishedSnapshotSync(): void {
   if (!auth.currentUser || typeof window === 'undefined') return;
+  emitGlobalSyncState({ ...globalSyncState, status: 'syncing', error: null });
   if (snapshotSyncTimer !== null) {
     window.clearTimeout(snapshotSyncTimer);
   }
   snapshotSyncTimer = window.setTimeout(() => {
     snapshotSyncTimer = null;
-    void readCvIndex().then((idx) => {
-      if (idx && (idx.inviteTokens.length > 0 || VAULT_KEY_PATTERN.test(idx.vaultKey))) {
-        return syncPublishedCvSnapshot(idx.vaultKey);
-      }
-      return undefined;
-    }).catch((err) => {
-      console.warn('Background share sync warning:', err);
-    });
-  }, 500);
+    void ensureCvIndex()
+      .then((idx) => syncPublishedCvSnapshot(idx.vaultKey))
+      .catch((err) => {
+        console.warn('Background share sync warning:', err);
+      });
+  }, 150);
 }
 
 export async function listAdminInvites(): Promise<{
@@ -725,6 +772,28 @@ export async function resolveInviteToken(
     import('./cvFirestoreApi'),
   ]);
 
+  return parseShareBundleIntoSession({
+    token,
+    vaultKey,
+    label: typeof invData.label === 'string' ? invData.label : token,
+    expiresAtMs,
+    sd,
+    DEFAULT_PROFILE_DATA,
+    DEFAULT_SITE_CONTENT,
+  });
+}
+
+async function parseShareBundleIntoSession(params: {
+  token: string;
+  vaultKey: string;
+  label: string;
+  expiresAtMs: number | null;
+  sd: Record<string, unknown>;
+  DEFAULT_PROFILE_DATA: CvProfileData;
+  DEFAULT_SITE_CONTENT: SiteContentData;
+}): Promise<ResolvedInviteSession> {
+  const { token, vaultKey, label, expiresAtMs, sd, DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT } = params;
+
   const rawProfile = (typeof sd.profile === 'object' && sd.profile !== null
     ? sd.profile
     : {}) as Partial<CvProfileData>;
@@ -945,7 +1014,8 @@ export async function resolveInviteToken(
 
   return {
     token,
-    label: typeof invData.label === 'string' ? invData.label : token,
+    vaultKey,
+    label,
     expiresAtMs,
     profile,
     siteContent,
@@ -953,5 +1023,81 @@ export async function resolveInviteToken(
     projects: projects.filter((p) => Boolean(p.imageDataUrl)),
     techStacks,
     references,
+  };
+}
+
+export function subscribeInviteSession(
+  token: string,
+  initialVaultKey: string,
+  onUpdate: (session: ResolvedInviteSession) => void,
+  onRevoked: () => void
+): () => void {
+  if (!TOKEN_PATTERN.test(token) || !VAULT_KEY_PATTERN.test(initialVaultKey)) {
+    return () => {};
+  }
+
+  let activeVaultKey = initialVaultKey;
+  let activeLabel = token;
+  let activeExpiresAtMs: number | null = null;
+  let unsubShare: (() => void) | null = null;
+
+  const attachShareListener = (vaultKey: string) => {
+    unsubShare?.();
+    if (!VAULT_KEY_PATTERN.test(vaultKey)) return;
+    unsubShare = onSnapshot(
+      doc(db, 'cvShares', vaultKey),
+      (snap) => {
+        if (!snap.exists()) return;
+        const sd = snap.data() as Record<string, unknown>;
+        void import('./cvFirestoreApi').then(({ DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT }) =>
+          parseShareBundleIntoSession({
+            token,
+            vaultKey,
+            label: activeLabel,
+            expiresAtMs: activeExpiresAtMs,
+            sd,
+            DEFAULT_PROFILE_DATA,
+            DEFAULT_SITE_CONTENT,
+          }).then(onUpdate)
+        );
+      },
+      () => {
+        // Ignore transient share read errors while offline
+      }
+    );
+  };
+
+  attachShareListener(activeVaultKey);
+
+  const unsubInvite = onSnapshot(
+    doc(db, 'invites', token),
+    (invSnap) => {
+      if (!invSnap.exists()) {
+        onRevoked();
+        return;
+      }
+      const d = invSnap.data();
+      const isActive = Boolean(d.active);
+      const expMs = toMillis(d.expiresAt);
+      if (!isActive || (expMs !== null && expMs <= Date.now())) {
+        onRevoked();
+        return;
+      }
+      activeLabel = typeof d.label === 'string' ? d.label : token;
+      activeExpiresAtMs = expMs;
+      const nextVault = typeof d.vaultKey === 'string' ? d.vaultKey : activeVaultKey;
+      if (nextVault !== activeVaultKey && VAULT_KEY_PATTERN.test(nextVault)) {
+        activeVaultKey = nextVault;
+        attachShareListener(activeVaultKey);
+      }
+    },
+    () => {
+      onRevoked();
+    }
+  );
+
+  return () => {
+    unsubInvite();
+    unsubShare?.();
   };
 }

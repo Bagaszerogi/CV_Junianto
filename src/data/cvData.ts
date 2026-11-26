@@ -2,11 +2,14 @@ export type Locale = 'en' | 'id';
 
 export type ExperienceStatus = 'active' | 'completed';
 
+export type EmploymentType = 'full-time' | 'promotion' | 'contract' | 'consulting';
+
 export interface CareerStage {
   id: string;
   role: string;
   roleId: string;
   status: ExperienceStatus;
+  employmentType?: EmploymentType;
   period: string;
   periodId: string;
   bullets: string[];

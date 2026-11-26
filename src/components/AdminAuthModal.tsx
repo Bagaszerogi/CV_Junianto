@@ -6,7 +6,9 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Globe,
   Loader2,
+  Lock,
   MailCheck,
   RefreshCw,
   ShieldCheck,
@@ -22,8 +24,9 @@ import {
   runFullDatabaseAudit,
   seedMissingDefaultsToFirestore,
 } from '../utils/dbDiagnostics';
+import { syncPublishedCvSnapshot } from '../utils/inviteApi';
 import {
-  addAdminEmailToFirestore,
+  addAdminAccessToFirestore,
   checkIsAdminUser,
   isRunningInIframe,
   listFirestoreAdminEmails,
@@ -72,12 +75,15 @@ export function AdminAuthModal({
   const [auditReport, setAuditReport] = useState<DatabaseAuditReport | null>(null);
   const [isAuditing, setIsAuditing] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isSyncingGlobal, setIsSyncingGlobal] = useState(false);
   const [seedMessage, setSeedMessage] = useState<string | null>(null);
   const [coreAdminEmails, setCoreAdminEmails] = useState<string[]>([]);
   const [addedAdminEmails, setAddedAdminEmails] = useState<string[]>([]);
   const [newAdminEmail, setNewAdminEmail] = useState('');
   const [adminManageError, setAdminManageError] = useState<string | null>(null);
+  const [adminManageSuccess, setAdminManageSuccess] = useState<string | null>(null);
   const [isManagingAdmin, setIsManagingAdmin] = useState(false);
+  const [copiedUid, setCopiedUid] = useState(false);
 
   const formatAuthError = useCallback(
     (err: unknown, mode: AuthModalTab): { message: string; badDomain: string | null; isPopupIssue: boolean } => {
@@ -89,8 +95,8 @@ export function AdminAuthModal({
         return {
           message:
             locale === 'en'
-              ? `Account (${email}) is not authorized as a CV admin. Please sign in with bagaszerogi@gmail.com, zerogi26@gmail.com, or it@hotelciputra.com.`
-              : `Akun (${email}) tidak terdaftar sebagai admin CV. Silakan masuk dengan bagaszerogi@gmail.com, zerogi26@gmail.com, atau it@hotelciputra.com.`,
+              ? `Account (${email}) is not registered in the Firestore admin list yet. Ask a core admin to add it under DB & SSO Check, or sign in with an authorized admin account.`
+              : `Akun (${email}) belum terdaftar di daftar admin Firestore. Tambahkan email atau UID akun ini melalui menu Cek DB & SSO oleh admin utama.`,
           badDomain: null,
           isPopupIssue: false,
         };
@@ -171,11 +177,7 @@ export function AdminAuthModal({
     try {
       const report = await runFullDatabaseAudit();
       setAuditReport(report);
-      if (
-        report.authState.signedIn &&
-        (report.authState.adminDocSynced ||
-          (report.authState.emailVerified && report.authState.inAllowlist))
-      ) {
+      if (report.isAuthorizedAdmin) {
         const list = await listFirestoreAdminEmails();
         setCoreAdminEmails(list.coreEmails);
         setAddedAdminEmails(list.addedEmails);
@@ -194,6 +196,7 @@ export function AdminAuthModal({
     setUnauthorizedHost(null);
     setPopupFailed(false);
     setSeedMessage(null);
+    setAdminManageSuccess(null);
 
     if (externalError) {
       const parsed = formatAuthError(new Error(externalError), 'google');
@@ -222,6 +225,16 @@ export function AdminAuthModal({
       await navigator.clipboard.writeText(domain);
       setCopiedHost(true);
       setTimeout(() => setCopiedHost(false), 2000);
+    } catch {
+      // Ignore clipboard error
+    }
+  };
+
+  const handleCopyUid = async (uid: string) => {
+    try {
+      await navigator.clipboard.writeText(uid);
+      setCopiedUid(true);
+      setTimeout(() => setCopiedUid(false), 2000);
     } catch {
       // Ignore clipboard error
     }
@@ -398,16 +411,52 @@ export function AdminAuthModal({
     }
   };
 
+  const handleSyncGlobalNow = async () => {
+    setIsSyncingGlobal(true);
+    setSeedMessage(null);
+    try {
+      await syncPublishedCvSnapshot();
+      setSeedMessage(
+        locale === 'en'
+          ? 'Global share snapshot updated. All active invite links now serve your latest CV.'
+          : 'Snapshot global diperbarui. Semua link undangan aktif langsung menampilkan perubahan terbaru.'
+      );
+      await runDiagnostics();
+      onAdminVerified?.();
+    } catch (err) {
+      let msg = err instanceof Error ? err.message : String(err);
+      try {
+        const parsed = JSON.parse(msg) as { error?: string };
+        if (parsed?.error) msg = parsed.error;
+      } catch {
+        // Keep msg
+      }
+      setSeedMessage(msg);
+    } finally {
+      setIsSyncingGlobal(false);
+    }
+  };
+
   const handleAddAdminEmail = async (e: FormEvent) => {
     e.preventDefault();
     setAdminManageError(null);
+    setAdminManageSuccess(null);
     setIsManagingAdmin(true);
     try {
-      await addAdminEmailToFirestore(newAdminEmail);
+      const added = await addAdminAccessToFirestore(newAdminEmail);
       setNewAdminEmail('');
       const list = await listFirestoreAdminEmails();
       setCoreAdminEmails(list.coreEmails);
       setAddedAdminEmails(list.addedEmails);
+      setAdminManageSuccess(
+        added.kind === 'uid'
+          ? locale === 'en'
+            ? `UID "${added.value}" authorized in Firestore /admins.`
+            : `UID "${added.value}" berhasil diotorisasi di Firestore /admins.`
+          : locale === 'en'
+            ? `Email "${added.value}" authorized in Firestore /admins.`
+            : `Email "${added.value}" berhasil diotorisasi di Firestore /admins.`
+      );
     } catch (err) {
       let msg = err instanceof Error ? err.message : String(err);
       try {
@@ -424,6 +473,7 @@ export function AdminAuthModal({
 
   const handleRemoveAdminEmail = async (email: string) => {
     setAdminManageError(null);
+    setAdminManageSuccess(null);
     setIsManagingAdmin(true);
     try {
       await removeAdminEmailFromFirestore(email);
@@ -448,11 +498,7 @@ export function AdminAuthModal({
   const hasUnseededDefaults = Boolean(
     auditReport?.collections.some((c) => c.status === 'empty-default')
   );
-  const canSeedNow = Boolean(
-    auditReport?.authState.signedIn &&
-      (auditReport.authState.adminDocSynced ||
-        (auditReport.authState.emailVerified && auditReport.authState.inAllowlist))
-  );
+  const canSeedNow = Boolean(auditReport?.isAuthorizedAdmin);
 
   return (
     <div
@@ -645,13 +691,17 @@ export function AdminAuthModal({
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-[11px] leading-relaxed dark:border-slate-800 dark:bg-slate-950">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-slate-900 dark:text-white">
-                      {auditReport.overallConnected
+                      {!auditReport.overallConnected
                         ? locale === 'en'
-                          ? 'Firestore Server Connected'
-                          : 'Terhubung ke Server Firestore'
-                        : locale === 'en'
                           ? 'Connection Issue Detected'
-                          : 'Ada Gangguan Koneksi'}
+                          : 'Ada Gangguan Koneksi'
+                        : auditReport.authRequired
+                          ? locale === 'en'
+                            ? 'Firestore Online · Protected Mode'
+                            : 'Firestore Online · Database Terlindungi'
+                          : locale === 'en'
+                            ? 'Firestore Connected & Admin Authorized'
+                            : 'Terhubung & Admin Terotorisasi'}
                     </span>
                     <span className="font-mono text-slate-500 dark:text-slate-400">
                       {auditReport.totalLatencyMs} ms · {auditReport.checkedAt}
@@ -679,10 +729,49 @@ export function AdminAuthModal({
                           {auditReport.authState.adminDocSynced ? ' · /admins synced' : ''})
                         </span>
                       ) : (
-                        <span>{locale === 'en' ? 'Not signed in' : 'Belum login'}</span>
+                        <span>
+                          {locale === 'en'
+                            ? 'Not signed in (sign in to unlock read/write)'
+                            : 'Belum login (login dulu untuk akses penuh)'}
+                        </span>
                       )}
                     </div>
+                    {auditReport.authState.uid && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium">UID:</span>{' '}
+                        <span className="truncate font-mono text-[10px]">
+                          {auditReport.authState.uid}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleCopyUid(auditReport.authState.uid!)}
+                          aria-label="Copy UID"
+                          className="text-blue-700 hover:text-blue-900 dark:text-blue-400 cursor-pointer"
+                        >
+                          {copiedUid ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {auditReport.authRequired && (
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2.5 dark:border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setAuthMethod('google')}
+                        className="rounded-lg bg-blue-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 cursor-pointer"
+                      >
+                        {locale === 'en' ? 'Sign in with Google SSO' : 'Login via Google SSO'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setAuthMethod('email')}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 cursor-pointer"
+                      >
+                        {locale === 'en' ? 'Email & Password' : 'Email & Password'}
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
@@ -706,19 +795,30 @@ export function AdminAuthModal({
                       </div>
                       <div className="shrink-0 text-right">
                         <span
-                          className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
                             item.status === 'synced'
                               ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
                               : item.status === 'empty-default'
                                 ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
-                                : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                                : item.status === 'auth-required'
+                                  ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                  : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
                           }`}
                         >
-                          {item.status === 'synced'
-                            ? `${item.docCount} docs`
-                            : item.status === 'empty-default'
-                              ? 'Default (0 docs)'
-                              : 'Error'}
+                          {item.status === 'auth-required' && (
+                            <Lock className="h-2.5 w-2.5" aria-hidden="true" />
+                          )}
+                          <span>
+                            {item.status === 'synced'
+                              ? `${item.docCount} docs`
+                              : item.status === 'empty-default'
+                                ? 'Default (0 docs)'
+                                : item.status === 'auth-required'
+                                  ? locale === 'en'
+                                    ? 'Protected'
+                                    : 'Terkunci (Login)'
+                                  : 'Error'}
+                          </span>
                         </span>
                         <p className="mt-0.5 font-mono text-[10px] text-slate-400">
                           {item.latencyMs} ms
@@ -728,24 +828,42 @@ export function AdminAuthModal({
                   ))}
                 </div>
 
-                {canSeedNow && hasUnseededDefaults && (
-                  <button
-                    type="button"
-                    disabled={isSeeding}
-                    onClick={() => void handleSeedDefaults()}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
-                  >
-                    {isSeeding ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <UploadCloud className="h-4 w-4" />
+                {canSeedNow && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={isSyncingGlobal}
+                      onClick={() => void handleSyncGlobalNow()}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-200 cursor-pointer"
+                    >
+                      {isSyncingGlobal ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Globe className="h-3.5 w-3.5" />
+                      )}
+                      <span>
+                        {locale === 'en' ? 'Sync Global Snapshot' : 'Sinkron Global Sekarang'}
+                      </span>
+                    </button>
+
+                    {hasUnseededDefaults && (
+                      <button
+                        type="button"
+                        disabled={isSeeding}
+                        onClick={() => void handleSeedDefaults()}
+                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSeeding ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <UploadCloud className="h-3.5 w-3.5" />
+                        )}
+                        <span>
+                          {locale === 'en' ? 'Seed Initial Defaults' : 'Isi Data Awal ke Firestore'}
+                        </span>
+                      </button>
                     )}
-                    <span>
-                      {locale === 'en'
-                        ? 'Sync Initial Default CV Data to Firestore'
-                        : 'Sinkronkan Semua Data Awal CV ke Firestore'}
-                    </span>
-                  </button>
+                  </div>
                 )}
 
                 {seedMessage && (
@@ -759,23 +877,25 @@ export function AdminAuthModal({
                     <div>
                       <p className="text-xs font-semibold text-slate-900 dark:text-white">
                         {locale === 'en'
-                          ? 'Firestore Admin Emails (Full Edit Access)'
-                          : 'Daftar Email Admin di Firestore (Akses Edit Penuh)'}
+                          ? 'Authorized Admin Accounts (Email or Firebase UID)'
+                          : 'Daftar Akses Admin Firestore (Email atau UID Firebase)'}
                       </p>
                       <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
                         {locale === 'en'
-                          ? 'Any email added here can sign in and edit all CV sections in Firestore.'
-                          : 'Email apa pun yang ditambahkan ke Firestore di sini bisa login dan mengedit semua bagian CV.'}
+                          ? 'Any authorized account here can sign in, edit all CV sections, and publish global updates.'
+                          : 'Akun (email atau Firebase UID) yang ditambahkan di sini otomatis mendapat izin edit & simpan perubahan global.'}
                       </p>
                     </div>
 
                     <form onSubmit={(e) => void handleAddAdminEmail(e)} className="flex gap-2">
                       <input
-                        type="email"
+                        type="text"
                         required
                         value={newAdminEmail}
                         onChange={(e) => setNewAdminEmail(e.target.value)}
-                        placeholder="email@gmail.com"
+                        placeholder={
+                          locale === 'en' ? 'email@gmail.com or Firebase UID' : 'email@gmail.com atau UID Firebase'
+                        }
                         className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                       />
                       <button
@@ -784,9 +904,15 @@ export function AdminAuthModal({
                         className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
                       >
                         <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-                        <span>{locale === 'en' ? 'Add' : 'Tambah'}</span>
+                        <span>{locale === 'en' ? 'Authorize' : 'Tambah'}</span>
                       </button>
                     </form>
+
+                    {adminManageSuccess && (
+                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                        {adminManageSuccess}
+                      </p>
+                    )}
 
                     {adminManageError && (
                       <p className="text-[11px] font-medium text-red-600 dark:text-red-400">
@@ -839,7 +965,33 @@ export function AdminAuthModal({
             <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
               {locale === 'en' ? 'Email Verification Required' : 'Verifikasi Email Diperlukan'}
             </p>
+            <p className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+              {locale === 'en'
+                ? 'For security, Email/Password sign-in requires a verified email, OR you can sign in instantly with Google SSO using the same Gmail account.'
+                : 'Untuk keamanan Firestore, akun Email/Password memerlukan email terverifikasi — atau klik "Masuk Instan Google SSO" di bawah dengan akun Gmail yang sama.'}
+            </p>
+            {auth.currentUser?.uid && (
+              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white/80 px-2.5 py-1.5 text-[10px] text-slate-700 dark:border-amber-900/50 dark:bg-slate-900 dark:text-slate-200">
+                <span className="truncate font-mono">UID: {auth.currentUser.uid}</span>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyUid(auth.currentUser!.uid)}
+                  className="inline-flex shrink-0 items-center gap-1 font-semibold text-blue-700 dark:text-blue-400 cursor-pointer"
+                >
+                  {copiedUid ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  <span>{copiedUid ? 'Disalin' : 'Salin UID'}</span>
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => void handleGoogleSignIn()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
+              >
+                <span>{locale === 'en' ? 'Instant Google SSO' : 'Masuk Instan Google SSO'}</span>
+              </button>
               <button
                 type="button"
                 disabled={isSubmitting}

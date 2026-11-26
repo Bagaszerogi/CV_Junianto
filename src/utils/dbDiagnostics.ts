@@ -20,14 +20,14 @@ import {
   saveTechStackToFirestore,
 } from './cvFirestoreApi';
 import { saveExperienceToFirestore } from './experienceApi';
-import { isRunningInIframe, syncAdminRecord } from './projectApi';
+import { checkIsAdminUser, isRunningInIframe, syncAdminRecord } from './projectApi';
 import { ensureCvIndex, readCvIndex, syncPublishedCvSnapshot } from './inviteApi';
 
 export interface CollectionCheckResult {
   key: string;
   label: string;
   path: string;
-  status: 'synced' | 'empty-default' | 'error';
+  status: 'synced' | 'empty-default' | 'auth-required' | 'error';
   docCount: number;
   latencyMs: number;
   error?: string;
@@ -36,6 +36,8 @@ export interface CollectionCheckResult {
 export interface DatabaseAuditReport {
   checkedAt: string;
   overallConnected: boolean;
+  authRequired: boolean;
+  isAuthorizedAdmin: boolean;
   totalLatencyMs: number;
   projectId: string;
   authDomain: string;
@@ -52,6 +54,37 @@ export interface DatabaseAuditReport {
     adminDocSynced: boolean | null;
   };
   collections: CollectionCheckResult[];
+}
+
+const PRIVATE_COLLECTIONS: Array<{ key: string; label: string; path: string }> = [
+  { key: 'profile', label: 'Profile & Education', path: 'profile/main' },
+  { key: 'siteContent', label: 'UI Copy & Labels', path: 'siteContent/main' },
+  { key: 'experiences', label: 'Work Experiences', path: 'experiences' },
+  { key: 'projects', label: 'Project Gallery', path: 'projects' },
+  { key: 'techStacks', label: 'Technical Skills', path: 'techStacks' },
+  { key: 'references', label: 'References', path: 'references' },
+  { key: 'cvIndex', label: 'Invite & Vault Index', path: 'cvIndex/admin' },
+];
+
+async function probeFirestoreServerReachable(): Promise<{
+  reachable: boolean;
+  latencyMs: number;
+  error?: string;
+}> {
+  const start = performance.now();
+  try {
+    await getDocFromServer(doc(db, 'invites', '__health_check__'));
+    return { reachable: true, latencyMs: Math.round(performance.now() - start) };
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - start);
+    const msg = err instanceof Error ? err.message : String(err);
+    const lower = msg.toLowerCase();
+    // Firestore returns permission-denied from the live server when database & network are healthy
+    if (lower.includes('permission') || lower.includes('insufficient')) {
+      return { reachable: true, latencyMs };
+    }
+    return { reachable: false, latencyMs, error: msg };
+  }
 }
 
 async function checkSingleDoc(
@@ -143,9 +176,104 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
   const emailLower = user?.email?.trim().toLowerCase() ?? '';
   const inAllowlist = Boolean(emailLower && ADMIN_EMAIL_ALLOWLIST.has(emailLower));
 
-  const cvIdx = user ? await readCvIndex() : null;
+  if (!user) {
+    const probe = await probeFirestoreServerReachable();
+    return {
+      checkedAt: new Date().toLocaleTimeString(),
+      overallConnected: probe.reachable,
+      authRequired: true,
+      isAuthorizedAdmin: false,
+      totalLatencyMs: Math.round(performance.now() - auditStart),
+      projectId: FIREBASE_PUBLIC_META.projectId,
+      authDomain: FIREBASE_PUBLIC_META.authDomain,
+      databaseId: FIREBASE_PUBLIC_META.firestoreDatabaseId,
+      hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+      isIframe: isRunningInIframe(),
+      authState: {
+        signedIn: false,
+        uid: null,
+        email: null,
+        emailVerified: false,
+        providerIds: [],
+        inAllowlist: false,
+        adminDocSynced: null,
+      },
+      collections: PRIVATE_COLLECTIONS.map((item) => ({
+        key: item.key,
+        label: item.label,
+        path: item.path,
+        status: probe.reachable ? 'auth-required' : 'error',
+        docCount: 0,
+        latencyMs: probe.latencyMs,
+        ...(probe.reachable ? {} : { error: probe.error }),
+      })),
+    };
+  }
 
-  const checks = await Promise.all([
+  const isAuthorizedAdmin = await checkIsAdminUser(user);
+  let adminDocSynced: boolean | null = false;
+
+  if (isAuthorizedAdmin) {
+    const syncRes = await syncAdminRecord(user);
+    if (syncRes.synced) {
+      adminDocSynced = true;
+    } else {
+      try {
+        const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
+        if (uidSnap.exists()) {
+          adminDocSynced = true;
+        } else if (user.emailVerified && emailLower) {
+          const emailSnap = await getDocFromServer(doc(db, 'admins', emailLower));
+          adminDocSynced = emailSnap.exists();
+        }
+      } catch {
+        adminDocSynced = false;
+      }
+    }
+  } else {
+    const probe = await probeFirestoreServerReachable();
+    return {
+      checkedAt: new Date().toLocaleTimeString(),
+      overallConnected: probe.reachable,
+      authRequired: true,
+      isAuthorizedAdmin: false,
+      totalLatencyMs: Math.round(performance.now() - auditStart),
+      projectId: FIREBASE_PUBLIC_META.projectId,
+      authDomain: FIREBASE_PUBLIC_META.authDomain,
+      databaseId: FIREBASE_PUBLIC_META.firestoreDatabaseId,
+      hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
+      isIframe: isRunningInIframe(),
+      authState: {
+        signedIn: true,
+        uid: user.uid,
+        email: user.email ?? null,
+        emailVerified: Boolean(user.emailVerified),
+        providerIds: user.providerData?.map((p) => p.providerId) ?? [],
+        inAllowlist,
+        adminDocSynced: false,
+      },
+      collections: PRIVATE_COLLECTIONS.map((item) => ({
+        key: item.key,
+        label: item.label,
+        path: item.path,
+        status: probe.reachable ? 'auth-required' : 'error',
+        docCount: 0,
+        latencyMs: probe.latencyMs,
+        ...(probe.reachable ? {} : { error: probe.error }),
+      })),
+    };
+  }
+
+  let cvIdx = await readCvIndex();
+  if (!cvIdx) {
+    try {
+      cvIdx = await ensureCvIndex();
+    } catch {
+      cvIdx = null;
+    }
+  }
+
+  const checkPromises: Array<Promise<CollectionCheckResult>> = [
     checkSingleDoc('profile', 'Profile & Education', 'profile', 'main'),
     checkSingleDoc('siteContent', 'UI Copy & Labels', 'siteContent', 'main'),
     checkCollection('experiences', 'Work Experiences', 'experiences', cvIdx?.experienceIds ?? []),
@@ -153,31 +281,22 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
     checkCollection('techStacks', 'Technical Skills', 'techStacks', cvIdx?.techStackIds ?? []),
     checkCollection('references', 'References', 'references', cvIdx?.referenceIds ?? []),
     checkSingleDoc('cvIndex', 'Invite & Vault Index', 'cvIndex', 'admin'),
-  ]);
+  ];
 
-  let adminDocSynced: boolean | null = null;
-  if (user) {
-    try {
-      const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
-      if (uidSnap.exists()) {
-        adminDocSynced = true;
-      } else if (user.emailVerified && emailLower) {
-        const emailSnap = await getDocFromServer(doc(db, 'admins', emailLower));
-        adminDocSynced = emailSnap.exists();
-      } else {
-        adminDocSynced = false;
-      }
-    } catch {
-      adminDocSynced = false;
-    }
+  if (cvIdx?.vaultKey) {
+    checkPromises.push(
+      checkSingleDoc('cvShares', 'Global Share Snapshot', 'cvShares', cvIdx.vaultKey)
+    );
   }
 
-  const overallConnected =
-    checks.some((c) => c.status !== 'error') && checks.every((c) => c.status !== 'error');
+  const checks = await Promise.all(checkPromises);
+  const overallConnected = checks.every((c) => c.status !== 'error');
 
   return {
     checkedAt: new Date().toLocaleTimeString(),
     overallConnected,
+    authRequired: false,
+    isAuthorizedAdmin: true,
     totalLatencyMs: Math.round(performance.now() - auditStart),
     projectId: FIREBASE_PUBLIC_META.projectId,
     authDomain: FIREBASE_PUBLIC_META.authDomain,
@@ -185,11 +304,11 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
     hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown',
     isIframe: isRunningInIframe(),
     authState: {
-      signedIn: Boolean(user),
-      uid: user?.uid ?? null,
-      email: user?.email ?? null,
-      emailVerified: Boolean(user?.emailVerified),
-      providerIds: user?.providerData?.map((p) => p.providerId) ?? [],
+      signedIn: true,
+      uid: user.uid,
+      email: user.email ?? null,
+      emailVerified: Boolean(user.emailVerified),
+      providerIds: user.providerData?.map((p) => p.providerId) ?? [],
       inAllowlist,
       adminDocSynced,
     },

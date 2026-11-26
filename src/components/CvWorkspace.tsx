@@ -3,7 +3,17 @@ import { type User } from 'firebase/auth';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import Lenis from 'lenis';
-import { ArrowUp, Database, Link2, Pencil, ShieldAlert, Sparkles } from 'lucide-react';
+import {
+  AlertCircle,
+  ArrowUp,
+  CheckCircle2,
+  Database,
+  Link2,
+  Loader2,
+  Pencil,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
 import { ADMIN_EMAIL_ALLOWLIST } from '../firebase';
 import { Locale } from '../data/cvData';
 import {
@@ -18,7 +28,13 @@ import {
   subscribeProfile,
   subscribeSiteContent,
 } from '../utils/cvFirestoreApi';
-import { ResolvedInviteSession } from '../utils/inviteApi';
+import {
+  ensureCvIndex,
+  GlobalSyncState,
+  ResolvedInviteSession,
+  subscribeGlobalSyncStatus,
+  syncPublishedCvSnapshot,
+} from '../utils/inviteApi';
 import type { AuthModalTab } from './AdminAuthModal';
 import { ContactSection } from './ContactSection';
 import { EducationReferencesSection } from './EducationReferencesSection';
@@ -68,7 +84,16 @@ export default function CvWorkspace({
     tab: ProfileEditTab;
   }>({ open: false, tab: 'identity' });
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [globalSync, setGlobalSync] = useState<GlobalSyncState>({
+    status: 'idle',
+    lastSyncedAt: null,
+    error: null,
+  });
   const lenisRef = useRef<Lenis | null>(null);
+
+  useEffect(() => {
+    return subscribeGlobalSyncStatus(setGlobalSync);
+  }, []);
 
   // Sync invited snapshot when not in admin edit mode
   useEffect(() => {
@@ -81,6 +106,8 @@ export default function CvWorkspace({
   // Live master subscriptions ONLY when signed in as verified Admin
   useEffect(() => {
     if (!authReady || !isAdminUser || !firebaseUser) return;
+
+    void ensureCvIndex().catch(() => undefined);
 
     const unsubProfile = subscribeProfile(
       (data) => setProfile(data),
@@ -220,6 +247,27 @@ export default function CvWorkspace({
     await saveSiteContentToFirestore(nextSiteContent, Boolean(siteContent.fromFirestore));
   };
 
+  const handleSyncCurrentRoleToProfile = async (params: {
+    company: string;
+    role: string;
+    scaleContext?: string;
+  }) => {
+    await handleSaveProfilePatch({
+      currentCompany: params.company,
+      currentRole: params.role,
+    });
+    if (params.scaleContext && params.scaleContext.trim()) {
+      const nextSiteContent: SiteContentData = {
+        ...siteContent,
+        [locale]: {
+          ...siteContent[locale],
+          heroPropertyScale: params.scaleContext.trim().slice(0, 140),
+        },
+      };
+      await saveSiteContentToFirestore(nextSiteContent, Boolean(siteContent.fromFirestore));
+    }
+  };
+
   const activeSiteCopy = siteContent[locale];
   const needsEmailVerifyBanner = Boolean(
     firebaseUser &&
@@ -247,16 +295,38 @@ export default function CvWorkspace({
       {isAdminUser && (
         <div className="no-print border-b border-blue-200 bg-blue-50/90 px-6 py-2 text-xs text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/60 dark:text-blue-100">
           <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-blue-700 dark:text-blue-400" aria-hidden="true" />
               <span className="font-semibold">
                 {locale === 'en' ? 'Full Edit Mode Active' : 'Mode Edit Penuh Aktif'}
               </span>
               <span className="text-blue-800/80 dark:text-blue-300">
                 {locale === 'en'
-                  ? '— Click any text to edit & auto-sync to your private invite links.'
-                  : '— Klik teks mana saja untuk mengedit & otomatis tersinkron ke link undangan.'}
+                  ? '— Click any text to edit & auto-sync globally.'
+                  : '— Klik teks mana saja untuk edit & otomatis terupdate global.'}
               </span>
+              {globalSync.status === 'syncing' && (
+                <span className="inline-flex items-center gap-1 font-medium text-blue-700 dark:text-blue-300">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Syncing globally...' : 'Menyinkronkan global...'}</span>
+                </span>
+              )}
+              {globalSync.status === 'synced' && (
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Synced Globally' : 'Tersinkron Global'}</span>
+                </span>
+              )}
+              {globalSync.status === 'error' && (
+                <button
+                  type="button"
+                  onClick={() => void syncPublishedCvSnapshot().catch(() => undefined)}
+                  className="inline-flex items-center gap-1 font-semibold text-red-700 hover:underline dark:text-red-400 cursor-pointer"
+                >
+                  <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Retry Global Sync' : 'Sinkron Global Ulang'}</span>
+                </button>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -331,6 +401,7 @@ export default function CvWorkspace({
           siteCopy={activeSiteCopy}
           invitedItems={!isAdminUser ? inviteSession?.experiences : undefined}
           onSaveSiteCopyField={handleSaveSiteCopyField}
+          onSyncCurrentRoleToProfile={handleSyncCurrentRoleToProfile}
         />
         <ProjectsSection
           locale={locale}

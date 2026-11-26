@@ -88,7 +88,7 @@
     },
     "Experience": {
       "title": "Experience",
-      "description": "A work experience entry managed by verified admins.",
+      "description": "A work experience entry managed by verified admins, including continuous careerStages with optional employmentType metadata.",
       "type": "object",
       "properties": {
         "company": { "type": "string", "minLength": 1, "maxLength": 140 },

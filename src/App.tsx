@@ -6,6 +6,7 @@ import {
   normalizeInviteCode,
   resolveInviteToken,
   ResolvedInviteSession,
+  subscribeInviteSession,
 } from './utils/inviteApi';
 import { GateStatus, PrivateGateView } from './components/PrivateGateView';
 import type { AuthModalTab } from './components/AdminAuthModal';
@@ -88,9 +89,12 @@ export default function App() {
   const refreshAdminState = useCallback(async (user: User | null) => {
     if (user) {
       const adminStatus = await checkIsAdminUser(user);
-      setIsAdminUser(adminStatus);
       if (adminStatus) {
-        void syncAdminRecord(user);
+        await syncAdminRecord(user);
+        await user.getIdToken(true).catch(() => undefined);
+        setIsAdminUser(true);
+      } else {
+        setIsAdminUser(false);
       }
     } else {
       setIsAdminUser(false);
@@ -156,6 +160,26 @@ export default function App() {
     }
     void verifyInvite(inviteCode);
   }, [authReady, inviteCode, isAdminUser, verifyInvite]);
+
+  // Live real-time global updates when an HRD/guest opens a private invite link
+  useEffect(() => {
+    if (isAdminUser) return;
+    const token = inviteSession?.token;
+    const vaultKey = inviteSession?.vaultKey;
+    if (!token || !vaultKey) return;
+
+    return subscribeInviteSession(
+      token,
+      vaultKey,
+      (updatedSession) => {
+        setInviteSession(updatedSession);
+      },
+      () => {
+        setInviteSession(null);
+        setGateStatus('denied');
+      }
+    );
+  }, [inviteSession?.token, inviteSession?.vaultKey, isAdminUser]);
 
   // Reset tab title when returning to locked gate
   useEffect(() => {

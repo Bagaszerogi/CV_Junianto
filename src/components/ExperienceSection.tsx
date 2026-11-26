@@ -3,21 +3,30 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Briefcase,
   Building2,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Pencil,
+  Pin,
   Plus,
   Trash2,
   TrendingUp,
   X,
 } from 'lucide-react';
-import { CareerStage, ExperienceStatus, Locale, UI_COPY } from '../data/cvData';
+import {
+  CareerStage,
+  EmploymentType,
+  ExperienceStatus,
+  Locale,
+  UI_COPY,
+} from '../data/cvData';
 import { SiteCopyLocale } from '../utils/cvFirestoreApi';
 import { EditableText } from './EditableText';
 import { ExperienceTimelineSkeleton } from './Skeletons';
 import {
   createExperienceInFirestore,
   deleteExperienceFromFirestore,
+  EMPLOYMENT_TYPE_LABELS,
   FirestoreExperienceItem,
   normalizeExperienceStages,
   saveExperienceToFirestore,
@@ -31,6 +40,11 @@ interface ExperienceSectionProps {
   siteCopy: SiteCopyLocale;
   invitedItems?: FirestoreExperienceItem[];
   onSaveSiteCopyField: (field: keyof SiteCopyLocale, value: string) => Promise<void>;
+  onSyncCurrentRoleToProfile?: (params: {
+    company: string;
+    role: string;
+    scaleContext?: string;
+  }) => Promise<void>;
 }
 
 type RoleFilter = 'all' | 'leadership' | 'operations';
@@ -42,10 +56,12 @@ export function ExperienceSection({
   siteCopy,
   invitedItems,
   onSaveSiteCopyField,
+  onSyncCurrentRoleToProfile,
 }: ExperienceSectionProps) {
   const [experiences, setExperiences] = useState<FirestoreExperienceItem[]>(invitedItems ?? []);
   const [isLoading, setIsLoading] = useState(!invitedItems);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
   const [filter, setFilter] = useState<RoleFilter>('all');
   const [collapsedIds, setCollapsedIds] = useState<Record<string, boolean>>({});
   const prefersReducedMotion = useReducedMotion();
@@ -57,6 +73,8 @@ export function ExperienceSection({
   const [role, setRole] = useState('');
   const [roleId, setRoleId] = useState('');
   const [status, setStatus] = useState<ExperienceStatus>('active');
+  const [employmentType, setEmploymentType] = useState<EmploymentType>('full-time');
+  const [syncHeroProfile, setSyncHeroProfile] = useState(true);
   const [category, setCategory] = useState<'leadership' | 'operations'>('leadership');
   const [period, setPeriod] = useState('');
   const [periodId, setPeriodId] = useState('');
@@ -79,6 +97,8 @@ export function ExperienceSection({
   const [stagePeriod, setStagePeriod] = useState('');
   const [stagePeriodId, setStagePeriodId] = useState('');
   const [stageStatus, setStageStatus] = useState<ExperienceStatus>('active');
+  const [stageEmploymentType, setStageEmploymentType] = useState<EmploymentType>('promotion');
+  const [stageSyncHeroProfile, setStageSyncHeroProfile] = useState(true);
   const [stageBulletsText, setStageBulletsText] = useState('');
   const [stageBulletsIdText, setStageBulletsIdText] = useState('');
   const [markPrevCompleted, setMarkPrevCompleted] = useState(true);
@@ -162,12 +182,21 @@ export function ExperienceSection({
     );
   };
 
+  const showFeedback = (msg: string) => {
+    setStatusFeedback(msg);
+    setTimeout(() => {
+      setStatusFeedback((prev) => (prev === msg ? null : prev));
+    }, 3500);
+  };
+
   const openAddModal = () => {
     setEditingItem(null);
     setCompany('');
     setRole('');
     setRoleId('');
     setStatus('active');
+    setEmploymentType('full-time');
+    setSyncHeroProfile(true);
     setCategory('leadership');
     setPeriod('');
     setPeriodId('');
@@ -189,6 +218,8 @@ export function ExperienceSection({
     setRole(primary.role);
     setRoleId(primary.roleId);
     setStatus(primary.status);
+    setEmploymentType(primary.employmentType ?? 'full-time');
+    setSyncHeroProfile(primary.status === 'active');
     setCategory(item.category);
     setPeriod(primary.period);
     setPeriodId(primary.periodId);
@@ -242,6 +273,7 @@ export function ExperienceSection({
         role: role.trim(),
         roleId: (roleId || role).trim(),
         status,
+        employmentType,
         period: period.trim(),
         periodId: (periodId || period).trim(),
         bullets,
@@ -279,6 +311,15 @@ export function ExperienceSection({
       } else {
         await createExperienceInFirestore(payload);
       }
+
+      if (status === 'active' && syncHeroProfile && onSyncCurrentRoleToProfile) {
+        await onSyncCurrentRoleToProfile({
+          company: payload.company,
+          role: locale === 'en' ? firstStage.role : firstStage.roleId,
+          scaleContext: locale === 'en' ? payload.scaleContext : payload.scaleContextId,
+        });
+      }
+
       closeModal();
     } catch (err) {
       setFormError(extractError(err));
@@ -295,6 +336,8 @@ export function ExperienceSection({
     setStagePeriod('');
     setStagePeriodId('');
     setStageStatus('active');
+    setStageEmploymentType('promotion');
+    setStageSyncHeroProfile(true);
     setStageBulletsText('');
     setStageBulletsIdText('');
     setMarkPrevCompleted(true);
@@ -308,6 +351,8 @@ export function ExperienceSection({
     setStagePeriod(stage.period);
     setStagePeriodId(stage.periodId);
     setStageStatus(stage.status);
+    setStageEmploymentType(stage.employmentType ?? 'full-time');
+    setStageSyncHeroProfile(stage.status === 'active');
     setStageBulletsText(stage.bullets.join('\n'));
     setStageBulletsIdText(stage.bulletsId.join('\n'));
     setMarkPrevCompleted(false);
@@ -347,6 +392,7 @@ export function ExperienceSection({
         role: stageRole.trim(),
         roleId: (stageRoleId || stageRole).trim(),
         status: stageStatus,
+        employmentType: stageEmploymentType,
         period: stagePeriod.trim(),
         periodId: (stagePeriodId || stagePeriod).trim(),
         bullets,
@@ -364,6 +410,15 @@ export function ExperienceSection({
       }
 
       await persistStages(exp, nextStages);
+
+      if (stageStatus === 'active' && stageSyncHeroProfile && onSyncCurrentRoleToProfile) {
+        await onSyncCurrentRoleToProfile({
+          company: exp.company,
+          role: locale === 'en' ? newOrUpdated.role : newOrUpdated.roleId,
+          scaleContext: locale === 'en' ? exp.scaleContext : exp.scaleContextId,
+        });
+      }
+
       setStageModalTarget(null);
     } catch (err) {
       setStageError(extractError(err));
@@ -383,15 +438,68 @@ export function ExperienceSection({
     }
   };
 
-  const handleToggleStageStatus = async (exp: FirestoreExperienceItem, stageId: string) => {
+  const handleSetStageStatus = async (
+    exp: FirestoreExperienceItem,
+    stageId: string,
+    nextStatus: ExperienceStatus
+  ) => {
+    const stages = normalizeExperienceStages(exp);
+    const nextStages = stages.map((s) => (s.id === stageId ? { ...s, status: nextStatus } : s));
+    try {
+      await persistStages(exp, nextStages);
+      showFeedback(
+        locale === 'en'
+          ? 'Work status updated & queued for global sync.'
+          : 'Status pekerjaan diperbarui & disinkronkan secara global.'
+      );
+    } catch (err) {
+      setLoadError(extractError(err));
+    }
+  };
+
+  const handleSetStageEmploymentType = async (
+    exp: FirestoreExperienceItem,
+    stageId: string,
+    nextType: EmploymentType
+  ) => {
     const stages = normalizeExperienceStages(exp);
     const nextStages = stages.map((s) =>
-      s.id === stageId
-        ? { ...s, status: (s.status === 'active' ? 'completed' : 'active') as ExperienceStatus }
-        : s
+      s.id === stageId ? { ...s, employmentType: nextType } : s
     );
     try {
       await persistStages(exp, nextStages);
+      showFeedback(
+        locale === 'en'
+          ? 'Employment type updated & synced.'
+          : 'Tipe penugasan diperbarui & disinkronkan.'
+      );
+    } catch (err) {
+      setLoadError(extractError(err));
+    }
+  };
+
+  const handlePromoteStageToProfile = async (
+    exp: FirestoreExperienceItem,
+    stage: CareerStage
+  ) => {
+    const stages = normalizeExperienceStages(exp);
+    const nextStages = stages.map((s) =>
+      s.id === stage.id ? { ...s, status: 'active' as ExperienceStatus } : s
+    );
+    try {
+      await persistStages(exp, nextStages);
+      if (onSyncCurrentRoleToProfile) {
+        await onSyncCurrentRoleToProfile({
+          company: exp.company,
+          role: locale === 'en' ? stage.role : stage.roleId,
+          scaleContext: locale === 'en' ? exp.scaleContext : exp.scaleContextId,
+        });
+      }
+      showFeedback(
+        locale === 'en'
+          ? `Pinned "${stage.role}" as primary active role in Hero Profile.`
+          : `"${stage.role}" dijadikan Posisi Aktif Utama di Kartu Profil & disinkron global.`
+      );
     } catch (err) {
       setLoadError(extractError(err));
     }
@@ -535,6 +643,16 @@ export function ExperienceSection({
             className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
           >
             {loadError}
+          </div>
+        )}
+
+        {statusFeedback && (
+          <div
+            role="status"
+            className="no-print mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-200"
+          >
+            <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{statusFeedback}</span>
           </div>
         )}
 
@@ -735,8 +853,8 @@ export function ExperienceSection({
                                 }`}
                               />
 
-                              {/* Stage Header: Role Title + Period + Status */}
-                              <div className="flex flex-wrap items-start justify-between gap-2">
+                              {/* Stage Header: Role Title + Period + Employment Type + Work Status */}
+                              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
                                 <div>
                                   <h4 className="font-display text-base font-bold text-blue-700 print:text-xs dark:text-blue-400">
                                     <EditableText
@@ -759,7 +877,7 @@ export function ExperienceSection({
                                     />
                                   </h4>
 
-                                  <p className="mt-0.5 font-mono text-xs text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
                                     <EditableText
                                       value={locale === 'en' ? stage.period : stage.periodId}
                                       canEdit={isAdminUser}
@@ -778,54 +896,115 @@ export function ExperienceSection({
                                         return persistStages(exp, updated);
                                       }}
                                     />
-                                    <span aria-hidden="true"> · </span>
-                                    <span
-                                      className={
-                                        stage.status === 'active'
-                                          ? 'font-sans font-semibold text-emerald-700 dark:text-emerald-400'
-                                          : 'font-sans text-slate-500 dark:text-slate-400'
-                                      }
-                                    >
-                                      {stage.status === 'active'
-                                        ? locale === 'en'
-                                          ? 'Current Role'
-                                          : 'Aktif Saat Ini'
-                                        : locale === 'en'
-                                          ? 'Completed'
-                                          : 'Selesai'}
+                                    <span aria-hidden="true">·</span>
+                                    <span className="font-sans text-slate-600 dark:text-slate-300">
+                                      {EMPLOYMENT_TYPE_LABELS[stage.employmentType ?? 'full-time'][locale]}
                                     </span>
-                                  </p>
+                                    <span aria-hidden="true">·</span>
+                                    <span
+                                      className={`inline-flex items-center gap-1.5 font-sans font-semibold ${
+                                        stage.status === 'active'
+                                          ? 'text-emerald-700 dark:text-emerald-400'
+                                          : 'text-slate-500 dark:text-slate-400'
+                                      }`}
+                                    >
+                                      {stage.status === 'active' && (
+                                        <span
+                                          aria-hidden="true"
+                                          className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400"
+                                        />
+                                      )}
+                                      <span>
+                                        {stage.status === 'active'
+                                          ? locale === 'en'
+                                            ? 'Current Role'
+                                            : 'Aktif Saat Ini'
+                                          : locale === 'en'
+                                            ? 'Completed'
+                                            : 'Selesai'}
+                                      </span>
+                                    </span>
+                                  </div>
                                 </div>
 
                                 {isAdminUser && (
                                   <div className="no-print flex flex-wrap items-center gap-1.5">
+                                    <select
+                                      aria-label={locale === 'en' ? 'Work status' : 'Status kerja'}
+                                      value={stage.status}
+                                      onChange={(e) =>
+                                        void handleSetStageStatus(
+                                          exp,
+                                          stage.id,
+                                          e.target.value as ExperienceStatus
+                                        )
+                                      }
+                                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                                    >
+                                      <option value="active">
+                                        {locale === 'en' ? 'Active' : 'Aktif'}
+                                      </option>
+                                      <option value="completed">
+                                        {locale === 'en' ? 'Completed' : 'Selesai'}
+                                      </option>
+                                    </select>
+
+                                    <select
+                                      aria-label={
+                                        locale === 'en' ? 'Employment type' : 'Tipe penugasan'
+                                      }
+                                      value={stage.employmentType ?? 'full-time'}
+                                      onChange={(e) =>
+                                        void handleSetStageEmploymentType(
+                                          exp,
+                                          stage.id,
+                                          e.target.value as EmploymentType
+                                        )
+                                      }
+                                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                                    >
+                                      {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map(
+                                        (empType) => (
+                                          <option key={empType} value={empType}>
+                                            {EMPLOYMENT_TYPE_LABELS[empType][locale]}
+                                          </option>
+                                        )
+                                      )}
+                                    </select>
+
+                                    {onSyncCurrentRoleToProfile && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void handlePromoteStageToProfile(exp, stage)}
+                                        title={
+                                          locale === 'en'
+                                            ? 'Set as primary active role in Hero Profile card'
+                                            : 'Jadikan Posisi Aktif Utama di Kartu Profil atas'
+                                        }
+                                        className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50/70 px-2 py-1 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300 cursor-pointer"
+                                      >
+                                        <Pin className="h-3 w-3" aria-hidden="true" />
+                                        <span>
+                                          {locale === 'en' ? 'Pin to Profile' : 'Jadikan Aktif Utama'}
+                                        </span>
+                                      </button>
+                                    )}
+
                                     <button
                                       type="button"
                                       onClick={() => openEditStageModal(exp, stage)}
-                                      className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
+                                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 cursor-pointer"
                                     >
                                       <Pencil className="h-3 w-3" aria-hidden="true" />
                                       <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
                                     </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleToggleStageStatus(exp, stage.id)}
-                                      className="rounded px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
-                                    >
-                                      {stage.status === 'active'
-                                        ? locale === 'en'
-                                          ? 'Set Completed'
-                                          : 'Set Selesai'
-                                        : locale === 'en'
-                                          ? 'Set Active'
-                                          : 'Set Aktif'}
-                                    </button>
+
                                     {stages.length > 1 && (
                                       <button
                                         type="button"
                                         onClick={() => void handleDeleteStage(exp, stage.id)}
                                         aria-label={`Delete role stage ${stage.role}`}
-                                        className="rounded px-1.5 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50 cursor-pointer"
+                                        className="rounded-md border border-red-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-950/50 cursor-pointer"
                                       >
                                         <Trash2 className="h-3 w-3" aria-hidden="true" />
                                       </button>
@@ -1058,7 +1237,7 @@ export function ExperienceSection({
 
                 <div>
                   <label htmlFor="exp-status" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {locale === 'en' ? 'Role Status *' : 'Status Pekerjaan *'}
+                    {locale === 'en' ? 'Work Status *' : 'Status Pekerjaan *'}
                   </label>
                   <select
                     id="exp-status"
@@ -1070,6 +1249,44 @@ export function ExperienceSection({
                     <option value="completed">{locale === 'en' ? 'Completed' : 'Selesai'}</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="exp-emp-type" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {locale === 'en' ? 'Employment Type' : 'Tipe Penugasan'}
+                  </label>
+                  <select
+                    id="exp-emp-type"
+                    value={employmentType}
+                    onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  >
+                    {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((empType) => (
+                      <option key={empType} value={empType}>
+                        {EMPLOYMENT_TYPE_LABELS[empType][locale]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {status === 'active' && onSyncCurrentRoleToProfile && (
+                  <div className="flex items-end">
+                    <label className="flex w-full items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs font-medium text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-100 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={syncHeroProfile}
+                        onChange={(e) => setSyncHeroProfile(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                      />
+                      <span>
+                        {locale === 'en'
+                          ? 'Sync as primary active role in Hero Profile'
+                          : 'Sinkron otomatis ke Posisi Aktif Utama di Profil'}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1388,7 +1605,7 @@ export function ExperienceSection({
                 </div>
                 <div>
                   <label htmlFor="stage-status" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
-                    {locale === 'en' ? 'Status' : 'Status'}
+                    {locale === 'en' ? 'Work Status' : 'Status Pekerjaan'}
                   </label>
                   <select
                     id="stage-status"
@@ -1400,6 +1617,44 @@ export function ExperienceSection({
                     <option value="completed">{locale === 'en' ? 'Completed' : 'Selesai'}</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="stage-emp-type" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {locale === 'en' ? 'Employment Type' : 'Tipe Penugasan'}
+                  </label>
+                  <select
+                    id="stage-emp-type"
+                    value={stageEmploymentType}
+                    onChange={(e) => setStageEmploymentType(e.target.value as EmploymentType)}
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  >
+                    {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((empType) => (
+                      <option key={empType} value={empType}>
+                        {EMPLOYMENT_TYPE_LABELS[empType][locale]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {stageStatus === 'active' && onSyncCurrentRoleToProfile && (
+                  <div className="flex items-end">
+                    <label className="flex w-full items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs font-medium text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-100 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={stageSyncHeroProfile}
+                        onChange={(e) => setStageSyncHeroProfile(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                      />
+                      <span>
+                        {locale === 'en'
+                          ? 'Sync as primary active role in Hero Profile'
+                          : 'Update otomatis ke Kartu Profil Utama'}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {!stageModalTarget.editingStage && (

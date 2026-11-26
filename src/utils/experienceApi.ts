@@ -12,6 +12,7 @@ import {
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
   CareerStage,
+  EmploymentType,
   EXPERIENCES,
   ExperienceItem,
   ExperienceStatus,
@@ -29,6 +30,18 @@ export interface FirestoreExperienceItem extends ExperienceItem {
 
 const VALID_STATUS = new Set<ExperienceStatus>(['active', 'completed']);
 const VALID_CATEGORIES = new Set<'leadership' | 'operations'>(['leadership', 'operations']);
+export const VALID_EMPLOYMENT_TYPES = new Set<EmploymentType>([
+  'full-time',
+  'promotion',
+  'contract',
+  'consulting',
+]);
+export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, { en: string; id: string }> = {
+  'full-time': { en: 'Full-Time', id: 'Penuh Waktu' },
+  promotion: { en: 'Promoted', id: 'Promosi Jabatan' },
+  contract: { en: 'Contract / Project', id: 'Kontrak / Proyek' },
+  consulting: { en: 'Advisory / Consulting', id: 'Konsultan' },
+};
 
 function sanitizeStageId(raw: unknown, fallback: string): string {
   const cleaned = typeof raw === 'string' ? raw.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 128) : '';
@@ -52,6 +65,10 @@ export function parseCareerStages(raw: unknown): CareerStage[] | undefined {
       : [];
     if (!role || !period || bullets.length === 0) continue;
 
+    const employmentType = VALID_EMPLOYMENT_TYPES.has(rec.employmentType as EmploymentType)
+      ? (rec.employmentType as EmploymentType)
+      : undefined;
+
     stages.push({
       id: sanitizeStageId(rec.id, `stage_${i}`),
       role,
@@ -59,6 +76,7 @@ export function parseCareerStages(raw: unknown): CareerStage[] | undefined {
       status: VALID_STATUS.has(rec.status as ExperienceStatus)
         ? (rec.status as ExperienceStatus)
         : 'completed',
+      ...(employmentType ? { employmentType } : {}),
       period,
       periodId: (typeof rec.periodId === 'string' && rec.periodId.trim() ? rec.periodId : period).trim().slice(0, 60),
       bullets,
@@ -228,11 +246,15 @@ function sanitizeExperiencePayload(input: Omit<ExperienceItem, 'id'>) {
             .map((b) => b.trim().slice(0, 500))
             .filter(Boolean)
             .slice(0, 15);
+          const employmentType = VALID_EMPLOYMENT_TYPES.has(s.employmentType as EmploymentType)
+            ? (s.employmentType as EmploymentType)
+            : undefined;
           return {
             id: sanitizeStageId(s.id, `stage_${idx}_${Date.now()}`),
             role: stageRole,
             roleId: stageRoleId || stageRole,
             status: VALID_STATUS.has(s.status) ? s.status : 'completed',
+            ...(employmentType ? { employmentType } : {}),
             period: stagePeriod,
             periodId: stagePeriodId || stagePeriod,
             bullets: stageBullets,

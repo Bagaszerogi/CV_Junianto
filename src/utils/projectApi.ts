@@ -74,12 +74,10 @@ export function isRunningInIframe(): boolean {
   }
 }
 
+const UID_PATTERN = /^[a-zA-Z0-9_-]{16,128}$/;
+
 export async function checkIsAdminUser(user: User | null): Promise<boolean> {
   if (!user) return false;
-  const email = user.email?.trim().toLowerCase() ?? '';
-  if (user.emailVerified && ADMIN_EMAIL_ALLOWLIST.has(email)) {
-    return true;
-  }
   try {
     const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
     if (uidSnap.exists()) return true;
@@ -91,7 +89,12 @@ export async function checkIsAdminUser(user: User | null): Promise<boolean> {
       // Continue to email check
     }
   }
+
+  const email = user.email?.trim().toLowerCase() ?? '';
   if (user.emailVerified && email) {
+    if (ADMIN_EMAIL_ALLOWLIST.has(email)) {
+      return true;
+    }
     try {
       const emailSnap = await getDocFromServer(doc(db, 'admins', email));
       if (emailSnap.exists()) return true;
@@ -112,21 +115,41 @@ export async function syncAdminRecord(
 ): Promise<{ synced: boolean; error?: string }> {
   const rawEmail = user.email?.trim() ?? '';
   const normalized = rawEmail.toLowerCase();
-  if (!user.emailVerified || !rawEmail) {
+  const safeEmail = isValidEmailAddress(normalized) ? normalized : 'uid-admin@cv-junianto.local';
+
+  let existingUidData: Record<string, unknown> | null = null;
+  try {
+    const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
+    if (uidSnap.exists()) {
+      existingUidData = uidSnap.data() as Record<string, unknown>;
+    }
+  } catch {
+    // Ignore read check failure and continue
+  }
+
+  if (!existingUidData && (!user.emailVerified || !rawEmail)) {
     return { synced: false, error: 'Account email is not verified.' };
   }
 
-  const allowed = await checkIsAdminUser(user);
+  const allowed = existingUidData !== null || (await checkIsAdminUser(user));
   if (!allowed) {
     return { synced: false, error: 'Account is not registered as an admin.' };
   }
 
   const provider = user.providerData?.[0]?.providerId || 'firebase';
+  const existingAddedBy =
+    existingUidData && typeof existingUidData.addedBy === 'string'
+      ? existingUidData.addedBy
+      : !user.emailVerified
+        ? user.uid
+        : null;
+
   try {
     await setDoc(doc(db, 'admins', user.uid), {
-      email: normalized,
+      email: safeEmail,
       role: 'admin',
       provider: provider.slice(0, 40),
+      ...(existingAddedBy ? { addedBy: existingAddedBy } : {}),
       updatedAt: serverTimestamp(),
     });
     return { synced: true };
@@ -160,51 +183,76 @@ export async function listFirestoreAdminEmails(): Promise<{
   }
 }
 
-export async function addAdminEmailToFirestore(rawEmail: string): Promise<void> {
+export async function addAdminAccessToFirestore(
+  rawInput: string
+): Promise<{ kind: 'email' | 'uid'; value: string }> {
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Authentication required.');
 
-  const cleanEmail = rawEmail.trim().toLowerCase();
-  if (!isValidEmailAddress(cleanEmail)) {
-    throw new Error('Masukkan alamat email yang valid.');
-  }
+  const trimmed = rawInput.trim();
+  const cleanEmail = trimmed.toLowerCase();
 
-  const emailDocRef = doc(db, 'admins', cleanEmail);
-  try {
-    await setDoc(emailDocRef, {
-      email: cleanEmail,
-      role: 'admin',
-      provider: 'firestore-admin',
-      addedBy: currentUser.uid,
-      updatedAt: serverTimestamp(),
-    });
-
-    const regRef = doc(db, 'adminsRegistry', 'emails');
-    const regSnap = await getDocFromServer(regRef);
-    const prevList =
-      regSnap.exists() && Array.isArray(regSnap.data()?.emails)
-        ? (regSnap.data().emails as unknown[])
-            .filter((x): x is string => typeof x === 'string')
-            .map((x) => x.trim().toLowerCase())
-        : [];
-    const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
-
-    if (!regSnap.exists() || typeof regSnap.data()?.authorId !== 'string') {
-      await setDoc(regRef, {
-        emails: nextList,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
+  if (isValidEmailAddress(cleanEmail)) {
+    const emailDocRef = doc(db, 'admins', cleanEmail);
+    try {
+      await setDoc(emailDocRef, {
+        email: cleanEmail,
+        role: 'admin',
+        provider: 'firestore-admin',
+        addedBy: currentUser.uid,
         updatedAt: serverTimestamp(),
       });
-    } else {
-      await updateDoc(regRef, {
-        emails: nextList,
-        updatedAt: serverTimestamp(),
-      });
+
+      const regRef = doc(db, 'adminsRegistry', 'emails');
+      const regSnap = await getDocFromServer(regRef);
+      const prevList =
+        regSnap.exists() && Array.isArray(regSnap.data()?.emails)
+          ? (regSnap.data().emails as unknown[])
+              .filter((x): x is string => typeof x === 'string')
+              .map((x) => x.trim().toLowerCase())
+          : [];
+      const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
+
+      if (!regSnap.exists() || typeof regSnap.data()?.authorId !== 'string') {
+        await setDoc(regRef, {
+          emails: nextList,
+          authorId: currentUser.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        await updateDoc(regRef, {
+          emails: nextList,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      return { kind: 'email', value: cleanEmail };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `admins/${cleanEmail}`);
     }
-  } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `admins/${cleanEmail}`);
   }
+
+  if (UID_PATTERN.test(trimmed)) {
+    const uidDocRef = doc(db, 'admins', trimmed);
+    try {
+      await setDoc(uidDocRef, {
+        email: 'uid-admin@cv-junianto.local',
+        role: 'admin',
+        provider: 'uid-admin',
+        addedBy: currentUser.uid,
+        updatedAt: serverTimestamp(),
+      });
+      return { kind: 'uid', value: trimmed };
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `admins/${trimmed}`);
+    }
+  }
+
+  throw new Error('Masukkan alamat email yang valid atau Firebase User UID yang valid.');
+}
+
+export async function addAdminEmailToFirestore(rawEmail: string): Promise<void> {
+  await addAdminAccessToFirestore(rawEmail);
 }
 
 export async function removeAdminEmailFromFirestore(rawEmail: string): Promise<void> {
@@ -250,6 +298,7 @@ export async function signInAdminWithGoogle(): Promise<User> {
     throw new Error(`AUTH_UNAUTHORIZED_EMAIL:${signedEmail}`);
   }
   await syncAdminRecord(user);
+  await user.getIdToken(true);
   return user;
 }
 
@@ -280,6 +329,7 @@ export async function consumeGoogleRedirectResult(): Promise<{
       return { user: null, error: `AUTH_UNAUTHORIZED_EMAIL:${signedEmail}` };
     }
     await syncAdminRecord(user);
+    await user.getIdToken(true);
     return { user, error: null };
   } catch (err) {
     return {
@@ -295,11 +345,12 @@ export async function signInAdminWithEmail(
 ): Promise<{ user: User; isAdmin: boolean; needsVerification: boolean }> {
   const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
   const user = credential.user;
+  await user.getIdToken(true);
   const isAdmin = await checkIsAdminUser(user);
 
   if (isAdmin) {
-    await user.getIdToken(true);
     await syncAdminRecord(user);
+    await user.getIdToken(true);
     return { user, isAdmin: true, needsVerification: false };
   }
 

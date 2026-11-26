@@ -51,11 +51,6 @@ service cloud.firestore {
       return request.auth.token.email_verified == true && request.auth.token.email is string;
     }
 
-    function isCoreAdmin() {
-      return isSignedIn() && isVerifiedEmail() &&
-        request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'];
-    }
-
     function isAdmin() {
       return isSignedIn() && (
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
@@ -287,7 +282,8 @@ service cloud.firestore {
         data.updatedAt is timestamp &&
         (
           (isVerifiedEmail() && adminId == request.auth.uid && data.email.lower() == request.auth.token.email.lower()) ||
-          (isValidEmailStr(adminId) && adminId == adminId.lower() && data.email.lower() == adminId)
+          (isValidEmailStr(adminId) && adminId == adminId.lower() && data.email.lower() == adminId) ||
+          (isValidId(adminId) && 'addedBy' in data)
         );
     }
 
@@ -381,11 +377,12 @@ service cloud.firestore {
     function isValidCareerStage(s) {
       return s is map &&
         s.keys().hasAll(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
-        s.keys().hasOnly(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
+        s.keys().hasOnly(['id', 'role', 'roleId', 'status', 'employmentType', 'period', 'periodId', 'bullets', 'bulletsId']) &&
         isValidId(s.id) &&
         s.role is string && s.role.size() >= 1 && s.role.size() <= 140 &&
         s.roleId is string && s.roleId.size() >= 1 && s.roleId.size() <= 140 &&
         s.status is string && s.status in ['active', 'completed'] &&
+        (!('employmentType' in s) || (s.employmentType is string && s.employmentType in ['full-time', 'promotion', 'contract', 'consulting'])) &&
         s.period is string && s.period.size() >= 1 && s.period.size() <= 60 &&
         s.periodId is string && s.periodId.size() >= 1 && s.periodId.size() <= 60 &&
         s.bullets is list && s.bullets.size() >= 1 && s.bullets.size() <= 15 && s.bullets[0] is string && s.bullets[0].size() >= 1 && s.bullets[0].size() <= 500 &&
@@ -530,7 +527,7 @@ service cloud.firestore {
     // Private Admin-Only Master CV Project Gallery
     match /projects/{projectId} {
       allow get: if isAdmin() && isValidId(projectId);
-      allow list: if isCoreAdmin();
+      allow list: if isAdmin();
 
       allow create: if isAdmin() &&
         isValidId(projectId) &&
@@ -560,7 +557,7 @@ service cloud.firestore {
     // Private Admin-Only Master CV Work Experience Timeline
     match /experiences/{experienceId} {
       allow get: if isAdmin() && isValidId(experienceId);
-      allow list: if isCoreAdmin();
+      allow list: if isAdmin();
 
       allow create: if isAdmin() &&
         isValidId(experienceId) &&
@@ -598,7 +595,7 @@ service cloud.firestore {
     // Private Admin-Only Master CV Tech Stack Expertise
     match /techStacks/{stackId} {
       allow get: if isAdmin() && isValidId(stackId);
-      allow list: if isCoreAdmin();
+      allow list: if isAdmin();
 
       allow create: if isAdmin() &&
         isValidId(stackId) &&
@@ -627,7 +624,7 @@ service cloud.firestore {
     // Private Admin-Only Master CV Professional References
     match /references/{refId} {
       allow get: if isAdmin() && isValidId(refId);
-      allow list: if isCoreAdmin();
+      allow list: if isAdmin();
 
       allow create: if isAdmin() &&
         isValidId(refId) &&
@@ -691,7 +688,7 @@ service cloud.firestore {
         isValidCvIndex(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'vaultKey',
           'experienceIds',
           'projectIds',
@@ -699,7 +696,7 @@ service cloud.firestore {
           'referenceIds',
           'inviteTokens',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if false;
     }
@@ -725,13 +722,13 @@ service cloud.firestore {
         isValidInviteTokenDoc(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'label',
           'active',
           'expiresAt',
           'vaultKey',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidInviteTokenId(token);
     }
@@ -753,7 +750,7 @@ service cloud.firestore {
         isValidCvShareBundle(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'profile',
           'siteContent',
           'experiences',
@@ -761,7 +758,7 @@ service cloud.firestore {
           'references',
           'projectMeta',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidVaultKey(vaultKey);
     }
@@ -783,11 +780,11 @@ service cloud.firestore {
         isValidCvProjectAsset(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly([
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly([
           'projectId',
           'imageDataUrl',
           'updatedAt'
-        ]);
+        ]));
 
       allow delete: if isAdmin() && isValidVaultAssetId(assetId);
     }
@@ -815,8 +812,10 @@ service cloud.firestore {
           ) ||
           (
             isAdmin() &&
-            isValidEmailStr(adminId) &&
-            adminId == adminId.lower()
+            (
+              (isValidEmailStr(adminId) && adminId == adminId.lower()) ||
+              isValidId(adminId)
+            )
           )
         );
       allow delete: if isAdmin() && isValidAdminKey(adminId);
@@ -837,7 +836,7 @@ service cloud.firestore {
         isValidAdminsRegistry(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['emails', 'updatedAt']);
+        (!('authorId' in existing()) || incoming().diff(existing()).affectedKeys().hasOnly(['emails', 'updatedAt']));
       allow delete: if false;
     }
   }

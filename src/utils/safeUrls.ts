@@ -23,7 +23,7 @@ export function sanitizePortraitSrc(src: string, fallback = '/assets/portrait.pn
   if (trimmed === '') {
     return '';
   }
-  if (trimmed.length >= 5 && trimmed.length <= 600_000 && !trimmed.includes('..')) {
+  if (trimmed.length >= 5 && trimmed.length <= 750_000 && !trimmed.includes('..')) {
     if (SAFE_ASSET_RE.test(trimmed) || SAFE_DATA_IMG_RE.test(trimmed)) {
       return trimmed;
     }

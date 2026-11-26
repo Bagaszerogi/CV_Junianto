@@ -399,99 +399,109 @@ export function HeroSection({
             </div>
           </div>
 
-          {/* Right Column: Arched Brass Portrait Frame + Executive Dossier Card */}
-          <div className="print:col-span-5 lg:col-span-5">
-            <div className="print-dossier-card rounded-[24px] border border-[var(--line)] bg-[var(--bg2)]/88 p-6 backdrop-blur-sm print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-4 sm:p-7">
-              <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start print:flex-row print:items-start print:gap-3">
-                {/* Arched Portrait Frame */}
-                <div className="flex shrink-0 flex-col items-center gap-2">
-                  <div
-                    ref={frameRef}
-                    className="group/photo relative aspect-[4/5] w-32 shrink-0 rounded-t-full rounded-b-[22px] border border-[var(--brass)] bg-[var(--card)] p-2 shadow-sm print:h-24 print:w-20 print:rounded-xl print:border-slate-300 print:p-0.5 sm:w-36"
-                  >
-                    <div className="relative h-full w-full overflow-hidden rounded-t-full rounded-b-[16px] print:rounded-xl">
-                      {showPhoto ? (
-                        <img
-                          src={safePortrait}
-                          alt={`${profile.name} portrait`}
-                          referrerPolicy="no-referrer"
-                          onError={() => setImgError(true)}
-                          className="h-full w-full object-cover object-top"
-                        />
-                      ) : (
-                        <div
-                          aria-hidden="true"
-                          className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-3xl font-bold text-[var(--brass)]"
-                        >
-                          {initials || 'JB'}
-                        </div>
-                      )}
-
-                      {isAdminUser && (
-                        <button
-                          type="button"
-                          disabled={isUploadingPhoto}
-                          onClick={() => photoInputRef.current?.click()}
-                          aria-label="Change portrait photo"
-                          className="no-print absolute inset-0 flex flex-col items-center justify-center bg-[#0a1024]/65 text-[11px] font-semibold text-white opacity-0 transition-opacity group-hover/photo:opacity-100 cursor-pointer"
-                        >
-                          <Camera className="mb-1 h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
-                          <span>{isUploadingPhoto ? '...' : locale === 'en' ? 'Photo' : 'Ganti'}</span>
-                        </button>
-                      )}
+          {/* Right Column: Large Arched Brass Portrait Frame (PNG/Cutout Ready) + Compact Dossier */}
+          <div className="flex flex-col items-center lg:col-span-5 lg:items-end print:col-span-5 print:items-stretch">
+            {/* Large Standalone Arched Portrait */}
+            <div className="flex w-full flex-col items-center lg:items-end print:hidden">
+              <div
+                ref={frameRef}
+                className="group/photo relative aspect-[4/5] w-[220px] max-w-full rounded-t-full rounded-b-[28px] border border-[var(--brass)] bg-[var(--card)] p-2.5 shadow-xl sm:w-[270px] lg:w-[320px]"
+              >
+                <div className="relative h-full w-full overflow-hidden rounded-t-full rounded-b-[20px] bg-gradient-to-b from-[var(--bg2)] to-[var(--bg)]">
+                  {showPhoto ? (
+                    <img
+                      src={safePortrait}
+                      alt={`${profile.name} portrait`}
+                      referrerPolicy="no-referrer"
+                      onError={() => setImgError(true)}
+                      className="h-full w-full object-cover object-top"
+                    />
+                  ) : (
+                    <div
+                      aria-hidden="true"
+                      className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-6xl font-bold tracking-tight text-[var(--brass)] sm:text-7xl"
+                    >
+                      {initials || 'JB'}
                     </div>
-                  </div>
+                  )}
 
                   {isAdminUser && (
-                    <div className="no-print flex flex-wrap items-center justify-center gap-1.5">
-                      <button
-                        type="button"
-                        disabled={isUploadingPhoto || isRemovingPhoto}
-                        onClick={() => photoInputRef.current?.click()}
-                        className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] px-2.5 py-1 text-[11px] font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] cursor-pointer"
-                      >
-                        <Camera className="h-3 w-3 text-[var(--brass)]" aria-hidden="true" />
-                        <span>
-                          {isUploadingPhoto
-                            ? '...'
-                            : locale === 'en'
-                              ? 'Change'
-                              : 'Ganti'}
-                        </span>
-                      </button>
-
-                      {Boolean(safePortrait) && (
-                        <button
-                          type="button"
-                          disabled={isUploadingPhoto || isRemovingPhoto}
-                          onClick={() => void handleRemovePhoto()}
-                          title={locale === 'en' ? 'Remove photo (use JB monogram)' : 'Hapus foto (pakai monogram JB)'}
-                          className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2.5 py-1 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-300 cursor-pointer"
-                        >
-                          <Trash2 className="h-3 w-3" aria-hidden="true" />
-                          <span>{isRemovingPhoto ? '...' : locale === 'en' ? 'Remove' : 'Hapus'}</span>
-                        </button>
-                      )}
-
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleQuickPhotoUpload}
-                        className="hidden"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      disabled={isUploadingPhoto}
+                      onClick={() => photoInputRef.current?.click()}
+                      aria-label={locale === 'en' ? 'Upload PNG or portrait photo' : 'Upload PNG / Ganti Foto'}
+                      className="no-print absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[#0a1024]/65 text-xs font-semibold text-white opacity-0 transition-opacity group-hover/photo:opacity-100 cursor-pointer"
+                    >
+                      <Camera className="h-6 w-6 text-[var(--brass)]" aria-hidden="true" />
+                      <span>
+                        {isUploadingPhoto
+                          ? locale === 'en'
+                            ? 'Uploading...'
+                            : 'Mengunggah...'
+                          : locale === 'en'
+                            ? 'Upload PNG / Photo'
+                            : 'Upload PNG / Ganti Foto'}
+                      </span>
+                    </button>
                   )}
                 </div>
+              </div>
 
-                {/* Role & Property Context */}
-                <div className="min-w-0 flex-1 text-center sm:text-left print:text-left">
-                  {photoError && (
-                    <p className="mb-1.5 text-[11px] font-medium text-red-600 dark:text-red-400">
-                      {photoError}
-                    </p>
+              {isAdminUser && (
+                <div className="no-print mt-3 flex flex-wrap items-center justify-center gap-2 lg:justify-end">
+                  <button
+                    type="button"
+                    disabled={isUploadingPhoto || isRemovingPhoto}
+                    onClick={() => photoInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brass)]/60 bg-[var(--bg2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--ink)] transition-colors hover:bg-[var(--brass)] hover:text-[#1a1405] cursor-pointer"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
+                    <span>
+                      {isUploadingPhoto
+                        ? locale === 'en'
+                          ? 'Processing...'
+                          : 'Memproses...'
+                        : locale === 'en'
+                          ? 'Upload PNG / Photo'
+                          : 'Upload PNG / Ganti Foto'}
+                    </span>
+                  </button>
+
+                  {Boolean(safePortrait) && (
+                    <button
+                      type="button"
+                      disabled={isUploadingPhoto || isRemovingPhoto}
+                      onClick={() => void handleRemovePhoto()}
+                      title={locale === 'en' ? 'Remove photo (use JB monogram)' : 'Hapus foto (pakai monogram JB)'}
+                      className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-500/20 dark:text-red-300 cursor-pointer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                      <span>{isRemovingPhoto ? '...' : locale === 'en' ? 'Remove' : 'Hapus'}</span>
+                    </button>
                   )}
 
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/png,image/webp,image/jpeg,image/*"
+                    onChange={handleQuickPhotoUpload}
+                    className="hidden"
+                  />
+                </div>
+              )}
+
+              {photoError && (
+                <p className="mt-2 max-w-[320px] text-center text-xs font-medium text-red-600 lg:text-right dark:text-red-400">
+                  {photoError}
+                </p>
+              )}
+            </div>
+
+            {/* Compact Executive Dossier Card (also carries compact print portrait on A4 export) */}
+            <div className="print-dossier-card mt-5 w-full max-w-[380px] rounded-[22px] border border-[var(--line)] bg-[var(--bg2)]/88 p-5 backdrop-blur-sm print:mt-0 print:max-w-full print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-3.5 sm:p-6">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] px-3 py-1 text-[11px] font-semibold tracking-wide text-[var(--brass)] uppercase print:hidden">
                     <span className="brass-pulse h-1.5 w-1.5 rounded-full bg-[var(--brass)]" aria-hidden="true" />
                     <EditableText
@@ -502,7 +512,7 @@ export function HeroSection({
                     />
                   </span>
 
-                  <p className="mt-3 font-display text-lg font-bold tracking-tight text-[var(--ink)] print:mt-0 print:text-sm">
+                  <p className="mt-2.5 font-display text-base font-bold tracking-tight text-[var(--ink)] print:mt-0 print:text-sm sm:text-lg">
                     <EditableText
                       value={profile.currentCompany}
                       canEdit={isAdminUser}
@@ -518,7 +528,7 @@ export function HeroSection({
                       onSave={(val) => onSaveProfilePatch({ currentRole: val })}
                     />
                   </p>
-                  <p className="mt-1.5 text-xs text-[var(--mute)] print:text-[10px]">
+                  <p className="mt-1 text-xs text-[var(--mute)] print:text-[10px]">
                     <EditableText
                       value={siteCopy.heroPropertyScale}
                       canEdit={isAdminUser}
@@ -527,14 +537,29 @@ export function HeroSection({
                     />
                   </p>
                 </div>
+
+                {/* Print-only portrait inside A4 dossier header */}
+                <div className="hidden aspect-[4/5] w-20 shrink-0 overflow-hidden rounded-xl border border-slate-300 bg-slate-100 p-0.5 print:block">
+                  {showPhoto ? (
+                    <img
+                      src={safePortrait}
+                      alt={`${profile.name} portrait`}
+                      className="h-full w-full rounded-[10px] object-cover object-top"
+                    />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center rounded-[10px] font-display text-lg font-bold text-slate-700">
+                      {initials || 'JB'}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Clean hairline-divided contact details */}
-              <div className="mt-6 divide-y divide-[var(--line)] border-t border-[var(--line)] text-sm print:mt-3 print:divide-slate-200 print:border-slate-200 print:text-xs">
-                <div className="flex items-center justify-between gap-3 py-3 print:py-1.5">
+              <div className="mt-4 divide-y divide-[var(--line)] border-t border-[var(--line)] text-sm print:mt-2.5 print:divide-slate-200 print:border-slate-200 print:text-xs">
+                <div className="flex items-center justify-between gap-3 py-2.5 print:py-1">
                   <a
                     href={phoneHref}
-                    className="flex min-w-0 items-center gap-3 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
+                    className="flex min-w-0 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
                   >
                     <Phone className="h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                     <EditableText
@@ -567,10 +592,10 @@ export function HeroSection({
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 py-3 print:py-1.5">
+                <div className="flex items-center justify-between gap-3 py-2.5 print:py-1">
                   <a
                     href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                    className="flex min-w-0 items-center gap-3 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
+                    className="flex min-w-0 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
                   >
                     <Mail className="h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                     <EditableText
@@ -603,7 +628,7 @@ export function HeroSection({
                   </button>
                 </div>
 
-                <div className="flex items-start gap-3 pt-3 print:pt-1.5">
+                <div className="flex items-start gap-2.5 pt-2.5 print:pt-1">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                   <span className="leading-snug text-[var(--mute)] print:text-slate-700">
                     <EditableText
@@ -616,7 +641,7 @@ export function HeroSection({
                 </div>
               </div>
 
-              <div className="no-print mt-5 flex items-center justify-between border-t border-[var(--line)] pt-4 text-xs text-[var(--mute)]">
+              <div className="no-print mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--mute)]">
                 <EditableText
                   value={siteCopy.heroDossierFooter}
                   canEdit={isAdminUser}

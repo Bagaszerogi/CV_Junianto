@@ -169,8 +169,8 @@ export function ProfileEditModal({
             <div className="space-y-4">
               {/* Portrait Photo Upload & Remove */}
               <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:flex-row sm:items-center">
-                <div className="h-28 w-22 shrink-0 overflow-hidden rounded-t-full rounded-b-[12px] border border-[var(--brass)] bg-[var(--card)] p-1">
-                  <div className="h-full w-full overflow-hidden rounded-t-full rounded-b-[8px]">
+                <div className="aspect-[4/5] w-28 shrink-0 overflow-hidden rounded-t-full rounded-b-[16px] border border-[var(--brass)] bg-[var(--card)] p-1.5">
+                  <div className="h-full w-full overflow-hidden rounded-t-full rounded-b-[10px] bg-gradient-to-b from-[var(--bg2)] to-[var(--bg)]">
                     {previewPortrait ? (
                       <img
                         src={previewPortrait}
@@ -178,7 +178,7 @@ export function ProfileEditModal({
                         className="h-full w-full object-cover object-top"
                       />
                     ) : (
-                      <div className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-xl font-bold text-[var(--brass)]">
+                      <div className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-2xl font-bold text-[var(--brass)]">
                         {initials || 'JB'}
                       </div>
                     )}
@@ -186,12 +186,12 @@ export function ProfileEditModal({
                 </div>
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-[var(--ink)]">
-                    {locale === 'en' ? 'Profile Portrait Photo' : 'Foto Profil CV'}
+                    {locale === 'en' ? 'Profile Portrait Photo (PNG / JPG / WebP)' : 'Foto Profil Utama (PNG Transparan / JPG / WebP)'}
                   </p>
                   <p className="mt-0.5 text-xs text-[var(--mute)]">
                     {locale === 'en'
-                      ? 'Framed cleanly in the brass portrait arch. Remove the photo anytime to switch to a JB monogram.'
-                      : 'Dibingkai melengkung emas di kartu profil. Anda dapat menghapus foto kapan saja untuk menampilkan monogram JB.'}
+                      ? 'Framed prominently on the right side in a 4:5 brass arch. Transparent PNG cutouts preserve their alpha background.'
+                      : 'Ditampilkan besar di sisi kanan dalam bingkai melengkung emas 4:5. Upload PNG transparan tetap menjaga latar bening.'}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
@@ -207,8 +207,8 @@ export function ProfileEditModal({
                             ? 'Processing...'
                             : 'Memproses...'
                           : locale === 'en'
-                            ? 'Change Photo'
-                            : 'Ganti Foto'}
+                            ? 'Upload PNG / Photo'
+                            : 'Upload PNG / Foto'}
                       </span>
                     </button>
                     {Boolean(previewPortrait) && (
@@ -225,7 +225,7 @@ export function ProfileEditModal({
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*"
+                      accept="image/png,image/webp,image/jpeg,image/*"
                       onChange={handlePhotoUpload}
                       className="hidden"
                     />

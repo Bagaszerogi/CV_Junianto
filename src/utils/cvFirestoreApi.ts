@@ -9,6 +9,7 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  Timestamp,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
@@ -27,6 +28,7 @@ import {
   registerEntityInCvIndex,
   schedulePublishedSnapshotSync,
 } from './inviteApi';
+import { syncAdminRecord } from './projectApi';
 
 export interface SiteCopyLocale {
   navProfile: string;
@@ -367,31 +369,50 @@ export async function upsertFirestoreDoc(
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Authentication required.');
 
-  const snap = await getDocFromServer(docRef);
-  if (!snap.exists()) {
+  const runWrite = async (): Promise<void> => {
+    const snap = await getDocFromServer(docRef);
+    if (!snap.exists()) {
+      await setDoc(docRef, {
+        ...payload,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    const existing = snap.data();
+    const preservedAuthorId =
+      typeof existing?.authorId === 'string' && existing.authorId.length > 0
+        ? existing.authorId
+        : currentUser.uid;
+    const hasValidCreatedAt =
+      existing?.createdAt instanceof Timestamp ||
+      typeof existing?.createdAt?.toMillis === 'function';
+    const preservedCreatedAt = hasValidCreatedAt
+      ? existing.createdAt
+      : serverTimestamp();
+
     await setDoc(docRef, {
       ...payload,
-      authorId: currentUser.uid,
-      createdAt: serverTimestamp(),
+      authorId: preservedAuthorId,
+      createdAt: preservedCreatedAt,
       updatedAt: serverTimestamp(),
     });
-    return;
+  };
+
+  try {
+    await runWrite();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+    if (msg.includes('permission') || msg.includes('insufficient')) {
+      await currentUser.getIdToken(true).catch(() => undefined);
+      await syncAdminRecord(currentUser).catch(() => undefined);
+      await runWrite();
+      return;
+    }
+    throw err;
   }
-
-  const existing = snap.data();
-  const preservedAuthorId =
-    typeof existing?.authorId === 'string' && existing.authorId.length > 0
-      ? existing.authorId
-      : currentUser.uid;
-  const preservedCreatedAt =
-    existing?.createdAt != null ? existing.createdAt : serverTimestamp();
-
-  await setDoc(docRef, {
-    ...payload,
-    authorId: preservedAuthorId,
-    createdAt: preservedCreatedAt,
-    updatedAt: serverTimestamp(),
-  });
 }
 
 export function subscribeTechStacks(
@@ -669,14 +690,88 @@ export async function deleteReferenceFromFirestore(id: string): Promise<void> {
   }
 }
 
-export function compressPortraitImage(file: File, maxDimension = 560): Promise<string> {
+function detectHasTransparency(img: HTMLImageElement): boolean {
+  try {
+    const probeW = Math.min(64, Math.max(1, img.width));
+    const probeH = Math.min(64, Math.max(1, img.height));
+    const probeCanvas = document.createElement('canvas');
+    probeCanvas.width = probeW;
+    probeCanvas.height = probeH;
+    const probeCtx = probeCanvas.getContext('2d');
+    if (!probeCtx) return false;
+    probeCtx.clearRect(0, 0, probeW, probeH);
+    probeCtx.drawImage(img, 0, 0, probeW, probeH);
+    const { data } = probeCtx.getImageData(0, 0, probeW, probeH);
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] < 245) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function renderPortraitCanvas(
+  img: HTMLImageElement,
+  targetW: number,
+  targetH: number,
+  isTransparentCutout: boolean
+): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas context unavailable.');
+  }
+  ctx.clearRect(0, 0, targetW, targetH);
+
+  const srcRatio = img.width / Math.max(1, img.height);
+  const dstRatio = targetW / targetH; // 4:5 = 0.8
+
+  if (isTransparentCutout) {
+    // Fit entire transparent PNG cutout cleanly inside 4:5 frame anchored at bottom
+    let drawW = targetW;
+    let drawH = targetH;
+    if (srcRatio > dstRatio) {
+      drawW = targetW;
+      drawH = Math.round(targetW / srcRatio);
+    } else {
+      drawH = targetH;
+      drawW = Math.round(targetH * srcRatio);
+    }
+    const dx = Math.round((targetW - drawW) / 2);
+    const dy = Math.round(targetH - drawH);
+    ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, drawW, drawH);
+    return canvas;
+  }
+
+  // Cover-crop standard photos cleanly to 4:5 with top portrait headroom bias
+  let sx = 0;
+  let sy = 0;
+  let sw = img.width;
+  let sh = img.height;
+
+  if (srcRatio > dstRatio) {
+    sw = Math.round(img.height * dstRatio);
+    sx = Math.max(0, Math.round((img.width - sw) / 2));
+  } else {
+    sh = Math.round(img.width / dstRatio);
+    sy = Math.max(0, Math.round((img.height - sh) * 0.14));
+  }
+
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+  return canvas;
+}
+
+export function compressPortraitImage(file: File, maxHeight = 800): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error('File must be an image (JPG, PNG, or WebP).'));
       return;
     }
-    if (file.size > 12 * 1024 * 1024) {
-      reject(new Error('Image size must be 12 MB or smaller.'));
+    if (file.size > 15 * 1024 * 1024) {
+      reject(new Error('Image size must be 15 MB or smaller.'));
       return;
     }
 
@@ -686,39 +781,54 @@ export function compressPortraitImage(file: File, maxDimension = 560): Promise<s
       const img = new Image();
       img.onerror = () => reject(new Error('Invalid image file.'));
       img.onload = () => {
-        const size = Math.min(img.width, img.height);
-        const sx = Math.floor((img.width - size) / 2);
-        const sy = img.height > img.width ? Math.floor((img.height - size) * 0.18) : 0;
-        const target = Math.min(size, maxDimension);
+        try {
+          const isPngOrWebp =
+            file.type === 'image/png' || file.type === 'image/webp';
+          const hasAlpha = isPngOrWebp && detectHasTransparency(img);
+          const preserveAlpha = hasAlpha || file.type === 'image/png';
 
-        const canvas = document.createElement('canvas');
-        canvas.width = target;
-        canvas.height = target;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Canvas context unavailable.'));
-          return;
-        }
-        ctx.drawImage(img, sx, sy, size, size, 0, 0, target, target);
+          const sizes: Array<[number, number]> = [
+            [Math.round(maxHeight * 0.8), maxHeight], // 640x800
+            [480, 600],
+            [384, 480],
+            [320, 400],
+          ];
 
-        let quality = 0.85;
-        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-        while (dataUrl.length > 520_000 && quality > 0.35) {
-          quality -= 0.1;
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
-        }
-        if (dataUrl.length > 580_000) {
-          const smallCanvas = document.createElement('canvas');
-          const smallTarget = Math.min(target, 360);
-          smallCanvas.width = smallTarget;
-          smallCanvas.height = smallTarget;
-          const smallCtx = smallCanvas.getContext('2d');
-          if (smallCtx) {
-            smallCtx.drawImage(canvas, 0, 0, smallTarget, smallTarget);
-            dataUrl = smallCanvas.toDataURL('image/jpeg', 0.72);
+          for (const [w, h] of sizes) {
+            const canvas = renderPortraitCanvas(img, w, h, preserveAlpha);
+            if (preserveAlpha) {
+              // WebP supports full RGBA alpha transparency at ~5x smaller size than PNG
+              for (let q = 0.9; q >= 0.45; q -= 0.1) {
+                const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
+                if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= 720_000) {
+                  resolve(webpUrl);
+                  return;
+                }
+              }
+              const pngUrl = canvas.toDataURL('image/png');
+              if (pngUrl.length <= 720_000) {
+                resolve(pngUrl);
+                return;
+              }
+            } else {
+              for (let q = 0.86; q >= 0.4; q -= 0.1) {
+                const jpgUrl = canvas.toDataURL('image/jpeg', Number(q.toFixed(2)));
+                if (jpgUrl.length <= 720_000) {
+                  resolve(jpgUrl);
+                  return;
+                }
+              }
+            }
           }
+
+          reject(
+            new Error(
+              'Portrait image is still too large after compression. Please choose a smaller PNG/JPG file.'
+            )
+          );
+        } catch (err) {
+          reject(err instanceof Error ? err : new Error(String(err)));
         }
-        resolve(dataUrl);
       };
       img.src = String(reader.result);
     };

@@ -274,7 +274,10 @@ export async function registerEntityInCvIndex(
         typeof existing?.authorId === 'string' && existing.authorId.length > 0
           ? existing.authorId
           : user.uid,
-      createdAt: existing?.createdAt != null ? existing.createdAt : serverTimestamp(),
+      createdAt:
+        existing?.createdAt instanceof Timestamp || typeof existing?.createdAt?.toMillis === 'function'
+          ? existing.createdAt
+          : serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -478,7 +481,10 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
             typeof assetExisting?.authorId === 'string' && assetExisting.authorId.length > 0
               ? assetExisting.authorId
               : user.uid,
-          createdAt: assetExisting?.createdAt != null ? assetExisting.createdAt : serverTimestamp(),
+          createdAt:
+            assetExisting?.createdAt instanceof Timestamp || typeof assetExisting?.createdAt?.toMillis === 'function'
+              ? assetExisting.createdAt
+              : serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
       })
@@ -502,7 +508,10 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
         typeof shareExisting?.authorId === 'string' && shareExisting.authorId.length > 0
           ? shareExisting.authorId
           : user.uid,
-      createdAt: shareExisting?.createdAt != null ? shareExisting.createdAt : serverTimestamp(),
+      createdAt:
+        shareExisting?.createdAt instanceof Timestamp || typeof shareExisting?.createdAt?.toMillis === 'function'
+          ? shareExisting.createdAt
+          : serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
 
@@ -520,7 +529,10 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
         typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
           ? indexExisting.authorId
           : user.uid,
-      createdAt: indexExisting?.createdAt != null ? indexExisting.createdAt : serverTimestamp(),
+      createdAt:
+        indexExisting?.createdAt instanceof Timestamp || typeof indexExisting?.createdAt?.toMillis === 'function'
+          ? indexExisting.createdAt
+          : serverTimestamp(),
       updatedAt: serverTimestamp(),
     }).catch(() => undefined);
 

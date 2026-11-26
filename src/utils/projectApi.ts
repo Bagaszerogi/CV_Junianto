@@ -152,6 +152,15 @@ export async function syncAdminRecord(
       ...(existingAddedBy ? { addedBy: existingAddedBy } : {}),
       updatedAt: serverTimestamp(),
     });
+    if (user.emailVerified && ADMIN_EMAIL_ALLOWLIST.has(normalized)) {
+      await setDoc(doc(db, 'admins', normalized), {
+        email: normalized,
+        role: 'admin',
+        provider: provider.slice(0, 40),
+        addedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      }).catch(() => undefined);
+    }
     return { synced: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -560,7 +569,7 @@ export async function updateFirestoreProject(
   const sanitized = sanitizeProjectFields(input);
   const path = `projects/${projectId}`;
 
-  try {
+  const runWrite = async () => {
     const docRef = doc(db, 'projects', projectId);
     const snap = await getDocFromServer(docRef);
     const existing = snap.exists() ? snap.data() : null;
@@ -568,13 +577,31 @@ export async function updateFirestoreProject(
       typeof existing?.authorId === 'string' && existing.authorId.length > 0
         ? existing.authorId
         : currentUser.uid;
-    const createdAt = existing?.createdAt != null ? existing.createdAt : serverTimestamp();
+    const hasValidCreatedAt =
+      existing?.createdAt instanceof Timestamp ||
+      typeof existing?.createdAt?.toMillis === 'function';
+    const createdAt = hasValidCreatedAt ? existing.createdAt : serverTimestamp();
     await setDoc(docRef, {
       ...sanitized,
       authorId,
       createdAt,
       updatedAt: serverTimestamp(),
     });
+  };
+
+  try {
+    try {
+      await runWrite();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+      if (msg.includes('permission') || msg.includes('insufficient')) {
+        await currentUser.getIdToken(true).catch(() => undefined);
+        await syncAdminRecord(currentUser).catch(() => undefined);
+        await runWrite();
+      } else {
+        throw err;
+      }
+    }
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {

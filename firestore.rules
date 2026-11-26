@@ -64,7 +64,7 @@ service cloud.firestore {
     }
 
     function isValidPortrait(val) {
-      return val is string && (val == "" || (val.size() >= 5 && val.size() <= 600000 && !val.matches('.*\\.\\..*') && (
+      return val is string && (val == "" || (val.size() >= 5 && val.size() <= 750000 && !val.matches('.*\\.\\..*') && (
         val.matches('^/assets/[a-zA-Z0-9_./-]+$') ||
         val.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
       )));
@@ -369,8 +369,12 @@ service cloud.firestore {
 
     function preservesImmutableAuditFields() {
       return (
-        (!('authorId' in existing()) ? incoming().authorId == request.auth.uid : incoming().authorId == existing().authorId) &&
-        (!('createdAt' in existing()) ? incoming().createdAt == request.time : incoming().createdAt == existing().createdAt)
+        (!('authorId' in existing()) || !(existing().authorId is string) || existing().authorId.size() == 0
+          ? incoming().authorId == request.auth.uid
+          : incoming().authorId == existing().authorId) &&
+        (!('createdAt' in existing()) || !(existing().createdAt is timestamp)
+          ? incoming().createdAt == request.time
+          : incoming().createdAt == existing().createdAt)
       );
     }
 
@@ -540,6 +544,8 @@ service cloud.firestore {
           'portraitDataUrl',
           'metrics',
           'education',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -581,6 +587,8 @@ service cloud.firestore {
           'category',
           'description',
           'imageDataUrl',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -638,6 +646,8 @@ service cloud.firestore {
           'systems',
           'sortOrder',
           'careerStages',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -677,6 +687,8 @@ service cloud.firestore {
           'labelId',
           'items',
           'sortOrder',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -714,6 +726,8 @@ service cloud.firestore {
           'role',
           'phone',
           'sortOrder',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -738,7 +752,7 @@ service cloud.firestore {
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).addedKeys().hasOnly(['en', 'id', 'authorId', 'createdAt', 'updatedAt']) &&
-        incoming().diff(existing()).changedKeys().hasOnly(['en', 'id', 'updatedAt']);
+        incoming().diff(existing()).changedKeys().hasOnly(['en', 'id', 'authorId', 'createdAt', 'updatedAt']);
 
       allow delete: if false;
     }
@@ -778,6 +792,8 @@ service cloud.firestore {
           'techStackIds',
           'referenceIds',
           'inviteTokens',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -820,6 +836,8 @@ service cloud.firestore {
           'active',
           'expiresAt',
           'vaultKey',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -861,6 +879,8 @@ service cloud.firestore {
           'techStacks',
           'references',
           'projectMeta',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -894,6 +914,8 @@ service cloud.firestore {
         incoming().diff(existing()).changedKeys().hasOnly([
           'projectId',
           'imageDataUrl',
+          'authorId',
+          'createdAt',
           'updatedAt'
         ]);
 
@@ -948,7 +970,7 @@ service cloud.firestore {
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
         incoming().diff(existing()).addedKeys().hasOnly(['emails', 'authorId', 'createdAt', 'updatedAt']) &&
-        incoming().diff(existing()).changedKeys().hasOnly(['emails', 'updatedAt']);
+        incoming().diff(existing()).changedKeys().hasOnly(['emails', 'authorId', 'createdAt', 'updatedAt']);
       allow delete: if false;
     }
   }

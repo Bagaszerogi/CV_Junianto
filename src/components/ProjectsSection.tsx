@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, DragEvent, ChangeEvent, FormEvent } from 'react';
+import { useEffect, useRef, useState, DragEvent, ChangeEvent, FormEvent, MouseEvent } from 'react';
 import {
   Plus,
   Upload,
@@ -79,6 +79,12 @@ export function ProjectsSection({
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleCardMouseMove = (e: MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    e.currentTarget.style.setProperty('--my', `${e.clientY - rect.top}px`);
+  };
 
   useEffect(() => {
     if (!isAdminUser && invitedProjects) {
@@ -353,15 +359,16 @@ export function ProjectsSection({
     <section
       id="projects"
       data-animate="section"
-      className={`print-section border-b border-slate-200 bg-white py-14 print:bg-white print:py-5 dark:border-slate-800 dark:bg-slate-900 md:py-20 ${
+      className={`print-section border-b border-[var(--line)] bg-[var(--bg)] py-16 print:bg-white print:py-5 md:py-24 ${
         projects.length === 0 ? 'print:hidden' : ''
       }`}
     >
-      <div className="mx-auto max-w-6xl px-6 print:px-0">
+      <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] print:px-0">
         {/* Section Header + Upload Toolbar */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
+            <p className="inline-flex items-center gap-3 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--brass)] print:text-[10px]">
+              <span className="inline-block h-px w-[22px] bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
                 value={siteCopy.projectsKicker}
                 canEdit={isAdminUser}
@@ -369,7 +376,7 @@ export function ProjectsSection({
                 onSave={(val) => onSaveSiteCopyField('projectsKicker', val)}
               />
             </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
+            <h2 className="mt-2.5 font-display text-[clamp(1.75rem,3.6vw,2.75rem)] font-bold tracking-tight text-[var(--ink)] print:mt-0.5 print:text-lg">
               <EditableText
                 value={siteCopy.projectsTitle}
                 canEdit={isAdminUser}
@@ -377,7 +384,7 @@ export function ProjectsSection({
                 onSave={(val) => onSaveSiteCopyField('projectsTitle', val)}
               />
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
+            <p className="mt-2.5 max-w-2xl text-[15px] leading-relaxed text-[var(--mute)] print:hidden">
               <EditableText
                 value={siteCopy.projectsDesc}
                 canEdit={isAdminUser}
@@ -393,7 +400,7 @@ export function ProjectsSection({
               <button
                 type="button"
                 onClick={openNewUploadModal}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-xs font-semibold text-white transition-colors duration-150 hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-4 py-2.5 text-xs font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Add Project' : 'Tambah Proyek'}</span>
@@ -408,7 +415,7 @@ export function ProjectsSection({
             <div
               role="tablist"
               aria-label="Filter projects by category"
-              className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800"
+              className="flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] p-1"
             >
               {filterKeys.map((key) => (
                 <button
@@ -417,10 +424,10 @@ export function ProjectsSection({
                   role="tab"
                   aria-selected={filter === key}
                   onClick={() => setFilter(key)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
                     filter === key
-                      ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                      ? 'bg-[var(--ink)] text-[var(--bg)] shadow-xs'
+                      : 'text-[var(--mute)] hover:text-[var(--ink)]'
                   }`}
                 >
                   {key === 'all'
@@ -432,7 +439,7 @@ export function ProjectsSection({
               ))}
             </div>
 
-            <p className="font-mono text-xs text-slate-500 tabular-nums dark:text-slate-400">
+            <p className="font-mono text-xs text-[var(--mute)] tabular-nums">
               {filteredProjects.length} {locale === 'en' ? 'projects' : 'proyek'}
             </p>
           </div>
@@ -442,7 +449,7 @@ export function ProjectsSection({
         {loadError && (
           <div
             role="alert"
-            className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
+            className="mt-6 rounded-xl border border-red-300/60 bg-red-50/90 px-4 py-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
           >
             {loadError}
           </div>
@@ -453,16 +460,16 @@ export function ProjectsSection({
           <ProjectGridSkeleton count={3} />
         ) : projects.length === 0 ? (
           /* Empty State */
-          <div className="no-print mt-10 flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-950">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+          <div className="no-print mt-10 flex flex-col items-center justify-center rounded-[22px] border border-dashed border-[var(--line)] bg-[var(--bg2)]/70 px-6 py-14 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--bg)] text-[var(--brass)]">
               <ImageIcon className="h-5 w-5" aria-hidden="true" />
             </div>
-            <h3 className="mt-4 font-display text-lg font-bold text-slate-950 dark:text-white">
+            <h3 className="mt-4 font-display text-lg font-bold text-[var(--ink)]">
               {locale === 'en'
                 ? 'No project photos published yet'
                 : 'Belum ada proyek yang ditambahkan'}
             </h3>
-            <p className="mt-1.5 max-w-md text-sm text-slate-600 dark:text-slate-400">
+            <p className="mt-1.5 max-w-md text-sm text-[var(--mute)]">
               {isAdminUser
                 ? locale === 'en'
                   ? 'Add a project with Name, Photo, and Year. New entries keep appending cleanly downward.'
@@ -476,7 +483,7 @@ export function ProjectsSection({
                 <button
                   type="button"
                   onClick={openNewUploadModal}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                  className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-5 py-2.5 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
                   <span>
@@ -487,7 +494,7 @@ export function ProjectsSection({
                 <button
                   type="button"
                   onClick={onOpenAuth}
-                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--bg)] px-5 py-2.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] cursor-pointer"
                 >
                   <Lock className="h-4 w-4" aria-hidden="true" />
                   <span>
@@ -498,8 +505,8 @@ export function ProjectsSection({
             </div>
           </div>
         ) : filteredProjects.length === 0 ? (
-          <div className="mt-10 rounded-2xl border border-slate-200 bg-slate-50 px-6 py-12 text-center dark:border-slate-800 dark:bg-slate-950">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+          <div className="mt-10 rounded-[22px] border border-[var(--line)] bg-[var(--bg2)]/70 px-6 py-12 text-center">
+            <p className="text-sm font-medium text-[var(--mute)]">
               {locale === 'en'
                 ? 'No projects found in this category.'
                 : 'Belum ada proyek pada kategori ini.'}
@@ -511,14 +518,15 @@ export function ProjectsSection({
             {filteredProjects.map((project) => (
               <article
                 key={project.id}
-                className="print-break-inside-avoid group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white transition-shadow duration-150 hover:shadow-md print:rounded-lg print:border-slate-300 dark:border-slate-800 dark:bg-slate-950"
+                onMouseMove={handleCardMouseMove}
+                className="editorial-card print-break-inside-avoid group flex flex-col bg-[var(--bg2)]/65 print:rounded-lg print:border-slate-300"
               >
-                <div className="relative aspect-4/3 w-full overflow-hidden bg-slate-100 print:aspect-16/9 dark:bg-slate-800">
+                <div className="relative z-10 aspect-4/3 w-full overflow-hidden bg-[var(--bg2)] print:aspect-16/9">
                   <button
                     type="button"
                     onClick={() => setActiveLightboxId(project.id)}
                     aria-label={`View ${project.title}`}
-                    className="h-full w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 cursor-pointer"
+                    className="h-full w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brass)] cursor-pointer"
                   >
                     {!brokenImages[project.id] && sanitizeProjectImageSrc(project.imageDataUrl) ? (
                       <img
@@ -528,31 +536,31 @@ export function ProjectsSection({
                         onError={() =>
                           setBrokenImages((prev) => ({ ...prev, [project.id]: true }))
                         }
-                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                       />
                     ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center bg-slate-100 p-4 text-center text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        <ImageIcon className="h-8 w-8 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                      <div className="flex h-full w-full flex-col items-center justify-center bg-[var(--bg2)] p-4 text-center text-[var(--mute)]">
+                        <ImageIcon className="h-8 w-8 text-[var(--brass)]/70" aria-hidden="true" />
                         <span className="mt-2 text-xs font-medium">{project.title}</span>
                       </div>
                     )}
                   </button>
 
                   {/* Year Badge */}
-                  <span className="pointer-events-none absolute top-3 right-3 inline-flex items-center gap-1 rounded-md bg-slate-950/80 px-2.5 py-1 font-mono text-xs font-semibold text-white tabular-nums backdrop-blur-xs print:bg-white print:text-slate-900">
-                    <Calendar className="h-3 w-3 opacity-80" aria-hidden="true" />
+                  <span className="pointer-events-none absolute top-3 right-3 inline-flex items-center gap-1 rounded-full bg-[#0a1024]/85 px-2.5 py-1 font-mono text-[11px] font-semibold text-[#e0b873] tabular-nums backdrop-blur-xs print:bg-white print:text-slate-900">
+                    <Calendar className="h-3 w-3 opacity-85" aria-hidden="true" />
                     <span>{project.year}</span>
                   </span>
                 </div>
 
-                <div className="flex flex-1 flex-col justify-between p-5 print:p-3">
+                <div className="relative z-10 flex flex-1 flex-col justify-between p-5 print:p-3">
                   <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500 print:text-[10px] dark:text-slate-400">
+                    <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[var(--mute)] print:text-[10px]">
                       <EditableText
                         value={project.year}
                         canEdit={isAdminUser}
                         maxLength={24}
-                        className="font-mono font-semibold text-blue-700 tabular-nums dark:text-blue-400"
+                        className="font-mono font-semibold text-[var(--brass)] tabular-nums"
                         onSave={(val) => handleInlineUpdateProject(project, { year: val })}
                       />
                       {project.property && (
@@ -568,7 +576,7 @@ export function ProjectsSection({
                       )}
                     </div>
 
-                    <h3 className="mt-1.5 font-display text-lg font-bold leading-snug text-slate-950 print:mt-0.5 print:text-xs dark:text-white">
+                    <h3 className="mt-1.5 font-display text-lg font-bold leading-snug text-[var(--ink)] print:mt-0.5 print:text-xs">
                       {isAdminUser ? (
                         <EditableText
                           value={project.title}
@@ -580,7 +588,7 @@ export function ProjectsSection({
                         <button
                           type="button"
                           onClick={() => setActiveLightboxId(project.id)}
-                          className="text-left hover:text-blue-700 dark:hover:text-blue-400 cursor-pointer"
+                          className="text-left hover:text-[var(--brass)] cursor-pointer"
                         >
                           {project.title}
                         </button>
@@ -588,7 +596,7 @@ export function ProjectsSection({
                     </h3>
 
                     {project.description && (
-                      <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-slate-600 print:mt-1 print:line-clamp-none print:text-[11px] print:leading-snug dark:text-slate-300">
+                      <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-[var(--mute)] print:mt-1 print:line-clamp-none print:text-[11px] print:leading-snug">
                         <EditableText
                           value={project.description}
                           canEdit={isAdminUser}
@@ -601,11 +609,11 @@ export function ProjectsSection({
                   </div>
 
                   {isAdminUser && (
-                    <div className="no-print mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                    <div className="no-print mt-4 flex items-center justify-between gap-2 border-t border-[var(--line)] pt-3">
                       <button
                         type="button"
                         onClick={() => setActiveLightboxId(project.id)}
-                        className="text-xs font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                        className="text-xs font-medium text-[var(--mute)] hover:text-[var(--ink)] cursor-pointer"
                       >
                         {locale === 'en' ? 'Preview' : 'Lihat Foto'}
                       </button>
@@ -614,7 +622,7 @@ export function ProjectsSection({
                           type="button"
                           onClick={() => openEditModal(project)}
                           aria-label={`Edit ${project.title}`}
-                          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-[var(--mute)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--ink)] cursor-pointer"
                         >
                           <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                           <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
@@ -623,7 +631,7 @@ export function ProjectsSection({
                           type="button"
                           onClick={() => void handleDeleteProject(project.id)}
                           aria-label={`Delete ${project.title}`}
-                          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60 cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                           <span>{locale === 'en' ? 'Delete' : 'Hapus'}</span>
@@ -643,7 +651,7 @@ export function ProjectsSection({
             <button
               type="button"
               onClick={openNewUploadModal}
-              className="flex w-full items-center justify-center gap-2.5 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/75 px-6 py-5 text-sm font-semibold text-slate-700 transition-colors hover:border-blue-500 hover:bg-blue-50/50 hover:text-blue-700 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-blue-500 dark:hover:bg-blue-950/30 dark:hover:text-blue-400 cursor-pointer"
+              className="flex w-full items-center justify-center gap-2.5 rounded-[22px] border-2 border-dashed border-[var(--line)] bg-[var(--bg2)]/60 px-6 py-5 text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] hover:bg-[var(--brass)]/10 hover:text-[var(--brass)] cursor-pointer"
             >
               <Plus className="h-5 w-5" aria-hidden="true" />
               <span>
@@ -662,14 +670,14 @@ export function ProjectsSection({
           role="dialog"
           aria-modal="true"
           aria-labelledby="project-modal-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-8">
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3
                   id="project-modal-title"
-                  className="font-display text-xl font-bold text-slate-950 dark:text-white"
+                  className="font-display text-xl font-bold text-[var(--ink)]"
                 >
                   {editingId
                     ? locale === 'en'
@@ -679,7 +687,7 @@ export function ProjectsSection({
                       ? 'Add New Project'
                       : 'Tambah Proyek Baru'}
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-[var(--mute)]">
                   {locale === 'en'
                     ? 'Enter project name, upload photo, and specify the year. Automatically saved to Firestore.'
                     : 'Isi nama proyek, unggah foto, dan tahun. Otomatis tersimpan ke Cloud Firestore.'}
@@ -689,7 +697,7 @@ export function ProjectsSection({
                 type="button"
                 onClick={closeModal}
                 aria-label="Close modal"
-                className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                className="rounded-lg p-2 text-[var(--mute)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -705,14 +713,14 @@ export function ProjectsSection({
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleModalDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed transition-colors ${
+                className={`relative flex cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition-colors ${
                   isDragging
-                    ? 'border-blue-600 bg-blue-50/50 dark:bg-blue-950/30'
-                    : 'border-slate-300 bg-slate-50 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-slate-600'
+                    ? 'border-[var(--brass)] bg-[var(--brass)]/10'
+                    : 'border-[var(--line)] bg-[var(--bg2)] hover:border-[var(--brass)]/60'
                 } ${imageDataUrl ? 'aspect-16/10' : 'px-6 py-8'}`}
               >
                 {isProcessingImage ? (
-                  <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                  <p className="text-sm font-medium text-[var(--mute)]">
                     {locale === 'en' ? 'Optimizing image...' : 'Mengoptimalkan foto...'}
                   </p>
                 ) : imageDataUrl ? (
@@ -730,13 +738,13 @@ export function ProjectsSection({
                   </>
                 ) : (
                   <div className="text-center">
-                    <Upload className="mx-auto h-6 w-6 text-slate-500 dark:text-slate-400" aria-hidden="true" />
-                    <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    <Upload className="mx-auto h-6 w-6 text-[var(--brass)]" aria-hidden="true" />
+                    <p className="mt-2 text-sm font-semibold text-[var(--ink)]">
                       {locale === 'en'
                         ? 'Upload Project Photo *'
                         : 'Unggah Foto Proyek *'}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    <p className="mt-1 text-xs text-[var(--mute)]">
                       JPG, PNG, WebP (Max 15 MB)
                     </p>
                   </div>
@@ -753,7 +761,7 @@ export function ProjectsSection({
               {formError && (
                 <div
                   role="alert"
-                  className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+                  className="rounded-xl border border-red-300/60 bg-red-50/90 px-3.5 py-2.5 text-xs font-medium text-red-800 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
                 >
                   {formError}
                 </div>
@@ -763,7 +771,7 @@ export function ProjectsSection({
                 <div className="sm:col-span-2">
                   <label
                     htmlFor="proj-title"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                    className="block text-xs font-semibold text-[var(--ink)]"
                   >
                     {locale === 'en' ? 'Project Name *' : 'Nama Proyek *'}
                   </label>
@@ -779,14 +787,14 @@ export function ProjectsSection({
                         ? 'e.g. UniFi & Ruijie 345+ AP Rollout'
                         : 'mis. Implementasi 345+ AP UniFi & Ruijie'
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
                   <label
                     htmlFor="proj-year"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                    className="block text-xs font-semibold text-[var(--ink)]"
                   >
                     {locale === 'en' ? 'Year *' : 'Tahun *'}
                   </label>
@@ -798,7 +806,7 @@ export function ProjectsSection({
                     value={year}
                     onChange={(e) => setYear(e.target.value)}
                     placeholder="2024"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 tabular-nums focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] tabular-nums focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
@@ -807,7 +815,7 @@ export function ProjectsSection({
                 <button
                   type="button"
                   onClick={() => setShowOptionalDetails((prev) => !prev)}
-                  className="text-xs font-semibold text-blue-700 hover:underline dark:text-blue-400 cursor-pointer"
+                  className="text-xs font-semibold text-[var(--brass)] hover:underline cursor-pointer"
                 >
                   {showOptionalDetails
                     ? locale === 'en'
@@ -820,12 +828,12 @@ export function ProjectsSection({
               </div>
 
               {showOptionalDetails && (
-                <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+                <div className="space-y-4 rounded-xl border border-[var(--line)] bg-[var(--bg2)]/70 p-4">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <label
                         htmlFor="proj-property"
-                        className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                        className="block text-xs font-semibold text-[var(--ink)]"
                       >
                         {locale === 'en' ? 'Hotel / Location (Optional)' : 'Hotel / Lokasi (Opsional)'}
                       </label>
@@ -836,14 +844,14 @@ export function ProjectsSection({
                         value={property}
                         onChange={(e) => setProperty(e.target.value)}
                         placeholder="Hotel Ciputra Jakarta"
-                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                        className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--mute)] focus:border-[var(--brass)] focus:outline-none"
                       />
                     </div>
 
                     <div>
                       <label
                         htmlFor="proj-category"
-                        className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                        className="block text-xs font-semibold text-[var(--ink)]"
                       >
                         {locale === 'en' ? 'Category' : 'Kategori'}
                       </label>
@@ -851,7 +859,7 @@ export function ProjectsSection({
                         id="proj-category"
                         value={category}
                         onChange={(e) => setCategory(e.target.value as ProjectCategory)}
-                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:border-blue-500"
+                        className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                       >
                         {(Object.keys(CATEGORY_LABELS) as ProjectCategory[]).map((catKey) => (
                           <option key={catKey} value={catKey}>
@@ -865,7 +873,7 @@ export function ProjectsSection({
                   <div>
                     <label
                       htmlFor="proj-desc"
-                      className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="block text-xs font-semibold text-[var(--ink)]"
                     >
                       {locale === 'en' ? 'Summary (Optional)' : 'Ringkasan Singkat (Opsional)'}
                     </label>
@@ -880,17 +888,17 @@ export function ProjectsSection({
                           ? 'Describe scope, systems deployed, and outcome...'
                           : 'Jelaskan cakupan proyek dan sistem yang diimplementasikan...'
                       }
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                      className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--mute)] focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-[var(--line)] pt-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
                 >
                   {locale === 'en' ? 'Cancel' : 'Batal'}
                 </button>
@@ -899,7 +907,7 @@ export function ProjectsSection({
                     type="button"
                     disabled={isSaving || isProcessingImage}
                     onClick={() => void persistProject(true)}
-                    className="rounded-lg border border-blue-700 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-500 dark:bg-blue-950/50 dark:text-blue-300 cursor-pointer"
+                    className="rounded-full border border-[var(--brass)]/50 bg-[var(--brass)]/12 px-4 py-2 text-sm font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/20 disabled:opacity-50 cursor-pointer"
                   >
                     {locale === 'en' ? 'Save & Add Another' : 'Simpan & Tambah Lagi'}
                   </button>
@@ -907,7 +915,7 @@ export function ProjectsSection({
                 <button
                   type="submit"
                   disabled={isSaving || isProcessingImage}
-                  className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving
                     ? locale === 'en'
@@ -933,13 +941,13 @@ export function ProjectsSection({
           role="dialog"
           aria-modal="true"
           aria-label={activeLightboxItem.title}
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/92 p-4 md:p-8"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/92 p-4 backdrop-blur-sm md:p-8"
         >
           <button
             type="button"
             onClick={() => setActiveLightboxId(null)}
             aria-label="Close lightbox"
-            className="absolute top-5 right-5 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-950 transition-colors hover:bg-slate-200 cursor-pointer"
+            className="absolute top-5 right-5 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-[var(--brass)] text-[#1a1405] transition-transform hover:scale-105 cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -954,7 +962,7 @@ export function ProjectsSection({
                   setActiveLightboxId(filteredProjects[prev].id);
                 }}
                 aria-label="Previous project"
-                className="absolute left-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 md:inline-flex cursor-pointer"
+                className="absolute left-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 md:inline-flex cursor-pointer"
               >
                 <ChevronLeft className="h-6 w-6" />
               </button>
@@ -965,15 +973,15 @@ export function ProjectsSection({
                   setActiveLightboxId(filteredProjects[next].id);
                 }}
                 aria-label="Next project"
-                className="absolute right-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 md:inline-flex cursor-pointer"
+                className="absolute right-4 top-1/2 z-10 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition-colors hover:bg-white/20 md:inline-flex cursor-pointer"
               >
                 <ChevronRight className="h-6 w-6" />
               </button>
             </>
           )}
 
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-slate-900">
-            <div className="flex max-h-[65vh] items-center justify-center bg-black">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-white/15 bg-[#101a38]">
+            <div className="flex max-h-[65vh] items-center justify-center bg-[#060a18]">
               <img
                 src={sanitizeProjectImageSrc(activeLightboxItem.imageDataUrl)}
                 alt={activeLightboxItem.title}
@@ -981,9 +989,9 @@ export function ProjectsSection({
                 className="max-h-[65vh] w-auto max-w-full object-contain"
               />
             </div>
-            <div className="flex flex-col gap-3 p-6 text-slate-100 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-3 p-6 text-[#eaf0ff] sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <p className="text-xs font-medium text-slate-400">
+                <p className="text-xs font-medium text-[#e0b873]">
                   <span className="font-mono tabular-nums">{activeLightboxItem.year}</span>
                   {activeLightboxItem.property && (
                     <>
@@ -996,7 +1004,7 @@ export function ProjectsSection({
                   {activeLightboxItem.title}
                 </h3>
                 {activeLightboxItem.description && (
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[#9aa8cc]">
                     {activeLightboxItem.description}
                   </p>
                 )}
@@ -1007,7 +1015,7 @@ export function ProjectsSection({
                   <button
                     type="button"
                     onClick={() => openEditModal(activeLightboxItem)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-white/20 px-3.5 py-1.5 text-xs font-semibold text-[#eaf0ff] hover:bg-white/10 cursor-pointer"
                   >
                     <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
@@ -1015,7 +1023,7 @@ export function ProjectsSection({
                   <button
                     type="button"
                     onClick={() => void handleDeleteProject(activeLightboxItem.id)}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/60 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-900/70 cursor-pointer"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-red-900/60 bg-red-950/60 px-3.5 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-900/70 cursor-pointer"
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                     <span>{locale === 'en' ? 'Delete' : 'Hapus'}</span>

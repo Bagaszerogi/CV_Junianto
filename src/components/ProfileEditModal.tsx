@@ -1,5 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
-import { Upload, X } from 'lucide-react';
+import { Trash2, Upload, X } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import {
   compressPortraitImage,
@@ -59,6 +59,11 @@ export function ProfileEditModal({
     }
   };
 
+  const handleRemoveDraftPhoto = () => {
+    setError(null);
+    setDraft((prev) => ({ ...prev, portraitDataUrl: '' }));
+  };
+
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -80,6 +85,14 @@ export function ProfileEditModal({
     }
   };
 
+  const previewPortrait = sanitizePortraitSrc(draft.portraitDataUrl, '');
+  const initials = draft.name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0]?.toUpperCase() ?? '')
+    .join('');
+
   const tabs: { key: ProfileEditTab; en: string; id: string }[] = [
     { key: 'identity', en: 'Photo & Title', id: 'Foto & Judul' },
     { key: 'contact', en: 'Contact & Summary', id: 'Kontak & Profil' },
@@ -87,25 +100,28 @@ export function ProfileEditModal({
     { key: 'education', en: 'Education', id: 'Pendidikan' },
   ];
 
+  const inputClass =
+    'mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none';
+
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="profile-edit-title"
-      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-8">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-8">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3
               id="profile-edit-title"
-              className="font-display text-xl font-bold text-slate-950 dark:text-white"
+              className="font-display text-xl font-bold text-[var(--ink)]"
             >
               {locale === 'en'
                 ? 'Edit CV Profile, Contact & Education'
                 : 'Ubah Profil, Foto, Kontak & Pendidikan'}
             </h3>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs text-[var(--mute)]">
               {locale === 'en'
                 ? 'Changes are saved to Cloud Firestore and update the CV & PDF export immediately.'
                 : 'Perubahan tersimpan ke Cloud Firestore dan langsung memperbarui CV serta cetak PDF.'}
@@ -115,23 +131,23 @@ export function ProfileEditModal({
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+            className="rounded-full p-2 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Section Tabs */}
-        <div className="mt-5 flex flex-wrap items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+        <div className="mt-5 flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1">
           {tabs.map((tab) => (
             <button
               key={tab.key}
               type="button"
               onClick={() => setActiveTab(tab.key)}
-              className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+              className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                 activeTab === tab.key
-                  ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                  : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                  ? 'bg-[var(--brass)] text-[#1a1405]'
+                  : 'text-[var(--mute)] hover:text-[var(--ink)]'
               }`}
             >
               {locale === 'en' ? tab.en : tab.id}
@@ -143,7 +159,7 @@ export function ProfileEditModal({
           {error && (
             <div
               role="alert"
-              className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+              className="rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:text-red-200"
             >
               {error}
             </div>
@@ -151,30 +167,38 @@ export function ProfileEditModal({
 
           {activeTab === 'identity' && (
             <div className="space-y-4">
-              {/* Portrait Photo Upload */}
-              <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:flex-row sm:items-center">
-                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-xl border-2 border-slate-300 bg-slate-200 dark:border-slate-700 dark:bg-slate-800">
-                  <img
-                    src={sanitizePortraitSrc(draft.portraitDataUrl)}
-                    alt="Portrait preview"
-                    className="h-full w-full object-cover object-top"
-                  />
+              {/* Portrait Photo Upload & Remove */}
+              <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:flex-row sm:items-center">
+                <div className="h-28 w-22 shrink-0 overflow-hidden rounded-t-full rounded-b-[12px] border border-[var(--brass)] bg-[var(--card)] p-1">
+                  <div className="h-full w-full overflow-hidden rounded-t-full rounded-b-[8px]">
+                    {previewPortrait ? (
+                      <img
+                        src={previewPortrait}
+                        alt="Portrait preview"
+                        className="h-full w-full object-cover object-top"
+                      />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-xl font-bold text-[var(--brass)]">
+                        {initials || 'JB'}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="flex-1">
-                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    {locale === 'en' ? 'Profile Portrait Photo (1:1 Square)' : 'Foto Profil CV (Kotak 1:1)'}
+                  <p className="text-xs font-semibold text-[var(--ink)]">
+                    {locale === 'en' ? 'Profile Portrait Photo' : 'Foto Profil CV'}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-0.5 text-xs text-[var(--mute)]">
                     {locale === 'en'
-                      ? 'Automatically framed 1:1 square (upper-center portrait) and compressed for sharp printing.'
-                      : 'Otomatis dipotong kotak 1:1 (proporsi wajah) dan dikompresi agar tajam saat cetak A4.'}
+                      ? 'Framed cleanly in the brass portrait arch. Remove the photo anytime to switch to a JB monogram.'
+                      : 'Dibingkai melengkung emas di kartu profil. Anda dapat menghapus foto kapan saja untuk menampilkan monogram JB.'}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       disabled={isProcessingPhoto}
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
                     >
                       <Upload className="h-3.5 w-3.5" aria-hidden="true" />
                       <span>
@@ -187,6 +211,17 @@ export function ProfileEditModal({
                             : 'Ganti Foto'}
                       </span>
                     </button>
+                    {Boolean(previewPortrait) && (
+                      <button
+                        type="button"
+                        disabled={isProcessingPhoto}
+                        onClick={handleRemoveDraftPhoto}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-500/20 dark:text-red-300 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        <span>{locale === 'en' ? 'Remove Photo' : 'Hapus Foto'}</span>
+                      </button>
+                    )}
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -200,7 +235,7 @@ export function ProfileEditModal({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="prof-name" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-name" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Full Name *' : 'Nama Lengkap *'}
                   </label>
                   <input
@@ -210,11 +245,11 @@ export function ProfileEditModal({
                     maxLength={120}
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label htmlFor="prof-brand" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-brand" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Header Brand Name *' : 'Nama di Pojok Kiri Atas *'}
                   </label>
                   <input
@@ -224,14 +259,14 @@ export function ProfileEditModal({
                     maxLength={60}
                     value={draft.brandShort}
                     onChange={(e) => setDraft({ ...draft, brandShort: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="prof-title-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-title-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Headline Title (EN) *' : 'Judul Profesi (EN) *'}
                   </label>
                   <input
@@ -241,11 +276,11 @@ export function ProfileEditModal({
                     maxLength={140}
                     value={draft.titleEn}
                     onChange={(e) => setDraft({ ...draft, titleEn: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label htmlFor="prof-title-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-title-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Headline Title (ID) *' : 'Judul Profesi (ID) *'}
                   </label>
                   <input
@@ -255,14 +290,14 @@ export function ProfileEditModal({
                     maxLength={140}
                     value={draft.titleId}
                     onChange={(e) => setDraft({ ...draft, titleId: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="prof-kicker-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-kicker-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Sub-Kicker (EN)' : 'Keterangan Atas (EN)'}
                   </label>
                   <input
@@ -271,11 +306,11 @@ export function ProfileEditModal({
                     maxLength={160}
                     value={draft.kickerEn}
                     onChange={(e) => setDraft({ ...draft, kickerEn: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label htmlFor="prof-kicker-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-kicker-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Sub-Kicker (ID)' : 'Keterangan Atas (ID)'}
                   </label>
                   <input
@@ -284,14 +319,14 @@ export function ProfileEditModal({
                     maxLength={160}
                     value={draft.kickerId}
                     onChange={(e) => setDraft({ ...draft, kickerId: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="prof-cur-comp" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-cur-comp" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Current Company *' : 'Tempat Kerja Saat Ini *'}
                   </label>
                   <input
@@ -301,11 +336,11 @@ export function ProfileEditModal({
                     maxLength={140}
                     value={draft.currentCompany}
                     onChange={(e) => setDraft({ ...draft, currentCompany: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label htmlFor="prof-cur-role" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-cur-role" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Current Position *' : 'Jabatan Saat Ini *'}
                   </label>
                   <input
@@ -315,7 +350,7 @@ export function ProfileEditModal({
                     maxLength={140}
                     value={draft.currentRole}
                     onChange={(e) => setDraft({ ...draft, currentRole: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
@@ -326,7 +361,7 @@ export function ProfileEditModal({
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="prof-phone" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-phone" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Phone Number *' : 'Nomor Telepon *'}
                   </label>
                   <input
@@ -336,11 +371,11 @@ export function ProfileEditModal({
                     maxLength={40}
                     value={draft.phoneDisplay}
                     onChange={(e) => setDraft({ ...draft, phoneDisplay: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={`${inputClass} font-mono`}
                   />
                 </div>
                 <div>
-                  <label htmlFor="prof-email" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="prof-email" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Email Address *' : 'Alamat Email *'}
                   </label>
                   <input
@@ -350,13 +385,13 @@ export function ProfileEditModal({
                     maxLength={140}
                     value={draft.email}
                     onChange={(e) => setDraft({ ...draft, email: e.target.value })}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="prof-wa" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="prof-wa" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'WhatsApp URL (https://wa.me/...)' : 'Link WhatsApp (https://wa.me/...)'}
                 </label>
                 <input
@@ -365,12 +400,12 @@ export function ProfileEditModal({
                   maxLength={200}
                   value={draft.whatsappHref}
                   onChange={(e) => setDraft({ ...draft, whatsappHref: e.target.value })}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={`${inputClass} font-mono`}
                 />
               </div>
 
               <div>
-                <label htmlFor="prof-address" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="prof-address" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Address *' : 'Alamat Lengkap *'}
                 </label>
                 <input
@@ -380,12 +415,12 @@ export function ProfileEditModal({
                   maxLength={240}
                   value={draft.address}
                   onChange={(e) => setDraft({ ...draft, address: e.target.value })}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label htmlFor="prof-summary-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="prof-summary-en" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Profile Summary (EN) *' : 'Ringkasan Profil (EN) *'}
                 </label>
                 <textarea
@@ -395,12 +430,12 @@ export function ProfileEditModal({
                   maxLength={1500}
                   value={draft.summaryEn}
                   onChange={(e) => setDraft({ ...draft, summaryEn: e.target.value })}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label htmlFor="prof-summary-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="prof-summary-id" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Profile Summary (ID) *' : 'Ringkasan Profil (ID) *'}
                 </label>
                 <textarea
@@ -410,7 +445,7 @@ export function ProfileEditModal({
                   maxLength={1500}
                   value={draft.summaryId}
                   onChange={(e) => setDraft({ ...draft, summaryId: e.target.value })}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
             </div>
@@ -421,10 +456,10 @@ export function ProfileEditModal({
               {draft.metrics.map((metric, idx) => (
                 <div
                   key={idx}
-                  className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950 sm:grid-cols-3"
+                  className="grid grid-cols-1 gap-3 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:grid-cols-3"
                 >
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <label className="block text-xs font-semibold text-[var(--mute)]">
                       {locale === 'en' ? `Metric ${idx + 1} Value` : `Nilai Metrik ${idx + 1}`}
                     </label>
                     <input
@@ -440,11 +475,11 @@ export function ProfileEditModal({
                             : { ...updated[idx], valueId: e.target.value };
                         setDraft({ ...draft, metrics: updated });
                       }}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    <label className="block text-xs font-semibold text-[var(--mute)]">
                       {locale === 'en' ? 'Label (EN / ID)' : 'Judul Metrik'}
                     </label>
                     <input
@@ -460,12 +495,12 @@ export function ProfileEditModal({
                             : { ...updated[idx], labelId: e.target.value };
                         setDraft({ ...draft, metrics: updated });
                       }}
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                      className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
                   <div className="flex flex-col justify-between gap-1">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <label className="block text-xs font-semibold text-[var(--mute)]">
                         {locale === 'en' ? 'Sub-detail' : 'Keterangan'}
                       </label>
                       <input
@@ -480,7 +515,7 @@ export function ProfileEditModal({
                               : { ...updated[idx], detailId: e.target.value };
                           setDraft({ ...draft, metrics: updated });
                         }}
-                        className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                       />
                     </div>
                     {draft.metrics.length > 1 && (
@@ -517,7 +552,7 @@ export function ProfileEditModal({
                       ],
                     })
                   }
-                  className="rounded-lg border border-dashed border-slate-300 px-3.5 py-2 text-xs font-semibold text-blue-700 hover:border-blue-500 dark:border-slate-700 dark:text-blue-400 cursor-pointer"
+                  className="rounded-full border border-dashed border-[var(--line)] px-4 py-2 text-xs font-semibold text-[var(--brass)] hover:border-[var(--brass)] cursor-pointer"
                 >
                   {locale === 'en' ? '+ Add Metric' : '+ Tambah Metrik'}
                 </button>
@@ -528,7 +563,7 @@ export function ProfileEditModal({
           {activeTab === 'education' && (
             <div className="space-y-4">
               <div>
-                <label htmlFor="edu-inst" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="edu-inst" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'University / Institution *' : 'Universitas / Institusi *'}
                 </label>
                 <input
@@ -543,13 +578,13 @@ export function ProfileEditModal({
                       education: { ...draft.education, institution: e.target.value },
                     })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="edu-major-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="edu-major-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Major (EN) *' : 'Jurusan (EN) *'}
                   </label>
                   <input
@@ -564,11 +599,11 @@ export function ProfileEditModal({
                         education: { ...draft.education, majorEn: e.target.value },
                       })
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label htmlFor="edu-major-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="edu-major-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Major (ID) *' : 'Jurusan (ID) *'}
                   </label>
                   <input
@@ -583,14 +618,14 @@ export function ProfileEditModal({
                         education: { ...draft.education, majorId: e.target.value },
                       })
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={inputClass}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="edu-period" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="edu-period" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Years *' : 'Tahun *'}
                   </label>
                   <input
@@ -605,11 +640,11 @@ export function ProfileEditModal({
                         education: { ...draft.education, period: e.target.value },
                       })
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={`${inputClass} font-mono`}
                   />
                 </div>
                 <div>
-                  <label htmlFor="edu-gpa-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="edu-gpa-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'GPA (EN) *' : 'IPK (EN) *'}
                   </label>
                   <input
@@ -624,11 +659,11 @@ export function ProfileEditModal({
                         education: { ...draft.education, gpaEn: e.target.value },
                       })
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={`${inputClass} font-mono`}
                   />
                 </div>
                 <div>
-                  <label htmlFor="edu-gpa-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="edu-gpa-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'GPA (ID) *' : 'IPK (ID) *'}
                   </label>
                   <input
@@ -643,13 +678,13 @@ export function ProfileEditModal({
                         education: { ...draft.education, gpaId: e.target.value },
                       })
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className={`${inputClass} font-mono`}
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="edu-focus-en" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="edu-focus-en" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Academic Focus (EN)' : 'Fokus Studi (EN)'}
                 </label>
                 <textarea
@@ -663,12 +698,12 @@ export function ProfileEditModal({
                       education: { ...draft.education, focusEn: e.target.value },
                     })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
 
               <div>
-                <label htmlFor="edu-focus-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="edu-focus-id" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Academic Focus (ID)' : 'Fokus Studi (ID)'}
                 </label>
                 <textarea
@@ -682,24 +717,24 @@ export function ProfileEditModal({
                       education: { ...draft.education, focusId: e.target.value },
                     })
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className={inputClass}
                 />
               </div>
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+          <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+              className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
             >
               {locale === 'en' ? 'Cancel' : 'Batal'}
             </button>
             <button
               type="submit"
               disabled={isSaving || isProcessingPhoto}
-              className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+              className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
             >
               {isSaving
                 ? locale === 'en'

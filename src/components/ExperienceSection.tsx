@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, MouseEvent, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Briefcase,
@@ -110,7 +110,32 @@ export function ExperienceSection({
   const [newBulletText, setNewBulletText] = useState('');
   const [isSavingBullet, setIsSavingBullet] = useState(false);
 
+  const tlRef = useRef<HTMLDivElement>(null);
   const t = UI_COPY[locale].sections;
+
+  const handleCardMouseMove = (e: MouseEvent<HTMLElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--mx', `${e.clientX - rect.left}px`);
+    e.currentTarget.style.setProperty('--my', `${e.clientY - rect.top}px`);
+  };
+
+  useEffect(() => {
+    const updateRail = () => {
+      const el = tlRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const raw = (window.innerHeight * 0.72 - r.top) / Math.max(1, r.height);
+      const pct = Math.max(0, Math.min(1, raw)) * 100;
+      el.style.setProperty('--p', `${pct.toFixed(1)}%`);
+    };
+    updateRail();
+    window.addEventListener('scroll', updateRail, { passive: true });
+    window.addEventListener('resize', updateRail, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', updateRail);
+      window.removeEventListener('resize', updateRail);
+    };
+  }, [experiences.length, filter, isLoading]);
 
   useEffect(() => {
     if (!isAdminUser && invitedItems) {
@@ -567,12 +592,13 @@ export function ExperienceSection({
     <section
       id="experience"
       data-animate="section"
-      className="print-section border-b border-slate-200 bg-slate-50 py-14 print:bg-white print:py-3 dark:border-slate-800 dark:bg-slate-950 md:py-20"
+      className="print-section border-b border-[var(--line)] bg-[var(--bg2)] py-16 print:bg-white print:py-3 md:py-24"
     >
-      <div className="mx-auto max-w-6xl px-6 print:px-0">
+      <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] print:px-0">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
+            <p className="inline-flex items-center gap-3 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--brass)] print:text-[10px]">
+              <span className="inline-block h-px w-[22px] bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
                 value={siteCopy.experienceKicker}
                 canEdit={isAdminUser}
@@ -580,7 +606,7 @@ export function ExperienceSection({
                 onSave={(val) => onSaveSiteCopyField('experienceKicker', val)}
               />
             </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-base dark:text-white">
+            <h2 className="mt-2.5 font-display text-[clamp(1.75rem,3.6vw,2.75rem)] font-bold tracking-tight text-[var(--ink)] print:mt-0.5 print:text-base">
               <EditableText
                 value={siteCopy.experienceTitle}
                 canEdit={isAdminUser}
@@ -588,7 +614,7 @@ export function ExperienceSection({
                 onSave={(val) => onSaveSiteCopyField('experienceTitle', val)}
               />
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
+            <p className="mt-2.5 max-w-2xl text-[15px] leading-relaxed text-[var(--mute)] print:hidden">
               <EditableText
                 value={siteCopy.experienceDesc}
                 canEdit={isAdminUser}
@@ -604,7 +630,7 @@ export function ExperienceSection({
               <button
                 type="button"
                 onClick={openAddModal}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Add Company / Role' : 'Tambah Perusahaan / Pengalaman'}</span>
@@ -615,7 +641,7 @@ export function ExperienceSection({
             <div
               role="tablist"
               aria-label="Filter work experience"
-              className="inline-flex items-center gap-1 rounded-lg bg-slate-200/75 p-1 dark:bg-slate-800"
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] p-1"
             >
               {(['all', 'leadership', 'operations'] as const).map((key) => (
                 <button
@@ -624,10 +650,10 @@ export function ExperienceSection({
                   role="tab"
                   aria-selected={filter === key}
                   onClick={() => setFilter(key)}
-                  className={`rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
                     filter === key
-                      ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                      ? 'bg-[var(--ink)] text-[var(--bg)] shadow-xs'
+                      : 'text-[var(--mute)] hover:text-[var(--ink)]'
                   }`}
                 >
                   {t.filters[key]}
@@ -640,7 +666,7 @@ export function ExperienceSection({
         {loadError && (
           <div
             role="alert"
-            className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
+            className="mt-6 rounded-xl border border-red-300/60 bg-red-50/90 px-4 py-3 text-sm text-red-900 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
           >
             {loadError}
           </div>
@@ -649,7 +675,7 @@ export function ExperienceSection({
         {statusFeedback && (
           <div
             role="status"
-            className="no-print mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-semibold text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-200"
+            className="no-print mt-4 flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-emerald-50/90 px-4 py-2.5 text-xs font-semibold text-emerald-900 dark:border-emerald-800/60 dark:bg-emerald-950/50 dark:text-emerald-200"
           >
             <CheckCircle2 className="h-4 w-4 shrink-0" aria-hidden="true" />
             <span>{statusFeedback}</span>
@@ -659,7 +685,8 @@ export function ExperienceSection({
         {isLoading ? (
           <ExperienceTimelineSkeleton count={3} />
         ) : (
-          <div className="mt-10 divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white print:mt-2.5 print:rounded-lg print:border-slate-300 dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900">
+          <div ref={tlRef} className="tl mt-10 space-y-6 print:mt-2.5 print:space-y-3">
+            <div className="fill" aria-hidden="true" />
             <AnimatePresence initial={false} mode="popLayout">
               {filteredExperiences.map((exp, idx) => {
                 const stages = normalizeExperienceStages(exp);
@@ -667,502 +694,507 @@ export function ExperienceSection({
                 const hasActiveStage = stages.some((s) => s.status === 'active');
 
                 return (
-                  <motion.article
+                  <motion.div
                     key={exp.id}
                     layout={!prefersReducedMotion}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
                     transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                    className="grid grid-cols-1 gap-6 p-6 print:grid-cols-12 print:gap-4 print:p-3 md:grid-cols-12 md:gap-8 md:p-8"
+                    className="ev in print-break-inside-avoid"
                   >
-                    {/* Left Column: LinkedIn-style Company Identity & Controls */}
-                    <div className="print:col-span-4 md:col-span-4">
-                      <div className="flex items-start gap-3.5 print:gap-2.5">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 print:h-8 print:w-8 print:rounded-lg dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                          <Building2 className="h-5 w-5 print:h-4 print:w-4" aria-hidden="true" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-mono text-[11px] font-medium text-slate-500 tabular-nums print:text-[9.5px] dark:text-slate-400">
-                            {String(idx + 1).padStart(2, '0')}
-                            {stages.length > 1 && (
-                              <>
-                                {' · '}
-                                <span className="font-sans font-semibold text-blue-700 dark:text-blue-400">
-                                  {stages.length}{' '}
-                                  {locale === 'en' ? 'Career Stages' : 'Jenjang Karir'}
-                                </span>
-                              </>
-                            )}
-                            {' · '}
-                            <span
-                              className={
-                                hasActiveStage
-                                  ? 'font-sans font-semibold text-emerald-700 dark:text-emerald-400'
-                                  : 'font-sans text-slate-500 dark:text-slate-400'
-                              }
-                            >
-                              {hasActiveStage
-                                ? locale === 'en'
-                                  ? 'Active'
-                                  : 'Aktif'
-                                : locale === 'en'
-                                  ? 'Completed'
-                                  : 'Selesai'}
-                            </span>
-                          </p>
-
-                          <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-sm dark:text-white">
-                            <EditableText
-                              value={exp.company}
-                              canEdit={isAdminUser}
-                              maxLength={140}
-                              onSave={(val) =>
-                                saveExperienceToFirestore({ ...exp, company: val }, exp.fromFirestore)
-                              }
-                            />
-                          </h3>
-
-                          {(exp.scaleContext || exp.scaleContextId || isAdminUser) && (
-                            <p className="mt-1.5 text-xs leading-relaxed text-slate-500 print:mt-0.5 print:text-[10px] dark:text-slate-400">
-                              <EditableText
-                                value={
-                                  (locale === 'en' ? exp.scaleContext : exp.scaleContextId) ||
-                                  (locale === 'en'
-                                    ? 'Add location / property scale'
-                                    : 'Tambah lokasi / skala properti')
+                    <article
+                      onMouseMove={handleCardMouseMove}
+                      className="editorial-card grid grid-cols-1 gap-6 bg-[var(--bg)]/80 p-6 print:grid-cols-12 print:gap-4 print:p-3 md:grid-cols-12 md:gap-8 md:p-8"
+                    >
+                      {/* Left Column: LinkedIn-style Company Identity & Controls */}
+                      <div className="relative z-10 print:col-span-4 md:col-span-4">
+                        <div className="flex items-start gap-3.5 print:gap-2.5">
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--bg2)] text-[var(--brass)] print:h-8 print:w-8 print:rounded-lg">
+                            <Building2 className="h-5 w-5 print:h-4 print:w-4" aria-hidden="true" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-mono text-[11px] font-medium text-[var(--mute)] tabular-nums print:text-[9.5px]">
+                              {String(idx + 1).padStart(2, '0')}
+                              {stages.length > 1 && (
+                                <>
+                                  {' · '}
+                                  <span className="font-sans font-semibold text-[var(--brass)]">
+                                    {stages.length}{' '}
+                                    {locale === 'en' ? 'Career Stages' : 'Jenjang Karir'}
+                                  </span>
+                                </>
+                              )}
+                              {' · '}
+                              <span
+                                className={
+                                  hasActiveStage
+                                    ? 'font-sans font-semibold text-[var(--brass)]'
+                                    : 'font-sans text-[var(--mute)]'
                                 }
+                              >
+                                {hasActiveStage
+                                  ? locale === 'en'
+                                    ? 'Active'
+                                    : 'Aktif'
+                                  : locale === 'en'
+                                    ? 'Completed'
+                                    : 'Selesai'}
+                              </span>
+                            </p>
+
+                            <h3 className="mt-1 font-display text-xl font-bold tracking-tight text-[var(--ink)] print:mt-0.5 print:text-sm">
+                              <EditableText
+                                value={exp.company}
                                 canEdit={isAdminUser}
-                                maxLength={200}
+                                maxLength={140}
                                 onSave={(val) =>
-                                  saveExperienceToFirestore(
-                                    {
-                                      ...exp,
-                                      ...(locale === 'en'
-                                        ? { scaleContext: val }
-                                        : { scaleContextId: val }),
-                                    },
-                                    exp.fromFirestore
-                                  )
+                                  saveExperienceToFirestore({ ...exp, company: val }, exp.fromFirestore)
                                 }
                               />
-                            </p>
-                          )}
+                            </h3>
+
+                            {(exp.scaleContext || exp.scaleContextId || isAdminUser) && (
+                              <p className="mt-1.5 text-xs leading-relaxed text-[var(--mute)] print:mt-0.5 print:text-[10px]">
+                                <EditableText
+                                  value={
+                                    (locale === 'en' ? exp.scaleContext : exp.scaleContextId) ||
+                                    (locale === 'en'
+                                      ? 'Add location / property scale'
+                                      : 'Tambah lokasi / skala properti')
+                                  }
+                                  canEdit={isAdminUser}
+                                  maxLength={200}
+                                  onSave={(val) =>
+                                    saveExperienceToFirestore(
+                                      {
+                                        ...exp,
+                                        ...(locale === 'en'
+                                          ? { scaleContext: val }
+                                          : { scaleContextId: val }),
+                                      },
+                                      exp.fromFirestore
+                                    )
+                                  }
+                                />
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="no-print mt-4 flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleDetails(exp.id)}
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-white cursor-pointer"
-                        >
-                          {isCollapsed ? (
-                            <>
-                              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                              <span>{locale === 'en' ? 'Show Details' : 'Lihat Detail'}</span>
-                            </>
-                          ) : (
-                            <>
-                              <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-                              <span>{locale === 'en' ? 'Collapse' : 'Ringkas'}</span>
-                            </>
-                          )}
-                        </button>
-
-                        {isAdminUser && (
-                          <>
-                            <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                            <button
-                              type="button"
-                              onClick={() => openEditModal(exp)}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 transition-colors hover:text-slate-950 dark:text-slate-300 dark:hover:text-white cursor-pointer"
-                            >
-                              <Pencil className="h-3 w-3" aria-hidden="true" />
-                              <span>{locale === 'en' ? 'Edit Company' : 'Ubah Info'}</span>
-                            </button>
-
-                            {exp.fromFirestore && (
+                        <div className="no-print mt-4 flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleDetails(exp.id)}
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--mute)] transition-colors hover:text-[var(--ink)] cursor-pointer"
+                          >
+                            {isCollapsed ? (
                               <>
-                                <span aria-hidden="true" className="text-slate-300 dark:text-slate-700">·</span>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleDeleteExperience(exp.id)}
-                                  aria-label={`Delete ${exp.company}`}
-                                  className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 transition-colors hover:text-red-700 dark:text-red-400 cursor-pointer"
-                                >
-                                  <Trash2 className="h-3 w-3" aria-hidden="true" />
-                                  <span>{locale === 'en' ? 'Delete' : 'Hapus'}</span>
-                                </button>
+                                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>{locale === 'en' ? 'Show Details' : 'Lihat Detail'}</span>
+                              </>
+                            ) : (
+                              <>
+                                <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span>{locale === 'en' ? 'Collapse' : 'Ringkas'}</span>
                               </>
                             )}
-                          </>
+                          </button>
+
+                          {isAdminUser && (
+                            <>
+                              <span aria-hidden="true" className="text-[var(--line)]">·</span>
+                              <button
+                                type="button"
+                                onClick={() => openEditModal(exp)}
+                                className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--mute)] transition-colors hover:text-[var(--ink)] cursor-pointer"
+                              >
+                                <Pencil className="h-3 w-3" aria-hidden="true" />
+                                <span>{locale === 'en' ? 'Edit Company' : 'Ubah Info'}</span>
+                              </button>
+
+                              {exp.fromFirestore && (
+                                <>
+                                  <span aria-hidden="true" className="text-[var(--line)]">·</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteExperience(exp.id)}
+                                    aria-label={`Delete ${exp.company}`}
+                                    className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 transition-colors hover:text-red-700 dark:text-red-400 cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3 w-3" aria-hidden="true" />
+                                    <span>{locale === 'en' ? 'Delete' : 'Hapus'}</span>
+                                  </button>
+                                </>
+                              )}
+                            </>
+                          )}
+                        </div>
+
+                        {isAdminUser && (
+                          <div className="no-print mt-3">
+                            <button
+                              type="button"
+                              onClick={() => openAddStageModal(exp)}
+                              disabled={stages.length >= 8}
+                              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--brass)]/40 bg-[var(--brass)]/10 px-3 py-1.5 text-xs font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/20 disabled:opacity-50 cursor-pointer"
+                            >
+                              <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>
+                                {locale === 'en'
+                                  ? '+ Add Career Stage / Promotion'
+                                  : '+ Tambah Jenjang Karir'}
+                              </span>
+                            </button>
+                          </div>
                         )}
                       </div>
 
-                      {isAdminUser && (
-                        <div className="no-print mt-3">
-                          <button
-                            type="button"
-                            onClick={() => openAddStageModal(exp)}
-                            disabled={stages.length >= 8}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300 dark:hover:bg-blue-900/50 cursor-pointer"
-                          >
-                            <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>
-                              {locale === 'en'
-                                ? '+ Add Career Stage / Promotion'
-                                : '+ Tambah Jenjang Karir'}
-                            </span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                      {/* Right Column: LinkedIn-style Connected Career Progression Stages */}
+                      <div className="relative z-10 print:col-span-8 md:col-span-8">
+                        <div className="relative">
+                          {stages.map((stage, sIdx) => {
+                            const stageBullets = locale === 'en' ? stage.bullets : stage.bulletsId;
+                            const isLastStage = sIdx === stages.length - 1;
+                            const bulletComposeKey = `${exp.id}:${stage.id}`;
+                            const isAddingBulletHere = addingBulletKey === bulletComposeKey;
 
-                    {/* Right Column: LinkedIn-style Connected Career Progression Stages */}
-                    <div className="print:col-span-8 md:col-span-8">
-                      <div className="relative">
-                        {stages.map((stage, sIdx) => {
-                          const stageBullets = locale === 'en' ? stage.bullets : stage.bulletsId;
-                          const isLastStage = sIdx === stages.length - 1;
-                          const bulletComposeKey = `${exp.id}:${stage.id}`;
-                          const isAddingBulletHere = addingBulletKey === bulletComposeKey;
+                            return (
+                              <div
+                                key={stage.id}
+                                className={`print-break-inside-avoid relative pl-7 print:pl-5 ${
+                                  !isLastStage ? 'pb-7 print:pb-3' : ''
+                                }`}
+                              >
+                                {/* Vertical timeline connector line connecting continuous career progression */}
+                                {!isLastStage && (
+                                  <span
+                                    aria-hidden="true"
+                                    className="absolute top-3 bottom-0 left-[7px] w-px bg-[var(--line)] print:left-[5px] print:bg-slate-300"
+                                  />
+                                )}
 
-                          return (
-                            <div
-                              key={stage.id}
-                              className={`print-break-inside-avoid relative pl-7 print:pl-5 ${
-                                !isLastStage ? 'pb-7 print:pb-3' : ''
-                              }`}
-                            >
-                              {/* Vertical timeline connector line connecting continuous career progression */}
-                              {!isLastStage && (
+                                {/* Stage milestone dot */}
                                 <span
                                   aria-hidden="true"
-                                  className="absolute top-3 bottom-0 left-[7px] w-px bg-slate-200 print:left-[5px] print:bg-slate-300 dark:bg-slate-700"
+                                  className={`absolute top-1.5 left-0 h-3.5 w-3.5 rounded-full border-2 print:h-2.5 print:w-2.5 ${
+                                    stage.status === 'active'
+                                      ? 'border-[var(--brass)]/40 bg-[var(--brass)] shadow-[0_0_0_4px_color-mix(in_srgb,var(--brass)_16%,transparent)]'
+                                      : 'border-[var(--line)] bg-[var(--mute)]/70'
+                                  }`}
                                 />
-                              )}
 
-                              {/* Stage milestone dot */}
-                              <span
-                                aria-hidden="true"
-                                className={`absolute top-1.5 left-0 h-3.5 w-3.5 rounded-full border-2 print:h-2.5 print:w-2.5 ${
-                                  stage.status === 'active'
-                                    ? 'border-emerald-200 bg-emerald-600 dark:border-emerald-900 dark:bg-emerald-400'
-                                    : 'border-slate-200 bg-slate-400 dark:border-slate-700 dark:bg-slate-500'
-                                }`}
-                              />
-
-                              {/* Stage Header: Role Title + Period + Employment Type + Work Status */}
-                              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
-                                <div>
-                                  <h4 className="font-display text-base font-bold text-blue-700 print:text-xs dark:text-blue-400">
-                                    <EditableText
-                                      value={locale === 'en' ? stage.role : stage.roleId}
-                                      canEdit={isAdminUser}
-                                      maxLength={140}
-                                      onSave={(val) => {
-                                        const updated = stages.map((item) =>
-                                          item.id === stage.id
-                                            ? {
-                                                ...item,
-                                                ...(locale === 'en'
-                                                  ? { role: val }
-                                                  : { roleId: val }),
-                                              }
-                                            : item
-                                        );
-                                        return persistStages(exp, updated);
-                                      }}
-                                    />
-                                  </h4>
-
-                                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-slate-500 tabular-nums print:text-[10px] dark:text-slate-400">
-                                    <EditableText
-                                      value={locale === 'en' ? stage.period : stage.periodId}
-                                      canEdit={isAdminUser}
-                                      maxLength={60}
-                                      onSave={(val) => {
-                                        const updated = stages.map((item) =>
-                                          item.id === stage.id
-                                            ? {
-                                                ...item,
-                                                ...(locale === 'en'
-                                                  ? { period: val }
-                                                  : { periodId: val }),
-                                              }
-                                            : item
-                                        );
-                                        return persistStages(exp, updated);
-                                      }}
-                                    />
-                                    <span aria-hidden="true">·</span>
-                                    <span className="font-sans text-slate-600 dark:text-slate-300">
-                                      {EMPLOYMENT_TYPE_LABELS[stage.employmentType ?? 'full-time'][locale]}
-                                    </span>
-                                    <span aria-hidden="true">·</span>
-                                    <span
-                                      className={`inline-flex items-center gap-1.5 font-sans font-semibold ${
-                                        stage.status === 'active'
-                                          ? 'text-emerald-700 dark:text-emerald-400'
-                                          : 'text-slate-500 dark:text-slate-400'
-                                      }`}
-                                    >
-                                      {stage.status === 'active' && (
-                                        <span
-                                          aria-hidden="true"
-                                          className="h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400"
-                                        />
-                                      )}
-                                      <span>
-                                        {stage.status === 'active'
-                                          ? locale === 'en'
-                                            ? 'Current Role'
-                                            : 'Aktif Saat Ini'
-                                          : locale === 'en'
-                                            ? 'Completed'
-                                            : 'Selesai'}
-                                      </span>
-                                    </span>
-                                  </div>
-                                </div>
-
-                                {isAdminUser && (
-                                  <div className="no-print flex flex-wrap items-center gap-1.5">
-                                    <select
-                                      aria-label={locale === 'en' ? 'Work status' : 'Status kerja'}
-                                      value={stage.status}
-                                      onChange={(e) =>
-                                        void handleSetStageStatus(
-                                          exp,
-                                          stage.id,
-                                          e.target.value as ExperienceStatus
-                                        )
-                                      }
-                                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
-                                    >
-                                      <option value="active">
-                                        {locale === 'en' ? 'Active' : 'Aktif'}
-                                      </option>
-                                      <option value="completed">
-                                        {locale === 'en' ? 'Completed' : 'Selesai'}
-                                      </option>
-                                    </select>
-
-                                    <select
-                                      aria-label={
-                                        locale === 'en' ? 'Employment type' : 'Tipe penugasan'
-                                      }
-                                      value={stage.employmentType ?? 'full-time'}
-                                      onChange={(e) =>
-                                        void handleSetStageEmploymentType(
-                                          exp,
-                                          stage.id,
-                                          e.target.value as EmploymentType
-                                        )
-                                      }
-                                      className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
-                                    >
-                                      {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map(
-                                        (empType) => (
-                                          <option key={empType} value={empType}>
-                                            {EMPLOYMENT_TYPE_LABELS[empType][locale]}
-                                          </option>
-                                        )
-                                      )}
-                                    </select>
-
-                                    {onSyncCurrentRoleToProfile && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void handlePromoteStageToProfile(exp, stage)}
-                                        title={
-                                          locale === 'en'
-                                            ? 'Set as primary active role in Hero Profile card'
-                                            : 'Jadikan Posisi Aktif Utama di Kartu Profil atas'
-                                        }
-                                        className="inline-flex items-center gap-1 rounded-md border border-blue-200 bg-blue-50/70 px-2 py-1 text-[11px] font-semibold text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/50 dark:text-blue-300 cursor-pointer"
-                                      >
-                                        <Pin className="h-3 w-3" aria-hidden="true" />
-                                        <span>
-                                          {locale === 'en' ? 'Pin to Profile' : 'Jadikan Aktif Utama'}
-                                        </span>
-                                      </button>
-                                    )}
-
-                                    <button
-                                      type="button"
-                                      onClick={() => openEditStageModal(exp, stage)}
-                                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 cursor-pointer"
-                                    >
-                                      <Pencil className="h-3 w-3" aria-hidden="true" />
-                                      <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
-                                    </button>
-
-                                    {stages.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeleteStage(exp, stage.id)}
-                                        aria-label={`Delete role stage ${stage.role}`}
-                                        className="rounded-md border border-red-200 bg-white px-1.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:bg-slate-800 dark:text-red-400 dark:hover:bg-red-950/50 cursor-pointer"
-                                      >
-                                        <Trash2 className="h-3 w-3" aria-hidden="true" />
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* Work Description Bullets */}
-                              <div className={isCollapsed ? 'hidden print:block' : ''}>
-                                <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-slate-700 print:mt-1 print:space-y-1 print:text-[10.5px] print:leading-snug dark:text-slate-300">
-                                  {stageBullets.map((bullet, bIdx) => (
-                                    <li key={bIdx} className="group/bullet flex items-start gap-2.5 print:gap-2">
-                                      <span
-                                        aria-hidden="true"
-                                        className="mt-2.5 h-px w-2.5 shrink-0 bg-slate-400 print:mt-1.5 print:w-2 dark:bg-slate-600"
-                                      />
+                                {/* Stage Header: Role Title + Period + Employment Type + Work Status */}
+                                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+                                  <div>
+                                    <h4 className="font-display text-base font-bold text-[var(--brass)] print:text-xs">
                                       <EditableText
-                                        value={bullet}
+                                        value={locale === 'en' ? stage.role : stage.roleId}
                                         canEdit={isAdminUser}
-                                        multiline
-                                        maxLength={500}
-                                        className="flex-1"
+                                        maxLength={140}
                                         onSave={(val) => {
-                                          const updated = stages.map((item) => {
-                                            if (item.id !== stage.id) return item;
-                                            const nextB = [...item.bullets];
-                                            const nextBId = [...item.bulletsId];
-                                            if (locale === 'en') nextB[bIdx] = val;
-                                            else nextBId[bIdx] = val;
-                                            return { ...item, bullets: nextB, bulletsId: nextBId };
-                                          });
+                                          const updated = stages.map((item) =>
+                                            item.id === stage.id
+                                              ? {
+                                                  ...item,
+                                                  ...(locale === 'en'
+                                                    ? { role: val }
+                                                    : { roleId: val }),
+                                                }
+                                              : item
+                                          );
                                           return persistStages(exp, updated);
                                         }}
                                       />
-                                      {isAdminUser && stageBullets.length > 1 && (
+                                    </h4>
+
+                                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-[var(--mute)] tabular-nums print:text-[10px]">
+                                      <EditableText
+                                        value={locale === 'en' ? stage.period : stage.periodId}
+                                        canEdit={isAdminUser}
+                                        maxLength={60}
+                                        onSave={(val) => {
+                                          const updated = stages.map((item) =>
+                                            item.id === stage.id
+                                              ? {
+                                                  ...item,
+                                                  ...(locale === 'en'
+                                                    ? { period: val }
+                                                    : { periodId: val }),
+                                                }
+                                              : item
+                                          );
+                                          return persistStages(exp, updated);
+                                        }}
+                                      />
+                                      <span aria-hidden="true">·</span>
+                                      <span className="font-sans text-[var(--ink)]/80">
+                                        {EMPLOYMENT_TYPE_LABELS[stage.employmentType ?? 'full-time'][locale]}
+                                      </span>
+                                      <span aria-hidden="true">·</span>
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 font-sans font-semibold ${
+                                          stage.status === 'active'
+                                            ? 'text-[var(--brass)]'
+                                            : 'text-[var(--mute)]'
+                                        }`}
+                                      >
+                                        {stage.status === 'active' && (
+                                          <span
+                                            aria-hidden="true"
+                                            className="brass-pulse h-1.5 w-1.5 rounded-full bg-[var(--brass)]"
+                                          />
+                                        )}
+                                        <span>
+                                          {stage.status === 'active'
+                                            ? locale === 'en'
+                                              ? 'Current Role'
+                                              : 'Aktif Saat Ini'
+                                            : locale === 'en'
+                                              ? 'Completed'
+                                              : 'Selesai'}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {isAdminUser && (
+                                    <div className="no-print flex flex-wrap items-center gap-1.5">
+                                      <select
+                                        aria-label={locale === 'en' ? 'Work status' : 'Status kerja'}
+                                        value={stage.status}
+                                        onChange={(e) =>
+                                          void handleSetStageStatus(
+                                            exp,
+                                            stage.id,
+                                            e.target.value as ExperienceStatus
+                                          )
+                                        }
+                                        className="rounded-lg border border-[var(--line)] bg-[var(--bg2)] px-2 py-1 text-[11px] font-semibold text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none cursor-pointer"
+                                      >
+                                        <option value="active">
+                                          {locale === 'en' ? 'Active' : 'Aktif'}
+                                        </option>
+                                        <option value="completed">
+                                          {locale === 'en' ? 'Completed' : 'Selesai'}
+                                        </option>
+                                      </select>
+
+                                      <select
+                                        aria-label={
+                                          locale === 'en' ? 'Employment type' : 'Tipe penugasan'
+                                        }
+                                        value={stage.employmentType ?? 'full-time'}
+                                        onChange={(e) =>
+                                          void handleSetStageEmploymentType(
+                                            exp,
+                                            stage.id,
+                                            e.target.value as EmploymentType
+                                          )
+                                        }
+                                        className="rounded-lg border border-[var(--line)] bg-[var(--bg2)] px-2 py-1 text-[11px] font-semibold text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none cursor-pointer"
+                                      >
+                                        {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map(
+                                          (empType) => (
+                                            <option key={empType} value={empType}>
+                                              {EMPLOYMENT_TYPE_LABELS[empType][locale]}
+                                            </option>
+                                          )
+                                        )}
+                                      </select>
+
+                                      {onSyncCurrentRoleToProfile && (
                                         <button
                                           type="button"
-                                          onClick={() => void handleRemoveBullet(exp, stage.id, bIdx)}
-                                          aria-label="Remove bullet"
-                                          className="no-print mt-1 rounded p-1 text-slate-400 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover/bullet:opacity-100 dark:hover:bg-red-950/50 cursor-pointer"
+                                          onClick={() => void handlePromoteStageToProfile(exp, stage)}
+                                          title={
+                                            locale === 'en'
+                                              ? 'Set as primary active role in Hero Profile card'
+                                              : 'Jadikan Posisi Aktif Utama di Kartu Profil atas'
+                                          }
+                                          className="inline-flex items-center gap-1 rounded-lg border border-[var(--brass)]/40 bg-[var(--brass)]/12 px-2 py-1 text-[11px] font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/20 cursor-pointer"
                                         >
-                                          <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                          <Pin className="h-3 w-3" aria-hidden="true" />
+                                          <span>
+                                            {locale === 'en' ? 'Pin to Profile' : 'Jadikan Aktif Utama'}
+                                          </span>
                                         </button>
                                       )}
-                                    </li>
-                                  ))}
-                                </ul>
 
-                                {/* Inline quick "+ Tambah Keterangan Kerja" control for Admin */}
-                                {isAdminUser && stageBullets.length < 15 && (
-                                  <div className="no-print mt-3">
-                                    {isAddingBulletHere ? (
-                                      <form
-                                        onSubmit={(e) => void handleAddInlineBullet(e, exp, stage.id)}
-                                        className="space-y-2 rounded-xl border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900/70 dark:bg-blue-950/30"
-                                      >
-                                        <textarea
-                                          rows={2}
-                                          autoFocus
-                                          maxLength={500}
-                                          value={newBulletText}
-                                          onChange={(e) => setNewBulletText(e.target.value)}
-                                          placeholder={
-                                            locale === 'en'
-                                              ? 'Describe additional responsibility or key achievement...'
-                                              : 'Tulis tanggung jawab atau pencapaian kerja tambahan...'
-                                          }
-                                          className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
-                                        />
-                                        <div className="flex items-center justify-end gap-2">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setAddingBulletKey(null);
-                                              setNewBulletText('');
-                                            }}
-                                            className="rounded-md border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 cursor-pointer"
-                                          >
-                                            {locale === 'en' ? 'Cancel' : 'Batal'}
-                                          </button>
-                                          <button
-                                            type="submit"
-                                            disabled={isSavingBullet || !newBulletText.trim()}
-                                            className="rounded-md bg-blue-700 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 cursor-pointer"
-                                          >
-                                            {isSavingBullet
-                                              ? locale === 'en'
-                                                ? 'Saving...'
-                                                : 'Menyimpan...'
-                                              : locale === 'en'
-                                                ? 'Add Detail'
-                                                : 'Simpan Keterangan'}
-                                          </button>
-                                        </div>
-                                      </form>
-                                    ) : (
                                       <button
                                         type="button"
-                                        onClick={() => {
-                                          setAddingBulletKey(bulletComposeKey);
-                                          setNewBulletText('');
-                                        }}
-                                        className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-950/40 cursor-pointer"
+                                        onClick={() => openEditStageModal(exp, stage)}
+                                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--line)] bg-[var(--bg2)] px-2 py-1 text-[11px] font-semibold text-[var(--mute)] hover:text-[var(--ink)] cursor-pointer"
                                       >
-                                        <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                                        <span>
-                                          {locale === 'en'
-                                            ? 'Add Work Detail'
-                                            : 'Tambah Keterangan Kerja'}
-                                        </span>
+                                        <Pencil className="h-3 w-3" aria-hidden="true" />
+                                        <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
                                       </button>
-                                    )}
-                                  </div>
+
+                                      {stages.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => void handleDeleteStage(exp, stage.id)}
+                                          aria-label={`Delete role stage ${stage.role}`}
+                                          className="rounded-lg border border-red-300/60 bg-[var(--bg2)] px-1.5 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-950/50 cursor-pointer"
+                                        >
+                                          <Trash2 className="h-3 w-3" aria-hidden="true" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Work Description Bullets */}
+                                <div className={isCollapsed ? 'hidden print:block' : ''}>
+                                  <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-[var(--ink)]/90 print:mt-1 print:space-y-1 print:text-[10.5px] print:leading-snug">
+                                    {stageBullets.map((bullet, bIdx) => (
+                                      <li key={bIdx} className="group/bullet flex items-start gap-2.5 print:gap-2">
+                                        <span
+                                          aria-hidden="true"
+                                          className="mt-2.5 h-px w-2.5 shrink-0 bg-[var(--brass)] print:mt-1.5 print:w-2"
+                                        />
+                                        <EditableText
+                                          value={bullet}
+                                          canEdit={isAdminUser}
+                                          multiline
+                                          maxLength={500}
+                                          className="flex-1"
+                                          onSave={(val) => {
+                                            const updated = stages.map((item) => {
+                                              if (item.id !== stage.id) return item;
+                                              const nextB = [...item.bullets];
+                                              const nextBId = [...item.bulletsId];
+                                              if (locale === 'en') nextB[bIdx] = val;
+                                              else nextBId[bIdx] = val;
+                                              return { ...item, bullets: nextB, bulletsId: nextBId };
+                                            });
+                                            return persistStages(exp, updated);
+                                          }}
+                                        />
+                                        {isAdminUser && stageBullets.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleRemoveBullet(exp, stage.id, bIdx)}
+                                            aria-label="Remove bullet"
+                                            className="no-print mt-1 rounded p-1 text-[var(--mute)] opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 group-hover/bullet:opacity-100 dark:hover:bg-red-950/50 cursor-pointer"
+                                          >
+                                            <X className="h-3.5 w-3.5" aria-hidden="true" />
+                                          </button>
+                                        )}
+                                      </li>
+                                    ))}
+                                  </ul>
+
+                                  {/* Inline quick "+ Tambah Keterangan Kerja" control for Admin */}
+                                  {isAdminUser && stageBullets.length < 15 && (
+                                    <div className="no-print mt-3">
+                                      {isAddingBulletHere ? (
+                                        <form
+                                          onSubmit={(e) => void handleAddInlineBullet(e, exp, stage.id)}
+                                          className="space-y-2 rounded-xl border border-[var(--brass)]/35 bg-[var(--bg2)] p-3"
+                                        >
+                                          <textarea
+                                            rows={2}
+                                            autoFocus
+                                            maxLength={500}
+                                            value={newBulletText}
+                                            onChange={(e) => setNewBulletText(e.target.value)}
+                                            placeholder={
+                                              locale === 'en'
+                                                ? 'Describe additional responsibility or key achievement...'
+                                                : 'Tulis tanggung jawab atau pencapaian kerja tambahan...'
+                                            }
+                                            className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
+                                          />
+                                          <div className="flex items-center justify-end gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setAddingBulletKey(null);
+                                                setNewBulletText('');
+                                              }}
+                                              className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-3 py-1 text-xs font-semibold text-[var(--mute)] hover:text-[var(--ink)] cursor-pointer"
+                                            >
+                                              {locale === 'en' ? 'Cancel' : 'Batal'}
+                                            </button>
+                                            <button
+                                              type="submit"
+                                              disabled={isSavingBullet || !newBulletText.trim()}
+                                              className="rounded-full bg-[var(--brass)] px-3.5 py-1 text-xs font-semibold text-[#1a1405] disabled:opacity-50 cursor-pointer"
+                                            >
+                                              {isSavingBullet
+                                                ? locale === 'en'
+                                                  ? 'Saving...'
+                                                  : 'Menyimpan...'
+                                                : locale === 'en'
+                                                  ? 'Add Detail'
+                                                  : 'Simpan Keterangan'}
+                                            </button>
+                                          </div>
+                                        </form>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAddingBulletKey(bulletComposeKey);
+                                            setNewBulletText('');
+                                          }}
+                                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/10 cursor-pointer"
+                                        >
+                                          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                                          <span>
+                                            {locale === 'en'
+                                              ? 'Add Work Detail'
+                                              : 'Tambah Keterangan Kerja'}
+                                          </span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {isCollapsed && (
+                                  <p className="mt-1.5 text-sm text-[var(--mute)] print:hidden">
+                                    {stageBullets[0]}
+                                  </p>
                                 )}
                               </div>
-
-                              {isCollapsed && (
-                                <p className="mt-1.5 text-sm text-slate-500 print:hidden dark:text-slate-400">
-                                  {stageBullets[0]}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Core Systems footer for the company */}
-                      {(exp.systems.length > 0 || isAdminUser) && (
-                        <div className="mt-5 border-t border-slate-100 pt-3.5 text-xs text-slate-500 print:mt-2 print:pt-1.5 print:text-[10px] dark:border-slate-800 dark:text-slate-400">
-                          <span className="font-semibold text-slate-700 dark:text-slate-200">
-                            {locale === 'en' ? 'Core Systems:' : 'Sistem Utama:'}
-                          </span>{' '}
-                          <EditableText
-                            value={
-                              exp.systems.join(' · ') ||
-                              (locale === 'en'
-                                ? 'Add systems separated with middot or comma'
-                                : 'Tambah daftar sistem (pisahkan koma)')
-                            }
-                            canEdit={isAdminUser}
-                            maxLength={400}
-                            onSave={(val) => {
-                              const parsed = val
-                                .split(/[·,]+/)
-                                .map((s) => s.trim())
-                                .filter(Boolean)
-                                .slice(0, 25);
-                              return saveExperienceToFirestore(
-                                { ...exp, systems: parsed },
-                                exp.fromFirestore
-                              );
-                            }}
-                          />
+                            );
+                          })}
                         </div>
-                      )}
-                    </div>
-                  </motion.article>
+
+                        {/* Core Systems footer for the company */}
+                        {(exp.systems.length > 0 || isAdminUser) && (
+                          <div className="mt-5 border-t border-[var(--line)] pt-3.5 text-xs text-[var(--mute)] print:mt-2 print:pt-1.5 print:text-[10px]">
+                            <span className="font-semibold text-[var(--ink)]">
+                              {locale === 'en' ? 'Core Systems:' : 'Sistem Utama:'}
+                            </span>{' '}
+                            <EditableText
+                              value={
+                                exp.systems.join(' · ') ||
+                                (locale === 'en'
+                                  ? 'Add systems separated with middot or comma'
+                                  : 'Tambah daftar sistem (pisahkan koma)')
+                              }
+                              canEdit={isAdminUser}
+                              maxLength={400}
+                              onSave={(val) => {
+                                const parsed = val
+                                  .split(/[·,]+/)
+                                  .map((s) => s.trim())
+                                  .filter(Boolean)
+                                  .slice(0, 25);
+                                return saveExperienceToFirestore(
+                                  { ...exp, systems: parsed },
+                                  exp.fromFirestore
+                                );
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </article>
+                  </motion.div>
                 );
               })}
             </AnimatePresence>
@@ -1176,14 +1208,14 @@ export function ExperienceSection({
           role="dialog"
           aria-modal="true"
           aria-labelledby="exp-modal-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-8">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3
                   id="exp-modal-title"
-                  className="font-display text-xl font-bold text-slate-950 dark:text-white"
+                  className="font-display text-xl font-bold text-[var(--ink)]"
                 >
                   {editingItem
                     ? locale === 'en'
@@ -1193,7 +1225,7 @@ export function ExperienceSection({
                       ? 'Add Work Experience'
                       : 'Tambah Pengalaman Kerja'}
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-[var(--mute)]">
                   {locale === 'en'
                     ? 'Updates are saved directly to Cloud Firestore and reflected immediately.'
                     : 'Perubahan disimpan langsung ke Cloud Firestore dan langsung tampil di CV.'}
@@ -1203,7 +1235,7 @@ export function ExperienceSection({
                 type="button"
                 onClick={closeModal}
                 aria-label="Close modal"
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                className="rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1213,7 +1245,7 @@ export function ExperienceSection({
               {formError && (
                 <div
                   role="alert"
-                  className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+                  className="rounded-xl border border-red-300/60 bg-red-50/90 px-3.5 py-2.5 text-xs font-medium text-red-800 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
                 >
                   {formError}
                 </div>
@@ -1221,7 +1253,7 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="exp-company" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-company" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Company / Hotel *' : 'Perusahaan / Hotel *'}
                   </label>
                   <input
@@ -1231,19 +1263,19 @@ export function ExperienceSection({
                     maxLength={140}
                     value={company}
                     onChange={(e) => setCompany(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-status" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-status" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Work Status *' : 'Status Pekerjaan *'}
                   </label>
                   <select
                     id="exp-status"
                     value={status}
                     onChange={(e) => setStatus(e.target.value as ExperienceStatus)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     <option value="active">{locale === 'en' ? 'Active / Current Role' : 'Aktif Saat Ini'}</option>
                     <option value="completed">{locale === 'en' ? 'Completed' : 'Selesai'}</option>
@@ -1253,14 +1285,14 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="exp-emp-type" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-emp-type" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Employment Type' : 'Tipe Penugasan'}
                   </label>
                   <select
                     id="exp-emp-type"
                     value={employmentType}
                     onChange={(e) => setEmploymentType(e.target.value as EmploymentType)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((empType) => (
                       <option key={empType} value={empType}>
@@ -1272,12 +1304,12 @@ export function ExperienceSection({
 
                 {status === 'active' && onSyncCurrentRoleToProfile && (
                   <div className="flex items-end">
-                    <label className="flex w-full items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs font-medium text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-100 cursor-pointer">
+                    <label className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--brass)]/35 bg-[var(--brass)]/10 px-3.5 py-2.5 text-xs font-medium text-[var(--ink)] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={syncHeroProfile}
                         onChange={(e) => setSyncHeroProfile(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                        className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brass)]"
                       />
                       <span>
                         {locale === 'en'
@@ -1291,7 +1323,7 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="exp-role" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-role" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Role Title (EN) *' : 'Jabatan (EN) *'}
                   </label>
                   <input
@@ -1301,12 +1333,12 @@ export function ExperienceSection({
                     maxLength={140}
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-role-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-role-id" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Role Title (ID)' : 'Jabatan (ID)'}
                   </label>
                   <input
@@ -1315,14 +1347,14 @@ export function ExperienceSection({
                     maxLength={140}
                     value={roleId}
                     onChange={(e) => setRoleId(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="exp-period" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-period" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Period (EN) *' : 'Periode (EN) *'}
                   </label>
                   <input
@@ -1333,12 +1365,12 @@ export function ExperienceSection({
                     value={period}
                     onChange={(e) => setPeriod(e.target.value)}
                     placeholder="Jul 2026 – Present"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-period-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-period-id" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Period (ID)' : 'Periode (ID)'}
                   </label>
                   <input
@@ -1348,19 +1380,19 @@ export function ExperienceSection({
                     value={periodId}
                     onChange={(e) => setPeriodId(e.target.value)}
                     placeholder="Jul 2026 – Sekarang"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-category" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-category" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Category' : 'Kategori'}
                   </label>
                   <select
                     id="exp-category"
                     value={category}
                     onChange={(e) => setCategory(e.target.value as 'leadership' | 'operations')}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     <option value="leadership">{locale === 'en' ? 'Leadership' : 'Kepemimpinan'}</option>
                     <option value="operations">IT Officer</option>
@@ -1370,7 +1402,7 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="exp-scale" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-scale" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Scale / Context (EN)' : 'Konteks / Skala (EN)'}
                   </label>
                   <input
@@ -1379,12 +1411,12 @@ export function ExperienceSection({
                     maxLength={200}
                     value={scaleContext}
                     onChange={(e) => setScaleContext(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-scale-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-scale-id" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Scale / Context (ID)' : 'Konteks / Skala (ID)'}
                   </label>
                   <input
@@ -1393,13 +1425,13 @@ export function ExperienceSection({
                     maxLength={200}
                     value={scaleContextId}
                     onChange={(e) => setScaleContextId(e.target.value)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="exp-bullets" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="exp-bullets" className="block text-xs font-semibold text-[var(--ink)]">
                   {locale === 'en' ? 'Role Details / Achievements (EN — 1 per line) *' : 'Keterangan Detail / Pencapaian (EN — 1 per baris) *'}
                 </label>
                 <textarea
@@ -1408,12 +1440,12 @@ export function ExperienceSection({
                   required
                   value={bulletsText}
                   onChange={(e) => setBulletsText(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label htmlFor="exp-bullets-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="exp-bullets-id" className="block text-xs font-semibold text-[var(--ink)]">
                   {locale === 'en' ? 'Role Details / Achievements (ID — 1 per line)' : 'Keterangan Detail / Pencapaian (ID — 1 per baris)'}
                 </label>
                 <textarea
@@ -1421,13 +1453,13 @@ export function ExperienceSection({
                   rows={4}
                   value={bulletsIdText}
                   onChange={(e) => setBulletsIdText(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div className="sm:col-span-2">
-                  <label htmlFor="exp-systems" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-systems" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Core Systems (comma-separated)' : 'Sistem Utama (pisahkan dengan koma)'}
                   </label>
                   <input
@@ -1436,12 +1468,12 @@ export function ExperienceSection({
                     value={systemsText}
                     onChange={(e) => setSystemsText(e.target.value)}
                     placeholder="Protel PMS, VMware vSphere, Fortigate"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="exp-order" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="exp-order" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Display Order' : 'Urutan Tampil'}
                   </label>
                   <input
@@ -1451,23 +1483,23 @@ export function ExperienceSection({
                     max={1000}
                     value={sortOrder}
                     onChange={(e) => setSortOrder(Number(e.target.value))}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 tabular-nums focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] tabular-nums focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
                 >
                   {locale === 'en' ? 'Cancel' : 'Batal'}
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving
                     ? locale === 'en'
@@ -1489,18 +1521,18 @@ export function ExperienceSection({
           role="dialog"
           aria-modal="true"
           aria-labelledby="stage-modal-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-8">
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950/60 dark:text-blue-400">
+                <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--brass)]/15 text-[var(--brass)]">
                   <Briefcase className="h-4 w-4" aria-hidden="true" />
                 </div>
                 <div>
                   <h3
                     id="stage-modal-title"
-                    className="font-display text-lg font-bold text-slate-950 dark:text-white"
+                    className="font-display text-lg font-bold text-[var(--ink)]"
                   >
                     {stageModalTarget.editingStage
                       ? locale === 'en'
@@ -1510,7 +1542,7 @@ export function ExperienceSection({
                         ? `Add Promotion / Career Stage · ${stageModalTarget.exp.company}`
                         : `Tambah Jenjang Karir · ${stageModalTarget.exp.company}`}
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 text-xs text-[var(--mute)]">
                     {stageModalTarget.editingStage
                       ? locale === 'en'
                         ? 'Update role title, period, or responsibilities within this company timeline.'
@@ -1525,7 +1557,7 @@ export function ExperienceSection({
                 type="button"
                 onClick={() => setStageModalTarget(null)}
                 aria-label="Close stage modal"
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                className="rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1535,7 +1567,7 @@ export function ExperienceSection({
               {stageError && (
                 <div
                   role="alert"
-                  className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+                  className="rounded-xl border border-red-300/60 bg-red-50/90 px-3.5 py-2.5 text-xs font-medium text-red-800 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
                 >
                   {stageError}
                 </div>
@@ -1543,7 +1575,7 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="stage-role" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-role" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'New Role Title (EN) *' : 'Jabatan Baru (EN) *'}
                   </label>
                   <input
@@ -1554,11 +1586,11 @@ export function ExperienceSection({
                     value={stageRole}
                     onChange={(e) => setStageRole(e.target.value)}
                     placeholder="Information Technology Manager"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label htmlFor="stage-role-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-role-id" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Role Title (ID)' : 'Jabatan Baru (ID)'}
                   </label>
                   <input
@@ -1568,14 +1600,14 @@ export function ExperienceSection({
                     value={stageRoleId}
                     onChange={(e) => setStageRoleId(e.target.value)}
                     placeholder="Information Technology Manager"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label htmlFor="stage-period" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-period" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Period (EN) *' : 'Periode (EN) *'}
                   </label>
                   <input
@@ -1586,11 +1618,11 @@ export function ExperienceSection({
                     value={stagePeriod}
                     onChange={(e) => setStagePeriod(e.target.value)}
                     placeholder="Dec 2026 – Present"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label htmlFor="stage-period-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-period-id" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Period (ID)' : 'Periode (ID)'}
                   </label>
                   <input
@@ -1600,18 +1632,18 @@ export function ExperienceSection({
                     value={stagePeriodId}
                     onChange={(e) => setStagePeriodId(e.target.value)}
                     placeholder="Des 2026 – Sekarang"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 font-mono text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label htmlFor="stage-status" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-status" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Work Status' : 'Status Pekerjaan'}
                   </label>
                   <select
                     id="stage-status"
                     value={stageStatus}
                     onChange={(e) => setStageStatus(e.target.value as ExperienceStatus)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     <option value="active">{locale === 'en' ? 'Active / Current' : 'Aktif Saat Ini'}</option>
                     <option value="completed">{locale === 'en' ? 'Completed' : 'Selesai'}</option>
@@ -1621,14 +1653,14 @@ export function ExperienceSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="stage-emp-type" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stage-emp-type" className="block text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en' ? 'Employment Type' : 'Tipe Penugasan'}
                   </label>
                   <select
                     id="stage-emp-type"
                     value={stageEmploymentType}
                     onChange={(e) => setStageEmploymentType(e.target.value as EmploymentType)}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     {(Object.keys(EMPLOYMENT_TYPE_LABELS) as EmploymentType[]).map((empType) => (
                       <option key={empType} value={empType}>
@@ -1640,12 +1672,12 @@ export function ExperienceSection({
 
                 {stageStatus === 'active' && onSyncCurrentRoleToProfile && (
                   <div className="flex items-end">
-                    <label className="flex w-full items-center gap-2.5 rounded-lg border border-blue-200 bg-blue-50/70 px-3.5 py-2.5 text-xs font-medium text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-100 cursor-pointer">
+                    <label className="flex w-full items-center gap-2.5 rounded-xl border border-[var(--brass)]/35 bg-[var(--brass)]/10 px-3.5 py-2.5 text-xs font-medium text-[var(--ink)] cursor-pointer">
                       <input
                         type="checkbox"
                         checked={stageSyncHeroProfile}
                         onChange={(e) => setStageSyncHeroProfile(e.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                        className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brass)]"
                       />
                       <span>
                         {locale === 'en'
@@ -1658,12 +1690,12 @@ export function ExperienceSection({
               </div>
 
               {!stageModalTarget.editingStage && (
-                <label className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-xs font-medium text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-2.5 rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-xs font-medium text-[var(--ink)] cursor-pointer">
                   <input
                     type="checkbox"
                     checked={markPrevCompleted}
                     onChange={(e) => setMarkPrevCompleted(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-300 text-blue-700"
+                    className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brass)]"
                   />
                   <span>
                     {locale === 'en'
@@ -1674,7 +1706,7 @@ export function ExperienceSection({
               )}
 
               <div>
-                <label htmlFor="stage-bullets" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="stage-bullets" className="block text-xs font-semibold text-[var(--ink)]">
                   {locale === 'en'
                     ? 'Work Details / Key Achievements (EN — 1 per line) *'
                     : 'Keterangan Kerja / Pencapaian Utama (EN — 1 per baris) *'}
@@ -1690,12 +1722,12 @@ export function ExperienceSection({
                       ? 'Lead IT department strategy, annual CAPEX/OPEX budgeting, and audit readiness...'
                       : 'Memimpin strategi departemen IT, anggaran CAPEX/OPEX tahunan, dan audit sistem...'
                   }
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                 />
               </div>
 
               <div>
-                <label htmlFor="stage-bullets-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="stage-bullets-id" className="block text-xs font-semibold text-[var(--ink)]">
                   {locale === 'en'
                     ? 'Work Details / Key Achievements (ID — 1 per line)'
                     : 'Keterangan Kerja / Pencapaian Utama (ID — 1 per baris)'}
@@ -1705,22 +1737,22 @@ export function ExperienceSection({
                   rows={3}
                   value={stageBulletsIdText}
                   onChange={(e) => setStageBulletsIdText(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
                 <button
                   type="button"
                   onClick={() => setStageModalTarget(null)}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
                 >
                   {locale === 'en' ? 'Cancel' : 'Batal'}
                 </button>
                 <button
                   type="submit"
                   disabled={isSavingStage}
-                  className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
                 >
                   {isSavingStage
                     ? locale === 'en'

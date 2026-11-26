@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, MouseEvent, useEffect, useState } from 'react';
 import { Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Locale, TechCategory, UI_COPY } from '../data/cvData';
 import {
@@ -69,7 +69,20 @@ export function TechStackSection({
     groupFilter === 'all' ? true : cat.group === groupFilter
   );
 
+  const marqueeItems = Array.from(
+    new Set(categories.flatMap((c) => c.items).filter(Boolean))
+  );
+
   const filterKeys: StackFilter[] = ['all', 'core', 'infra', 'guest', 'productivity'];
+
+  const handleCardPointerMove = (e: MouseEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const rect = el.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / Math.max(1, rect.width)) * 100;
+    const y = ((e.clientY - rect.top) / Math.max(1, rect.height)) * 100;
+    el.style.setProperty('--mx', `${x.toFixed(1)}%`);
+    el.style.setProperty('--my', `${y.toFixed(1)}%`);
+  };
 
   const openAddModal = () => {
     setEditingItem(null);
@@ -154,12 +167,24 @@ export function TechStackSection({
     <section
       id="tech-stack"
       data-animate="section"
-      className="print-section border-b border-slate-200 bg-slate-50 py-14 print:bg-white print:py-5 dark:border-slate-800 dark:bg-slate-950 md:py-20"
+      className="print-section border-b border-[var(--line)] bg-[var(--bg)] pb-14 print:bg-white print:py-5 md:pb-20"
     >
-      <div className="mx-auto max-w-6xl px-6 print:px-0">
+      {/* Full-bleed Hospitality Systems Marquee Ribbon */}
+      {marqueeItems.length > 0 && (
+        <div className="marq mb-12 print:hidden" aria-hidden="true">
+          <div className="track">
+            {marqueeItems.concat(marqueeItems).map((item, i) => (
+              <span key={`${item}-${i}`}>{item}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] pt-6 print:px-0 print:pt-0">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p className="text-xs font-semibold tracking-wide text-blue-700 print:text-[10px] dark:text-blue-400">
+            <p className="flex items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase print:text-[10px]">
+              <span className="inline-block h-px w-6 bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
                 value={siteCopy.stackKicker}
                 canEdit={isAdminUser}
@@ -167,7 +192,7 @@ export function TechStackSection({
                 onSave={(val) => onSaveSiteCopyField('stackKicker', val)}
               />
             </p>
-            <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 print:mt-0.5 print:text-lg dark:text-white">
+            <h2 className="mt-2 font-display text-[clamp(1.85rem,4vw,3rem)] font-bold tracking-tight text-[var(--ink)] print:mt-0.5 print:text-lg">
               <EditableText
                 value={siteCopy.stackTitle}
                 canEdit={isAdminUser}
@@ -175,7 +200,7 @@ export function TechStackSection({
                 onSave={(val) => onSaveSiteCopyField('stackTitle', val)}
               />
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-600 print:hidden dark:text-slate-300">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-[var(--mute)] print:hidden">
               <EditableText
                 value={siteCopy.stackDesc}
                 canEdit={isAdminUser}
@@ -191,7 +216,7 @@ export function TechStackSection({
               <button
                 type="button"
                 onClick={openAddModal}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-800 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Add Category' : 'Tambah Kategori'}</span>
@@ -201,7 +226,7 @@ export function TechStackSection({
             <div
               role="tablist"
               aria-label="Filter technology stack categories"
-              className="flex flex-wrap items-center gap-1 rounded-lg bg-slate-200/75 p-1 dark:bg-slate-800"
+              className="flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1"
             >
               {filterKeys.map((key) => (
                 <button
@@ -210,10 +235,10 @@ export function TechStackSection({
                   role="tab"
                   aria-selected={groupFilter === key}
                   onClick={() => setGroupFilter(key)}
-                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors duration-150 whitespace-nowrap shrink-0 cursor-pointer ${
                     groupFilter === key
-                      ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                      : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                      ? 'bg-[var(--brass)] text-[#1a1405]'
+                      : 'text-[var(--mute)] hover:text-[var(--ink)]'
                   }`}
                 >
                   {t.stackFilters[key]}
@@ -226,21 +251,22 @@ export function TechStackSection({
         {loadError && (
           <div
             role="alert"
-            className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
+            className="mt-6 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-700 dark:text-red-200"
           >
             {loadError}
           </div>
         )}
 
-        {/* Clean 2-column architectural grid with hairline dividers */}
-        <div className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 print:mt-3 print:grid-cols-2 print:rounded-lg dark:border-slate-800 dark:bg-slate-800 md:grid-cols-2">
+        {/* Spotlight 22px Editorial Grid */}
+        <div className="mt-10 grid grid-cols-1 gap-5 print:mt-3 print:grid-cols-2 print:gap-3 md:grid-cols-2">
           {visibleCategories.map((category, index) => (
             <div
               key={category.id}
-              className="print-break-inside-avoid flex flex-col justify-between bg-white p-6 print:p-3 dark:bg-slate-900"
+              onMouseMove={handleCardPointerMove}
+              className="editorial-card print-break-inside-avoid flex flex-col justify-between p-7 print:p-3"
             >
-              <div className="flex items-baseline justify-between gap-4">
-                <h3 className="font-display text-base font-bold text-slate-950 print:text-xs dark:text-white">
+              <div className="relative z-10 flex items-baseline justify-between gap-4">
+                <h3 className="font-display text-xl font-bold text-[var(--ink)] print:text-xs">
                   <EditableText
                     value={locale === 'en' ? category.label : category.labelId}
                     canEdit={isAdminUser}
@@ -263,7 +289,7 @@ export function TechStackSection({
                         type="button"
                         onClick={() => openEditModal(category)}
                         aria-label={`Edit ${category.label}`}
-                        className="rounded p-1 text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-slate-800 cursor-pointer"
+                        className="rounded-full p-1.5 text-[var(--brass)] hover:bg-[var(--brass)]/15 cursor-pointer"
                       >
                         <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                       </button>
@@ -272,40 +298,55 @@ export function TechStackSection({
                           type="button"
                           onClick={() => void handleDelete(category.id)}
                           aria-label={`Delete ${category.label}`}
-                          className="rounded p-1 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-slate-800 cursor-pointer"
+                          className="rounded-full p-1.5 text-red-600 hover:bg-red-500/15 dark:text-red-400 cursor-pointer"
                         >
                           <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
                       )}
                     </div>
                   )}
-                  <span className="font-mono text-xs text-slate-400 tabular-nums print:text-[10px] dark:text-slate-500">
+                  <span className="font-mono text-xs text-[var(--brass)] tabular-nums print:text-[10px]">
                     {String(index + 1).padStart(2, '0')}
                   </span>
                 </div>
               </div>
 
-              <p className="mt-3 text-sm leading-relaxed text-slate-700 print:mt-1 print:text-[11px] print:leading-snug dark:text-slate-300">
-                <EditableText
-                  value={category.items.join(' · ')}
-                  canEdit={isAdminUser}
-                  multiline
-                  maxLength={1200}
-                  onSave={(val) => {
-                    const parsed = val
-                      .split(/[·,]+/)
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    if (parsed.length === 0) {
-                      throw new Error('Minimal satu keahlian wajib diisi.');
-                    }
-                    return saveTechStackToFirestore(
-                      { ...category, items: parsed },
-                      category.fromFirestore
-                    );
-                  }}
-                />
-              </p>
+              <div className="relative z-10 mt-4">
+                {isAdminUser ? (
+                  <p className="text-sm leading-relaxed text-[var(--mute)] print:mt-1 print:text-[11px]">
+                    <EditableText
+                      value={category.items.join(' · ')}
+                      canEdit={isAdminUser}
+                      multiline
+                      maxLength={1200}
+                      onSave={(val) => {
+                        const parsed = val
+                          .split(/[·,]+/)
+                          .map((s) => s.trim())
+                          .filter(Boolean);
+                        if (parsed.length === 0) {
+                          throw new Error('Minimal satu keahlian wajib diisi.');
+                        }
+                        return saveTechStackToFirestore(
+                          { ...category, items: parsed },
+                          category.fromFirestore
+                        );
+                      }}
+                    />
+                  </p>
+                ) : (
+                  <ul className="flex flex-wrap gap-2 print:gap-1">
+                    {category.items.map((tool) => (
+                      <li
+                        key={tool}
+                        className="rounded-full border border-[var(--line)] px-3.5 py-1.5 text-xs font-medium text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] hover:bg-[var(--brass)] hover:text-[#1a1405] print:border-slate-300 print:px-2 print:py-0.5 print:text-[10px]"
+                      >
+                        {tool}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -317,13 +358,13 @@ export function TechStackSection({
           role="dialog"
           aria-modal="true"
           aria-labelledby="stack-modal-title"
-          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+          className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-7">
+          <div className="w-full max-w-lg rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-7">
             <div className="flex items-start justify-between gap-4">
               <h3
                 id="stack-modal-title"
-                className="font-display text-lg font-bold text-slate-950 dark:text-white"
+                className="font-display text-lg font-bold text-[var(--ink)]"
               >
                 {editingItem
                   ? locale === 'en'
@@ -337,7 +378,7 @@ export function TechStackSection({
                 type="button"
                 onClick={() => setIsModalOpen(false)}
                 aria-label="Close modal"
-                className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 cursor-pointer"
+                className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -347,7 +388,7 @@ export function TechStackSection({
               {formError && (
                 <div
                   role="alert"
-                  className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+                  className="rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:text-red-200"
                 >
                   {formError}
                 </div>
@@ -355,14 +396,14 @@ export function TechStackSection({
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="stack-group" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stack-group" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Group' : 'Grup'}
                   </label>
                   <select
                     id="stack-group"
                     value={group}
                     onChange={(e) => setGroup(e.target.value as TechCategory['group'])}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   >
                     <option value="core">{t.stackFilters.core}</option>
                     <option value="infra">{t.stackFilters.infra}</option>
@@ -372,7 +413,7 @@ export function TechStackSection({
                 </div>
 
                 <div>
-                  <label htmlFor="stack-order" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stack-order" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Order' : 'Urutan'}
                   </label>
                   <input
@@ -382,14 +423,14 @@ export function TechStackSection({
                     max={1000}
                     value={sortOrder}
                     onChange={(e) => setSortOrder(Number(e.target.value))}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 font-mono text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 font-mono text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="stack-label" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stack-label" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Category Name (EN) *' : 'Nama Kategori (EN) *'}
                   </label>
                   <input
@@ -400,12 +441,12 @@ export function TechStackSection({
                     value={label}
                     onChange={(e) => setLabel(e.target.value)}
                     placeholder="e.g. Cloud & DevOps"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="stack-label-id" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <label htmlFor="stack-label-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Category Name (ID)' : 'Nama Kategori (ID)'}
                   </label>
                   <input
@@ -415,13 +456,13 @@ export function TechStackSection({
                     value={labelId}
                     onChange={(e) => setLabelId(e.target.value)}
                     placeholder="mis. Cloud & DevOps"
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="stack-items" className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <label htmlFor="stack-items" className="block text-xs font-semibold text-[var(--mute)]">
                   {locale === 'en' ? 'Tools / Technologies (comma-separated) *' : 'Daftar Teknologi (pisahkan dengan koma) *'}
                 </label>
                 <textarea
@@ -431,22 +472,22 @@ export function TechStackSection({
                   value={itemsText}
                   onChange={(e) => setItemsText(e.target.value)}
                   placeholder="Protel, VHP, Opera PMS"
-                  className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                  className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
                 >
                   {locale === 'en' ? 'Cancel' : 'Batal'}
                 </button>
                 <button
                   type="submit"
                   disabled={isSaving}
-                  className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 cursor-pointer"
+                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving
                     ? locale === 'en'

@@ -207,7 +207,7 @@ export default function App() {
       {isUnlocked ? (
         <Suspense
           fallback={
-            <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400">
+            <div className="flex min-h-screen items-center justify-center bg-[var(--bg)] text-sm text-[var(--mute)]">
               {locale === 'en' ? 'Loading document...' : 'Memuat dokumen...'}
             </div>
           }

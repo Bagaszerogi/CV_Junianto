@@ -10,9 +10,9 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
-  updateDoc,
 } from 'firebase/firestore';
 import {
+  createUserWithEmailAndPassword,
   getRedirectResult,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -213,19 +213,19 @@ export async function addAdminAccessToFirestore(
           : [];
       const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
 
-      if (!regSnap.exists() || typeof regSnap.data()?.authorId !== 'string') {
-        await setDoc(regRef, {
-          emails: nextList,
-          authorId: currentUser.uid,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        await updateDoc(regRef, {
-          emails: nextList,
-          updatedAt: serverTimestamp(),
-        });
-      }
+      const regData = regSnap.exists() ? regSnap.data() : null;
+      const authorId =
+        typeof regData?.authorId === 'string' && regData.authorId.length > 0
+          ? regData.authorId
+          : currentUser.uid;
+      const createdAt = regData?.createdAt != null ? regData.createdAt : serverTimestamp();
+
+      await setDoc(regRef, {
+        emails: nextList,
+        authorId,
+        createdAt,
+        updatedAt: serverTimestamp(),
+      });
       return { kind: 'email', value: cleanEmail };
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `admins/${cleanEmail}`);
@@ -273,12 +273,20 @@ export async function removeAdminEmailFromFirestore(rawEmail: string): Promise<v
     const regRef = doc(db, 'adminsRegistry', 'emails');
     const regSnap = await getDocFromServer(regRef);
     if (regSnap.exists() && Array.isArray(regSnap.data()?.emails)) {
-      const nextList = (regSnap.data().emails as unknown[])
+      const regData = regSnap.data();
+      const nextList = (regData.emails as unknown[])
         .filter((x): x is string => typeof x === 'string')
         .map((x) => x.trim().toLowerCase())
         .filter((x) => x !== cleanEmail);
-      await updateDoc(regRef, {
+      const authorId =
+        typeof regData?.authorId === 'string' && regData.authorId.length > 0
+          ? regData.authorId
+          : currentUser.uid;
+      const createdAt = regData?.createdAt != null ? regData.createdAt : serverTimestamp();
+      await setDoc(regRef, {
         emails: nextList,
+        authorId,
+        createdAt,
         updatedAt: serverTimestamp(),
       });
     }
@@ -361,6 +369,27 @@ export async function signInAdminWithEmail(
   const signedEmail = user.email ?? email.trim();
   await signOut(auth);
   throw new Error(`AUTH_UNAUTHORIZED_EMAIL:${signedEmail}`);
+}
+
+export async function registerAdminWithEmail(
+  email: string,
+  password: string
+): Promise<{ user: User; isAdmin: boolean; needsVerification: boolean }> {
+  const cleanEmail = email.trim();
+  if (!isValidEmailAddress(cleanEmail)) {
+    throw new Error('Masukkan alamat email yang valid.');
+  }
+  const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+  const user = credential.user;
+  await sendEmailVerification(user).catch(() => undefined);
+  await user.getIdToken(true);
+  const isAdmin = await checkIsAdminUser(user);
+  if (isAdmin) {
+    await syncAdminRecord(user);
+    await user.getIdToken(true);
+    return { user, isAdmin: true, needsVerification: false };
+  }
+  return { user, isAdmin: false, needsVerification: !user.emailVerified };
 }
 
 export async function sendAdminVerificationEmail(): Promise<void> {
@@ -535,19 +564,17 @@ export async function updateFirestoreProject(
     const docRef = doc(db, 'projects', projectId);
     const snap = await getDocFromServer(docRef);
     const existing = snap.exists() ? snap.data() : null;
-    if (existing && typeof existing.authorId === 'string' && existing.createdAt != null) {
-      await updateDoc(docRef, {
-        ...sanitized,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(docRef, {
-        ...sanitized,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    const authorId =
+      typeof existing?.authorId === 'string' && existing.authorId.length > 0
+        ? existing.authorId
+        : currentUser.uid;
+    const createdAt = existing?.createdAt != null ? existing.createdAt : serverTimestamp();
+    await setDoc(docRef, {
+      ...sanitized,
+      authorId,
+      createdAt,
+      updatedAt: serverTimestamp(),
+    });
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {

@@ -20,6 +20,9 @@ export function sanitizeWhatsAppHref(url: string): string {
 
 export function sanitizePortraitSrc(src: string, fallback = '/assets/portrait.png'): string {
   const trimmed = src.trim();
+  if (trimmed === '') {
+    return '';
+  }
   if (trimmed.length >= 5 && trimmed.length <= 600_000 && !trimmed.includes('..')) {
     if (SAFE_ASSET_RE.test(trimmed) || SAFE_DATA_IMG_RE.test(trimmed)) {
       return trimmed;

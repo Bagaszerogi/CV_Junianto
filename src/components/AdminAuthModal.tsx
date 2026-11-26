@@ -30,6 +30,7 @@ import {
   checkIsAdminUser,
   isRunningInIframe,
   listFirestoreAdminEmails,
+  registerAdminWithEmail,
   removeAdminEmailFromFirestore,
   sendAdminPasswordReset,
   sendAdminVerificationEmail,
@@ -61,6 +62,7 @@ export function AdminAuthModal({
   onAdminVerified,
 }: AdminAuthModalProps) {
   const [authMethod, setAuthMethod] = useState<AuthModalTab>(initialTab);
+  const [emailMode, setEmailMode] = useState<'signin' | 'register'>('signin');
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -97,6 +99,26 @@ export function AdminAuthModal({
             locale === 'en'
               ? `Account (${email}) is not registered in the Firestore admin list yet. Ask a core admin to add it under DB & SSO Check, or sign in with an authorized admin account.`
               : `Akun (${email}) belum terdaftar di daftar admin Firestore. Tambahkan email atau UID akun ini melalui menu Cek DB & SSO oleh admin utama.`,
+          badDomain: null,
+          isPopupIssue: false,
+        };
+      }
+      if (msg.includes('auth/email-already-in-use')) {
+        return {
+          message:
+            locale === 'en'
+              ? 'This email already has an account. Switch to "Sign In" above or use Google SSO.'
+              : 'Email ini sudah terdaftar. Pindah ke tab "Masuk" di atas atau gunakan Google SSO.',
+          badDomain: null,
+          isPopupIssue: false,
+        };
+      }
+      if (msg.includes('auth/weak-password')) {
+        return {
+          message:
+            locale === 'en'
+              ? 'Password must be at least 6 characters.'
+              : 'Kata sandi minimal 6 karakter.',
           badDomain: null,
           isPopupIssue: false,
         };
@@ -159,8 +181,8 @@ export function AdminAuthModal({
         return {
           message:
             locale === 'en'
-              ? 'Incorrect email or password, or the Email/Password account has not been created in Firebase Console → Authentication → Users yet.'
-              : 'Email atau kata sandi salah, atau akun Email/Password belum dibuat di Firebase Console → Authentication → Users.',
+              ? 'Incorrect email or password, or the Email/Password account has not been created yet. Use "Create Account" below if this email was just added.'
+              : 'Email atau kata sandi salah, atau akun belum dibuat. Gunakan mode "Daftar Sandi Baru" di atas jika email baru saja ditambahkan oleh admin.',
           badDomain: null,
           isPopupIssue: false,
         };
@@ -276,7 +298,7 @@ export function AdminAuthModal({
     }
   };
 
-  const handleEmailSignIn = async (e: FormEvent) => {
+  const handleEmailSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setAuthInfo(null);
@@ -285,14 +307,21 @@ export function AdminAuthModal({
     setNeedsVerification(false);
     setIsSubmitting(true);
     try {
-      const result = await signInAdminWithEmail(loginEmail, loginPassword);
+      const result =
+        emailMode === 'register'
+          ? await registerAdminWithEmail(loginEmail, loginPassword)
+          : await signInAdminWithEmail(loginEmail, loginPassword);
       setLoginPassword('');
       if (result.needsVerification) {
         setNeedsVerification(true);
         setAuthInfo(
-          locale === 'en'
-            ? 'Your admin email is signed in but not verified yet. Verify your email to unlock Firestore editing, or sign in via Google SSO.'
-            : 'Email admin Anda berhasil masuk tetapi belum terverifikasi. Verifikasi email untuk membuka fitur edit database, atau masuk lewat Google SSO.'
+          emailMode === 'register'
+            ? locale === 'en'
+              ? 'Account created and verification email sent! Click the link in your inbox, then press Refresh Verification below.'
+              : 'Akun dibuat & email verifikasi telah dikirim! Buka tautan di inbox Anda, lalu klik Cek Status Verifikasi.'
+            : locale === 'en'
+              ? 'Your admin email is signed in but not verified yet. Verify your email to unlock Firestore editing, or sign in via Google SSO.'
+              : 'Email admin Anda berhasil masuk tetapi belum terverifikasi. Verifikasi email untuk membuka fitur edit database, atau masuk lewat Google SSO.'
         );
       } else {
         onAdminVerified?.();
@@ -341,6 +370,12 @@ export function AdminAuthModal({
         setNeedsVerification(false);
         onAdminVerified?.();
         onClose();
+      } else if (refreshed?.emailVerified) {
+        setAuthError(
+          locale === 'en'
+            ? 'Email is verified, but this email is not listed in Firestore /admins yet. Copy the UID above and ask the main admin to authorize it.'
+            : 'Email sudah terverifikasi, namun belum terdaftar di Firestore /admins. Salin UID di atas agar ditambahkan oleh admin utama.'
+        );
       } else {
         setAuthError(
           locale === 'en'
@@ -505,22 +540,22 @@ export function AdminAuthModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="global-auth-title"
-      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-7">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-7">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
               <ShieldCheck className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
               <h3
                 id="global-auth-title"
-                className="font-display text-lg font-bold text-slate-950 dark:text-white"
+                className="font-display text-lg font-bold text-[var(--ink)]"
               >
                 {locale === 'en' ? 'Admin Sign In & Database' : 'Login Admin & Koneksi Database'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-[var(--mute)]">
                 {locale === 'en'
                   ? 'Sign in with Google SSO or Email to edit CV content & verify Firestore.'
                   : 'Masuk lewat Google SSO atau Email untuk edit CV & cek koneksi Firestore.'}
@@ -532,13 +567,13 @@ export function AdminAuthModal({
             type="button"
             onClick={onClose}
             aria-label="Close login dialog"
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+            className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="mt-5 flex items-center gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+        <div className="mt-5 flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1">
           <button
             type="button"
             onClick={() => {
@@ -546,10 +581,10 @@ export function AdminAuthModal({
               setAuthError(null);
               setAuthInfo(null);
             }}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               authMethod === 'google'
-                ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                ? 'bg-[var(--brass)] text-[#1a1405]'
+                : 'text-[var(--mute)] hover:text-[var(--ink)]'
             }`}
           >
             Google SSO
@@ -562,10 +597,10 @@ export function AdminAuthModal({
               setAuthInfo(null);
               setUnauthorizedHost(null);
             }}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               authMethod === 'email'
-                ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                ? 'bg-[var(--brass)] text-[#1a1405]'
+                : 'text-[var(--mute)] hover:text-[var(--ink)]'
             }`}
           >
             Email & Password
@@ -578,10 +613,10 @@ export function AdminAuthModal({
               setAuthInfo(null);
               void runDiagnostics();
             }}
-            className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
               authMethod === 'diagnostics'
-                ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
+                ? 'bg-[var(--brass)] text-[#1a1405]'
+                : 'text-[var(--mute)] hover:text-[var(--ink)]'
             }`}
           >
             {locale === 'en' ? 'DB & SSO Check' : 'Cek DB & SSO'}
@@ -591,29 +626,29 @@ export function AdminAuthModal({
         {authError && authMethod !== 'diagnostics' && (
           <div
             role="alert"
-            className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-xs font-medium leading-relaxed text-red-700 dark:border-red-900/60 dark:bg-red-950/60 dark:text-red-200"
+            className="mt-4 rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium leading-relaxed text-red-700 dark:text-red-200"
           >
             {authError}
           </div>
         )}
 
         {unauthorizedHost && authMethod === 'google' && (
-          <div className="mt-3 space-y-3 rounded-xl border border-amber-300 bg-amber-50/80 p-4 text-xs text-amber-950 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-100">
-            <p className="font-semibold">
+          <div className="mt-3 space-y-3 rounded-2xl border border-[var(--brass)]/40 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg))] p-4 text-xs text-[var(--ink)]">
+            <p className="font-semibold text-[var(--brass)]">
               {locale === 'en'
                 ? 'How to authorize this domain for Google SSO:'
                 : 'Cara mengaktifkan Google SSO di domain ini (1x pengaturan):'}
             </p>
-            <ol className="list-decimal space-y-1 pl-4 leading-relaxed">
+            <ol className="list-decimal space-y-1 pl-4 leading-relaxed text-[var(--mute)]">
               <li>
                 {locale === 'en' ? 'Copy this domain:' : 'Salin domain aktif ini:'}{' '}
-                <span className="inline-flex items-center gap-1.5 rounded bg-white px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+                <span className="inline-flex items-center gap-1.5 rounded bg-[var(--bg2)] px-2 py-0.5 font-mono text-[11px] font-semibold text-[var(--ink)]">
                   {unauthorizedHost}
                   <button
                     type="button"
                     onClick={() => void handleCopyDomain(unauthorizedHost)}
                     aria-label="Copy domain"
-                    className="text-blue-700 hover:text-blue-900 dark:text-blue-400 cursor-pointer"
+                    className="text-[var(--brass)] hover:opacity-80 cursor-pointer"
                   >
                     {copiedHost ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                   </button>
@@ -634,7 +669,7 @@ export function AdminAuthModal({
               href={FIREBASE_AUTH_SETTINGS_URL}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-3.5 py-2 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)]"
             >
               <span>
                 {locale === 'en'
@@ -649,7 +684,7 @@ export function AdminAuthModal({
         {authInfo && authMethod !== 'diagnostics' && (
           <div
             role="status"
-            className="mt-4 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2.5 text-xs font-medium leading-relaxed text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/50 dark:text-blue-200"
+            className="mt-4 rounded-xl border border-[var(--brass)]/35 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg))] px-3.5 py-2.5 text-xs font-medium leading-relaxed text-[var(--ink)]"
           >
             {authInfo}
           </div>
@@ -658,8 +693,8 @@ export function AdminAuthModal({
         {authMethod === 'diagnostics' ? (
           <div className="mt-5 space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-800 dark:text-slate-100">
-                <Database className="h-4 w-4 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+              <div className="flex items-center gap-2 text-xs font-semibold text-[var(--ink)]">
+                <Database className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
                 <span>
                   {locale === 'en'
                     ? 'Live Cloud Firestore & SSO Status'
@@ -670,7 +705,7 @@ export function AdminAuthModal({
                 type="button"
                 disabled={isAuditing}
                 onClick={() => void runDiagnostics()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] disabled:opacity-50 cursor-pointer"
               >
                 <RefreshCw className={`h-3 w-3 ${isAuditing ? 'animate-spin' : ''}`} />
                 <span>{locale === 'en' ? 'Re-test' : 'Uji Ulang'}</span>
@@ -678,8 +713,8 @@ export function AdminAuthModal({
             </div>
 
             {isAuditing && !auditReport ? (
-              <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-8 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                <Loader2 className="h-4 w-4 animate-spin" />
+              <div className="flex items-center justify-center gap-2 rounded-2xl border border-[var(--line)] py-8 text-xs text-[var(--mute)]">
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--brass)]" />
                 <span>
                   {locale === 'en'
                     ? 'Testing Firestore server connection...'
@@ -688,9 +723,9 @@ export function AdminAuthModal({
               </div>
             ) : auditReport ? (
               <div className="space-y-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 text-[11px] leading-relaxed dark:border-slate-800 dark:bg-slate-950">
+                <div className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-3.5 text-[11px] leading-relaxed">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-semibold text-slate-900 dark:text-white">
+                    <span className="font-semibold text-[var(--ink)]">
                       {!auditReport.overallConnected
                         ? locale === 'en'
                           ? 'Connection Issue Detected'
@@ -703,25 +738,25 @@ export function AdminAuthModal({
                             ? 'Firestore Connected & Admin Authorized'
                             : 'Terhubung & Admin Terotorisasi'}
                     </span>
-                    <span className="font-mono text-slate-500 dark:text-slate-400">
+                    <span className="font-mono text-[var(--mute)]">
                       {auditReport.totalLatencyMs} ms · {auditReport.checkedAt}
                     </span>
                   </div>
-                  <div className="mt-2 grid grid-cols-1 gap-1 text-slate-600 dark:text-slate-300">
+                  <div className="mt-2 grid grid-cols-1 gap-1 text-[var(--mute)]">
                     <div>
-                      <span className="font-medium">Project:</span>{' '}
+                      <span className="font-medium text-[var(--ink)]">Project:</span>{' '}
                       <span className="font-mono">{auditReport.projectId}</span>
                     </div>
                     <div className="truncate">
-                      <span className="font-medium">Database ID:</span>{' '}
+                      <span className="font-medium text-[var(--ink)]">Database ID:</span>{' '}
                       <span className="font-mono">{auditReport.databaseId}</span>
                     </div>
                     <div>
-                      <span className="font-medium">Host aktif:</span>{' '}
+                      <span className="font-medium text-[var(--ink)]">Host aktif:</span>{' '}
                       <span className="font-mono">{auditReport.hostname}</span>
                     </div>
                     <div>
-                      <span className="font-medium">Auth User:</span>{' '}
+                      <span className="font-medium text-[var(--ink)]">Auth User:</span>{' '}
                       {auditReport.authState.signedIn ? (
                         <span className="font-mono">
                           {auditReport.authState.email} (
@@ -738,7 +773,7 @@ export function AdminAuthModal({
                     </div>
                     {auditReport.authState.uid && (
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium">UID:</span>{' '}
+                        <span className="font-medium text-[var(--ink)]">UID:</span>{' '}
                         <span className="truncate font-mono text-[10px]">
                           {auditReport.authState.uid}
                         </span>
@@ -746,7 +781,7 @@ export function AdminAuthModal({
                           type="button"
                           onClick={() => void handleCopyUid(auditReport.authState.uid!)}
                           aria-label="Copy UID"
-                          className="text-blue-700 hover:text-blue-900 dark:text-blue-400 cursor-pointer"
+                          className="text-[var(--brass)] hover:opacity-80 cursor-pointer"
                         >
                           {copiedUid ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         </button>
@@ -755,36 +790,36 @@ export function AdminAuthModal({
                   </div>
 
                   {auditReport.authRequired && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200 pt-2.5 dark:border-slate-800">
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-2.5">
                       <button
                         type="button"
                         onClick={() => setAuthMethod('google')}
-                        className="rounded-lg bg-blue-700 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-blue-800 dark:bg-blue-600 cursor-pointer"
+                        className="rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-[11px] font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
                       >
                         {locale === 'en' ? 'Sign in with Google SSO' : 'Login via Google SSO'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setAuthMethod('email')}
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 cursor-pointer"
+                        className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
                       >
-                        {locale === 'en' ? 'Email & Password' : 'Email & Password'}
+                        Email & Password
                       </button>
                     </div>
                   )}
                 </div>
 
-                <div className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-slate-800 dark:border-slate-800">
+                <div className="divide-y divide-[var(--line)] rounded-2xl border border-[var(--line)] bg-[var(--bg)]">
                   {auditReport.collections.map((item) => (
                     <div
                       key={item.key}
                       className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs"
                     >
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-900 dark:text-slate-100">
+                        <p className="font-medium text-[var(--ink)]">
                           {item.label}
                         </p>
-                        <p className="truncate font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                        <p className="truncate font-mono text-[10px] text-[var(--mute)]">
                           {item.path}
                         </p>
                         {item.error && (
@@ -795,14 +830,14 @@ export function AdminAuthModal({
                       </div>
                       <div className="shrink-0 text-right">
                         <span
-                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
                             item.status === 'synced'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
                               : item.status === 'empty-default'
-                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300'
+                                ? 'bg-[color-mix(in_srgb,var(--brass)_18%,transparent)] text-[var(--brass)]'
                                 : item.status === 'auth-required'
-                                  ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                                  : 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300'
+                                  ? 'bg-[var(--card)] text-[var(--mute)]'
+                                  : 'bg-red-500/15 text-red-700 dark:text-red-300'
                           }`}
                         >
                           {item.status === 'auth-required' && (
@@ -820,7 +855,7 @@ export function AdminAuthModal({
                                   : 'Error'}
                           </span>
                         </span>
-                        <p className="mt-0.5 font-mono text-[10px] text-slate-400">
+                        <p className="mt-0.5 font-mono text-[10px] text-[var(--mute)]">
                           {item.latencyMs} ms
                         </p>
                       </div>
@@ -834,7 +869,7 @@ export function AdminAuthModal({
                       type="button"
                       disabled={isSyncingGlobal}
                       onClick={() => void handleSyncGlobalNow()}
-                      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:opacity-50 dark:border-blue-900 dark:bg-blue-950/60 dark:text-blue-200 cursor-pointer"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-full border border-[var(--brass)]/40 bg-[color-mix(in_srgb,var(--brass)_14%,var(--bg))] px-3.5 py-2 text-xs font-semibold text-[var(--brass)] hover:bg-[var(--brass)] hover:text-[#1a1405] disabled:opacity-50 cursor-pointer"
                     >
                       {isSyncingGlobal ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -851,7 +886,7 @@ export function AdminAuthModal({
                         type="button"
                         disabled={isSeeding}
                         onClick={() => void handleSeedDefaults()}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-700 px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
+                        className="flex flex-1 items-center justify-center gap-2 rounded-full bg-[var(--brass)] px-3.5 py-2 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
                       >
                         {isSeeding ? (
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -867,20 +902,20 @@ export function AdminAuthModal({
                 )}
 
                 {seedMessage && (
-                  <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-800 dark:border-blue-900/60 dark:bg-blue-950/50 dark:text-blue-200">
+                  <p className="rounded-xl border border-[var(--brass)]/35 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg))] px-3 py-2 text-xs font-medium text-[var(--ink)]">
                     {seedMessage}
                   </p>
                 )}
 
                 {canSeedNow && (
-                  <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5 dark:border-slate-800 dark:bg-slate-950/60">
+                  <div className="space-y-3 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-3.5">
                     <div>
-                      <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                      <p className="text-xs font-semibold text-[var(--ink)]">
                         {locale === 'en'
                           ? 'Authorized Admin Accounts (Email or Firebase UID)'
                           : 'Daftar Akses Admin Firestore (Email atau UID Firebase)'}
                       </p>
-                      <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      <p className="mt-0.5 text-[11px] text-[var(--mute)]">
                         {locale === 'en'
                           ? 'Any authorized account here can sign in, edit all CV sections, and publish global updates.'
                           : 'Akun (email atau Firebase UID) yang ditambahkan di sini otomatis mendapat izin edit & simpan perubahan global.'}
@@ -896,12 +931,12 @@ export function AdminAuthModal({
                         placeholder={
                           locale === 'en' ? 'email@gmail.com or Firebase UID' : 'email@gmail.com atau UID Firebase'
                         }
-                        className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                        className="min-w-0 flex-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-xs text-[var(--ink)] placeholder:text-[var(--mute)] focus:border-[var(--brass)] focus:outline-none"
                       />
                       <button
                         type="submit"
                         disabled={isManagingAdmin}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
                       >
                         <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>{locale === 'en' ? 'Authorize' : 'Tambah'}</span>
@@ -909,7 +944,7 @@ export function AdminAuthModal({
                     </form>
 
                     {adminManageSuccess && (
-                      <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      <p className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                         {adminManageSuccess}
                       </p>
                     )}
@@ -924,12 +959,12 @@ export function AdminAuthModal({
                       {coreAdminEmails.map((em) => (
                         <div
                           key={em}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[11px] dark:bg-slate-900"
+                          className="flex items-center justify-between gap-2 rounded-xl bg-[var(--bg2)] px-3 py-1.5 text-[11px]"
                         >
-                          <span className="truncate font-mono text-slate-700 dark:text-slate-200">
+                          <span className="truncate font-mono text-[var(--ink)]">
                             {em}
                           </span>
-                          <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          <span className="shrink-0 rounded-full bg-[color-mix(in_srgb,var(--brass)_18%,transparent)] px-2 py-0.5 text-[10px] font-semibold text-[var(--brass)]">
                             Core
                           </span>
                         </div>
@@ -937,9 +972,9 @@ export function AdminAuthModal({
                       {addedAdminEmails.map((em) => (
                         <div
                           key={em}
-                          className="flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-[11px] dark:bg-slate-900"
+                          className="flex items-center justify-between gap-2 rounded-xl bg-[var(--bg2)] px-3 py-1.5 text-[11px]"
                         >
-                          <span className="truncate font-mono text-slate-700 dark:text-slate-200">
+                          <span className="truncate font-mono text-[var(--ink)]">
                             {em}
                           </span>
                           <button
@@ -947,7 +982,7 @@ export function AdminAuthModal({
                             disabled={isManagingAdmin}
                             onClick={() => void handleRemoveAdminEmail(em)}
                             aria-label={`Hapus ${em}`}
-                            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/60 cursor-pointer"
+                            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-red-600 hover:bg-red-500/15 dark:text-red-400 cursor-pointer"
                           >
                             <Trash2 className="h-3 w-3" aria-hidden="true" />
                             <span>{locale === 'en' ? 'Remove' : 'Hapus'}</span>
@@ -961,22 +996,22 @@ export function AdminAuthModal({
             ) : null}
           </div>
         ) : needsVerification ? (
-          <div className="mt-5 space-y-3 rounded-xl border border-amber-200 bg-amber-50/70 p-4 dark:border-amber-900/60 dark:bg-amber-950/40">
-            <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+          <div className="mt-5 space-y-3 rounded-2xl border border-[var(--brass)]/40 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg))] p-4">
+            <p className="text-xs font-semibold text-[var(--brass)]">
               {locale === 'en' ? 'Email Verification Required' : 'Verifikasi Email Diperlukan'}
             </p>
-            <p className="text-[11px] leading-relaxed text-amber-900/90 dark:text-amber-200/90">
+            <p className="text-[11px] leading-relaxed text-[var(--ink)]">
               {locale === 'en'
                 ? 'For security, Email/Password sign-in requires a verified email, OR you can sign in instantly with Google SSO using the same Gmail account.'
                 : 'Untuk keamanan Firestore, akun Email/Password memerlukan email terverifikasi — atau klik "Masuk Instan Google SSO" di bawah dengan akun Gmail yang sama.'}
             </p>
             {auth.currentUser?.uid && (
-              <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-200 bg-white/80 px-2.5 py-1.5 text-[10px] text-slate-700 dark:border-amber-900/50 dark:bg-slate-900 dark:text-slate-200">
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-[var(--line)] bg-[var(--bg)] px-2.5 py-1.5 text-[10px] text-[var(--ink)]">
                 <span className="truncate font-mono">UID: {auth.currentUser.uid}</span>
                 <button
                   type="button"
                   onClick={() => void handleCopyUid(auth.currentUser!.uid)}
-                  className="inline-flex shrink-0 items-center gap-1 font-semibold text-blue-700 dark:text-blue-400 cursor-pointer"
+                  className="inline-flex shrink-0 items-center gap-1 font-semibold text-[var(--brass)] cursor-pointer"
                 >
                   {copiedUid ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                   <span>{copiedUid ? 'Disalin' : 'Salin UID'}</span>
@@ -988,7 +1023,7 @@ export function AdminAuthModal({
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => void handleGoogleSignIn()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-3.5 py-2 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
               >
                 <span>{locale === 'en' ? 'Instant Google SSO' : 'Masuk Instan Google SSO'}</span>
               </button>
@@ -996,34 +1031,34 @@ export function AdminAuthModal({
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => void handleSendVerification()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brass)] disabled:opacity-50 cursor-pointer"
               >
-                <MailCheck className="h-3.5 w-3.5" />
+                <MailCheck className="h-3.5 w-3.5 text-[var(--brass)]" />
                 <span>{locale === 'en' ? 'Send Verification Email' : 'Kirim Email Verifikasi'}</span>
               </button>
               <button
                 type="button"
                 disabled={isSubmitting}
                 onClick={() => void handleReloadVerification()}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brass)] disabled:opacity-50 cursor-pointer"
               >
-                <RefreshCw className="h-3.5 w-3.5" />
+                <RefreshCw className="h-3.5 w-3.5 text-[var(--brass)]" />
                 <span>{locale === 'en' ? 'Refresh Verification' : 'Cek Status Verifikasi'}</span>
               </button>
             </div>
           </div>
         ) : authMethod === 'google' ? (
           <div className="mt-5 space-y-3.5">
-            <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            <p className="text-xs leading-relaxed text-[var(--mute)]">
               {locale === 'en'
                 ? 'Choose your registered admin Google account when prompted to unlock full CV editing.'
-                : 'Pilih akun Google admin terdaftar (bagaszerogi@gmail.com / zerogi26@gmail.com) untuk mengaktifkan mode edit penuh.'}
+                : 'Pilih akun Google admin terdaftar (bagaszerogi@gmail.com / zerogi26@gmail.com / email yang ditambahkan) untuk mengaktifkan mode edit penuh.'}
             </p>
             <button
               type="button"
               disabled={isSubmitting}
               onClick={() => void handleGoogleSignIn()}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+              className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--brass)] px-5 py-2.5 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
             >
               <span>
                 {isSubmitting
@@ -1043,9 +1078,7 @@ export function AdminAuthModal({
                   disabled={isSubmitting}
                   onClick={() => void handleGoogleRedirect()}
                   className={`text-xs font-medium hover:underline cursor-pointer ${
-                    popupFailed
-                      ? 'text-blue-700 dark:text-blue-400'
-                      : 'text-slate-500 dark:text-slate-400'
+                    popupFailed ? 'text-[var(--brass)]' : 'text-[var(--mute)]'
                   }`}
                 >
                   {locale === 'en'
@@ -1056,11 +1089,53 @@ export function AdminAuthModal({
             )}
           </div>
         ) : (
-          <form onSubmit={handleEmailSignIn} className="mt-5 space-y-4">
+          <form onSubmit={handleEmailSubmit} className="mt-5 space-y-4">
+            {/* Sub-toggle: Sign In vs Register password for newly added admin emails */}
+            <div className="flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] p-1 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailMode('signin');
+                  setAuthError(null);
+                  setAuthInfo(null);
+                }}
+                className={`flex-1 rounded-full py-1.5 font-semibold transition-colors cursor-pointer ${
+                  emailMode === 'signin'
+                    ? 'bg-[var(--card)] text-[var(--ink)]'
+                    : 'text-[var(--mute)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {locale === 'en' ? 'Sign In' : 'Masuk'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailMode('register');
+                  setAuthError(null);
+                  setAuthInfo(null);
+                }}
+                className={`flex-1 rounded-full py-1.5 font-semibold transition-colors cursor-pointer ${
+                  emailMode === 'register'
+                    ? 'bg-[var(--card)] text-[var(--ink)]'
+                    : 'text-[var(--mute)] hover:text-[var(--ink)]'
+                }`}
+              >
+                {locale === 'en' ? 'Create Account' : 'Daftar Sandi Baru'}
+              </button>
+            </div>
+
+            {emailMode === 'register' && (
+              <p className="text-[11px] leading-relaxed text-[var(--mute)]">
+                {locale === 'en'
+                  ? 'For team emails added to Firestore /admins that do not have a password yet. We will send a verification link after sign-up.'
+                  : 'Untuk email yang baru didaftarkan di Firestore /admins namun belum punya kata sandi. Tautan verifikasi akan dikirim ke email Anda.'}
+              </p>
+            )}
+
             <div>
               <label
                 htmlFor="global-admin-email"
-                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                className="block text-xs font-semibold text-[var(--mute)]"
               >
                 Email
               </label>
@@ -1072,7 +1147,7 @@ export function AdminAuthModal({
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
                 placeholder="zerogi26@gmail.com"
-                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
               />
             </div>
 
@@ -1080,60 +1155,67 @@ export function AdminAuthModal({
               <div className="flex items-center justify-between">
                 <label
                   htmlFor="global-admin-password"
-                  className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                  className="block text-xs font-semibold text-[var(--mute)]"
                 >
                   Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => void handlePasswordReset()}
-                  className="text-[11px] font-medium text-blue-700 hover:underline dark:text-blue-400 cursor-pointer"
-                >
-                  {locale === 'en' ? 'Forgot / Set Password?' : 'Lupa / Atur Sandi?'}
-                </button>
+                {emailMode === 'signin' && (
+                  <button
+                    type="button"
+                    onClick={() => void handlePasswordReset()}
+                    className="text-[11px] font-medium text-[var(--brass)] hover:underline cursor-pointer"
+                  >
+                    {locale === 'en' ? 'Forgot / Set Password?' : 'Lupa / Atur Sandi?'}
+                  </button>
+                )}
               </div>
               <div className="relative mt-1.5">
                 <input
                   id="global-admin-password"
                   type={showPassword ? 'text' : 'password'}
                   required
-                  autoComplete="current-password"
+                  minLength={6}
+                  autoComplete={emailMode === 'register' ? 'new-password' : 'current-password'}
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 pr-10 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                  className="w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 pr-10 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword((prev) => !prev)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded p-1 text-[var(--mute)] hover:text-[var(--ink)] cursor-pointer"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-800">
+            <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
               >
                 {locale === 'en' ? 'Cancel' : 'Batal'}
               </button>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="rounded-lg bg-blue-700 px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+                className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
               >
                 {isSubmitting
                   ? locale === 'en'
-                    ? 'Signing in...'
-                    : 'Sedang masuk...'
-                  : locale === 'en'
-                    ? 'Sign In'
-                    : 'Masuk'}
+                    ? 'Submitting...'
+                    : 'Memproses...'
+                  : emailMode === 'register'
+                    ? locale === 'en'
+                      ? 'Create Account'
+                      : 'Daftar & Kirim Verifikasi'
+                    : locale === 'en'
+                      ? 'Sign In'
+                      : 'Masuk'}
               </button>
             </div>
           </form>

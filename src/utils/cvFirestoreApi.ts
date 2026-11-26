@@ -9,7 +9,6 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
@@ -316,7 +315,7 @@ export async function saveProfileToFirestore(
     whatsappHref: normalizedWa.slice(0, 200),
     email: profile.email.trim().slice(0, 140),
     address: profile.address.trim().slice(0, 240),
-    portraitDataUrl: sanitizePortraitSrc(profile.portraitDataUrl),
+    portraitDataUrl: sanitizePortraitSrc(profile.portraitDataUrl, ''),
     metrics: profile.metrics.slice(0, 6).map((m) => ({
       value: (m.value || '-').trim().slice(0, 40) || '-',
       valueId: (m.valueId || m.value || '-').trim().slice(0, 40) || '-',
@@ -380,24 +379,19 @@ export async function upsertFirestoreDoc(
   }
 
   const existing = snap.data();
-  const hasAuditFields =
-    typeof existing?.authorId === 'string' &&
-    existing.authorId.length > 0 &&
-    existing?.createdAt != null;
+  const preservedAuthorId =
+    typeof existing?.authorId === 'string' && existing.authorId.length > 0
+      ? existing.authorId
+      : currentUser.uid;
+  const preservedCreatedAt =
+    existing?.createdAt != null ? existing.createdAt : serverTimestamp();
 
-  if (hasAuditFields) {
-    await updateDoc(docRef, {
-      ...payload,
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    await setDoc(docRef, {
-      ...payload,
-      authorId: currentUser.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  }
+  await setDoc(docRef, {
+    ...payload,
+    authorId: preservedAuthorId,
+    createdAt: preservedCreatedAt,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 export function subscribeTechStacks(

@@ -21,9 +21,9 @@
         "address": { "type": "string", "minLength": 1, "maxLength": 240 },
         "portraitDataUrl": {
           "type": "string",
-          "minLength": 5,
+          "minLength": 0,
           "maxLength": 600000,
-          "pattern": "^(/assets/[a-zA-Z0-9_./-]+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$"
+          "pattern": "^($|/assets/[a-zA-Z0-9_./-]+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$"
         },
         "metrics": { "type": "array" },
         "education": { "type": "object" },

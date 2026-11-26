@@ -244,25 +244,25 @@ export function InviteManagerModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="invite-manager-title"
-      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs"
+      className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-800 dark:bg-slate-900 md:p-8">
+      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-8">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
               <Link2 className="h-5 w-5" aria-hidden="true" />
             </div>
             <div>
               <h3
                 id="invite-manager-title"
-                className="font-display text-lg font-bold text-slate-950 dark:text-white"
+                className="font-display text-lg font-bold text-[var(--ink)]"
               >
                 {locale === 'en'
                   ? 'Private Invitation Links Manager'
                   : 'Kelola Link Undangan Privat (HRD / Email)'}
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-[var(--mute)]">
                 {locale === 'en'
                   ? 'Public visitors without an active invite token cannot read CV data.'
                   : 'Pengunjung umum tanpa link undangan aktif tidak dapat mengakses data CV di database.'}
@@ -274,7 +274,7 @@ export function InviteManagerModal({
             type="button"
             onClick={onClose}
             aria-label="Close invitation manager"
-            className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+            className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -284,7 +284,7 @@ export function InviteManagerModal({
         {errorMsg && (
           <div
             role="alert"
-            className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700 dark:border-red-900/60 dark:bg-red-950/50 dark:text-red-200"
+            className="mt-4 rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-xs font-medium text-red-700 dark:text-red-200"
           >
             {errorMsg}
           </div>
@@ -292,7 +292,7 @@ export function InviteManagerModal({
         {statusMsg && (
           <div
             role="status"
-            className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/50 dark:text-emerald-200"
+            className="mt-4 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3 text-xs font-medium text-emerald-700 dark:text-emerald-200"
           >
             {statusMsg}
           </div>
@@ -301,9 +301,9 @@ export function InviteManagerModal({
         {/* Create New Invite Form */}
         <form
           onSubmit={handleCreate}
-          className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-slate-50/75 p-4 dark:border-slate-800 dark:bg-slate-950/60 sm:p-5"
+          className="mt-6 space-y-4 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:p-5"
         >
-          <p className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+          <p className="text-xs font-bold uppercase tracking-wider text-[var(--brass)]">
             {locale === 'en' ? 'Create New Invitation Link' : 'Buat Link Undangan Baru'}
           </p>
 
@@ -311,7 +311,7 @@ export function InviteManagerModal({
             <div>
               <label
                 htmlFor="invite-label"
-                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                className="block text-xs font-semibold text-[var(--mute)]"
               >
                 {locale === 'en' ? 'Recipient / Purpose *' : 'Tujuan / Nama HRD *'}
               </label>
@@ -323,14 +323,14 @@ export function InviteManagerModal({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={locale === 'en' ? 'e.g. HRD Hotel Indonesia' : 'mis. HRD Hotel Mulia'}
-                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-2 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
               />
             </div>
 
             <div>
               <label
                 htmlFor="invite-expiry"
-                className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                className="block text-xs font-semibold text-[var(--mute)]"
               >
                 {locale === 'en' ? 'Expiration' : 'Batas Waktu Berlaku'}
               </label>
@@ -338,7 +338,7 @@ export function InviteManagerModal({
                 id="invite-expiry"
                 value={expiryChoice}
                 onChange={(e) => setExpiryChoice(e.target.value)}
-                className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
               >
                 {EXPIRY_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -352,7 +352,7 @@ export function InviteManagerModal({
           <div>
             <label
               htmlFor="invite-custom-code"
-              className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+              className="block text-xs font-semibold text-[var(--mute)]"
             >
               {locale === 'en'
                 ? 'Custom Link Code (Optional — leave blank for auto)'
@@ -365,9 +365,9 @@ export function InviteManagerModal({
               value={customCode}
               onChange={(e) => setCustomCode(e.target.value)}
               placeholder="kunci-hrd-2026"
-              className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-700 focus:outline-none dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-2 font-mono text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
             />
-            <p className="mt-1.5 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
+            <p className="mt-1.5 truncate font-mono text-[11px] text-[var(--mute)]">
               Preview: {origin}/?invite={previewSlug}
             </p>
           </div>
@@ -377,9 +377,9 @@ export function InviteManagerModal({
               type="button"
               disabled={isSyncing}
               onClick={() => void handleManualSync()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-2 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brass)] disabled:opacity-50 cursor-pointer"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`h-3.5 w-3.5 text-[var(--brass)] ${isSyncing ? 'animate-spin' : ''}`} />
               <span>
                 {locale === 'en' ? 'Sync Latest CV Now' : 'Sinkronkan Isi CV Sekarang'}
               </span>
@@ -388,7 +388,7 @@ export function InviteManagerModal({
             <button
               type="submit"
               disabled={isCreating}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-800 disabled:opacity-50 dark:bg-blue-600 dark:hover:bg-blue-500 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
             >
               {isCreating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -411,7 +411,7 @@ export function InviteManagerModal({
         {/* Active / Inactive Links List */}
         <div className="mt-6">
           <div className="flex items-center justify-between gap-2">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--mute)]">
               {locale === 'en'
                 ? `Generated Links (${invites.length})`
                 : `Daftar Link Undangan (${invites.length})`}
@@ -420,7 +420,7 @@ export function InviteManagerModal({
               type="button"
               disabled={isLoading}
               onClick={() => void loadInvites()}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-700 hover:underline dark:text-blue-400 cursor-pointer"
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--brass)] hover:underline cursor-pointer"
             >
               <RefreshCw className={`h-3 w-3 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{locale === 'en' ? 'Refresh' : 'Muat Ulang'}</span>
@@ -428,12 +428,12 @@ export function InviteManagerModal({
           </div>
 
           {isLoading && invites.length === 0 ? (
-            <div className="mt-3 flex items-center justify-center gap-2 rounded-xl border border-slate-200 py-8 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              <Loader2 className="h-4 w-4 animate-spin" />
+            <div className="mt-3 flex items-center justify-center gap-2 rounded-2xl border border-[var(--line)] py-8 text-xs text-[var(--mute)]">
+              <Loader2 className="h-4 w-4 animate-spin text-[var(--brass)]" />
               <span>{locale === 'en' ? 'Loading invite links...' : 'Memuat daftar undangan...'}</span>
             </div>
           ) : invites.length === 0 ? (
-            <div className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400">
+            <div className="mt-3 rounded-2xl border border-dashed border-[var(--line)] bg-[var(--bg)] px-5 py-8 text-center text-xs text-[var(--mute)]">
               {locale === 'en'
                 ? 'No invite links yet. Create one above to share your CV privately via email.'
                 : 'Belum ada link undangan. Buat 1 link di atas untuk ditempel di email lamaran Anda.'}
@@ -448,21 +448,21 @@ export function InviteManagerModal({
                 return (
                   <div
                     key={item.token}
-                    className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950"
+                    className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-display text-sm font-bold text-slate-950 dark:text-white">
+                          <span className="font-display text-sm font-bold text-[var(--ink)]">
                             {item.label}
                           </span>
                           <span
-                            className={`rounded-md px-2 py-0.5 text-[10px] font-semibold ${
+                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
                               !item.active
-                                ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                                ? 'bg-[var(--card)] text-[var(--mute)]'
                                 : isExpired
-                                  ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
-                                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                  ? 'bg-[color-mix(in_srgb,var(--brass)_20%,transparent)] text-[var(--brass)]'
+                                  : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300'
                             }`}
                           >
                             {!item.active
@@ -478,10 +478,10 @@ export function InviteManagerModal({
                                   : 'Aktif'}
                           </span>
                         </div>
-                        <p className="mt-1 truncate font-mono text-xs text-blue-700 dark:text-blue-400">
+                        <p className="mt-1 truncate font-mono text-xs text-[var(--brass)]">
                           {fullUrl}
                         </p>
-                        <p className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                        <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--mute)]">
                           <Clock className="h-3 w-3 shrink-0" aria-hidden="true" />
                           <span>
                             {item.expiresAtMs
@@ -503,12 +503,12 @@ export function InviteManagerModal({
                         <button
                           type="button"
                           onClick={() => void copyInviteUrl(item.token)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
                         >
                           {copiedToken === item.token ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
                           ) : (
-                            <Copy className="h-3.5 w-3.5" />
+                            <Copy className="h-3.5 w-3.5 text-[var(--brass)]" />
                           )}
                           <span>
                             {copiedToken === item.token
@@ -524,12 +524,12 @@ export function InviteManagerModal({
                         <button
                           type="button"
                           onClick={() => void copyEmailBlurb(item)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 cursor-pointer"
+                          className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
                         >
                           {copiedEmailToken === item.token ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
                           ) : (
-                            <Mail className="h-3.5 w-3.5" />
+                            <Mail className="h-3.5 w-3.5 text-[var(--brass)]" />
                           )}
                           <span>
                             {copiedEmailToken === item.token
@@ -547,22 +547,20 @@ export function InviteManagerModal({
                           target="_blank"
                           rel="noopener noreferrer"
                           aria-label={`Preview ${item.label}`}
-                          className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 p-1.5 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                          className="inline-flex items-center justify-center rounded-full border border-[var(--line)] bg-[var(--bg2)] p-1.5 text-[var(--ink)] hover:border-[var(--brass)]"
                         >
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
                         </a>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-2.5 dark:border-slate-800">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-2.5">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => void handleToggle(item)}
                           className={`inline-flex items-center gap-1.5 text-xs font-semibold cursor-pointer ${
-                            item.active
-                              ? 'text-emerald-700 dark:text-emerald-400'
-                              : 'text-slate-500 dark:text-slate-400'
+                            item.active ? 'text-emerald-600 dark:text-emerald-400' : 'text-[var(--mute)]'
                           }`}
                         >
                           {item.active ? (
@@ -585,7 +583,7 @@ export function InviteManagerModal({
                           <button
                             type="button"
                             onClick={() => void handleExtend14Days(item)}
-                            className="text-xs font-semibold text-blue-700 hover:underline dark:text-blue-400 cursor-pointer"
+                            className="text-xs font-semibold text-[var(--brass)] hover:underline cursor-pointer"
                           >
                             {locale === 'en' ? '+ Extend 14 Days' : '+ Perpanjang 14 Hari'}
                           </button>
@@ -595,7 +593,7 @@ export function InviteManagerModal({
                       <button
                         type="button"
                         onClick={() => void handleDelete(item.token)}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:text-red-700 dark:text-red-400 cursor-pointer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-red-600 hover:underline dark:text-red-400 cursor-pointer"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>{locale === 'en' ? 'Delete' : 'Hapus'}</span>
@@ -609,15 +607,15 @@ export function InviteManagerModal({
         </div>
 
         {/* Security Key Rotation Footer */}
-        <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/60">
+        <div className="mt-6 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-start gap-2.5">
-              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-slate-600 dark:text-slate-400" aria-hidden="true" />
+              <Shield className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
               <div>
-                <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                <p className="text-xs font-semibold text-[var(--ink)]">
                   {locale === 'en' ? 'Vault Security Key' : 'Kunci Keamanan Snapshot CV'}
                 </p>
-                <p className="mt-0.5 font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                <p className="mt-0.5 font-mono text-[10px] text-[var(--mute)]">
                   {vaultKey
                     ? `${vaultKey.slice(0, 6)}••••••••••••••••${vaultKey.slice(-4)}`
                     : 'Not initialized'}
@@ -629,9 +627,9 @@ export function InviteManagerModal({
               <button
                 type="button"
                 onClick={() => setConfirmRotate(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
               >
-                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                <KeyRound className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
                 <span>
                   {locale === 'en' ? 'Rotate Vault Key' : 'Putar Kunci Keamanan'}
                 </span>
@@ -641,7 +639,7 @@ export function InviteManagerModal({
                 <button
                   type="button"
                   onClick={() => setConfirmRotate(false)}
-                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 cursor-pointer"
+                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-xs font-semibold text-[var(--mute)] cursor-pointer"
                 >
                   {locale === 'en' ? 'Cancel' : 'Batal'}
                 </button>
@@ -649,7 +647,7 @@ export function InviteManagerModal({
                   type="button"
                   disabled={isRotating}
                   onClick={() => void handleRotateKey()}
-                  className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50 cursor-pointer"
+                  className="rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-xs font-semibold text-[#1a1405] disabled:opacity-50 cursor-pointer"
                 >
                   {isRotating
                     ? locale === 'en'

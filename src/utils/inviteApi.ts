@@ -10,7 +10,6 @@ import {
   serverTimestamp,
   setDoc,
   Timestamp,
-  updateDoc,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import type {
@@ -256,16 +255,26 @@ export async function registerEntityInCvIndex(
   mode: 'add' | 'remove'
 ): Promise<void> {
   if (!auth.currentUser) return;
+  const user = auth.currentUser;
   try {
     const index = await ensureCvIndex();
+    const indexRef = doc(db, 'cvIndex', 'admin');
+    const snap = await getDocFromServer(indexRef).catch(() => null);
+    const existing = snap?.exists() ? snap.data() : null;
     const current = index[field];
     const next =
       mode === 'add'
         ? Array.from(new Set([...current, id])).slice(0, field === 'inviteTokens' ? 100 : 60)
         : current.filter((item) => item !== id);
 
-    await updateDoc(doc(db, 'cvIndex', 'admin'), {
+    await setDoc(indexRef, {
+      ...index,
       [field]: next,
+      authorId:
+        typeof existing?.authorId === 'string' && existing.authorId.length > 0
+          ? existing.authorId
+          : user.uid,
+      createdAt: existing?.createdAt != null ? existing.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -461,26 +470,23 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
         const assetId = `${vaultKey}__${id}`;
         const assetRef = doc(db, 'cvProjectAssets', assetId);
         const assetSnap = await getDocFromServer(assetRef).catch(() => null);
-        if (assetSnap?.exists() && typeof assetSnap.data()?.authorId === 'string') {
-          await updateDoc(assetRef, {
-            projectId: id,
-            imageDataUrl,
-            updatedAt: serverTimestamp(),
-          });
-        } else {
-          await setDoc(assetRef, {
-            projectId: id,
-            imageDataUrl,
-            authorId: user.uid,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-        }
+        const assetExisting = assetSnap?.exists() ? assetSnap.data() : null;
+        await setDoc(assetRef, {
+          projectId: id,
+          imageDataUrl,
+          authorId:
+            typeof assetExisting?.authorId === 'string' && assetExisting.authorId.length > 0
+              ? assetExisting.authorId
+              : user.uid,
+          createdAt: assetExisting?.createdAt != null ? assetExisting.createdAt : serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       })
     );
 
     const shareRef = doc(db, 'cvShares', vaultKey);
     const shareSnap = await getDocFromServer(shareRef).catch(() => null);
+    const shareExisting = shareSnap?.exists() ? shareSnap.data() : null;
     const shareData = {
       profile: profilePayload,
       siteContent: sitePayload,
@@ -490,25 +496,31 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
       projectMeta: projectMeta.sort((a, b) => a.createdAtMs - b.createdAtMs),
     };
 
-    if (shareSnap?.exists() && typeof shareSnap.data()?.authorId === 'string') {
-      await updateDoc(shareRef, {
-        ...shareData,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await setDoc(shareRef, {
-        ...shareData,
-        authorId: user.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    }
+    await setDoc(shareRef, {
+      ...shareData,
+      authorId:
+        typeof shareExisting?.authorId === 'string' && shareExisting.authorId.length > 0
+          ? shareExisting.authorId
+          : user.uid,
+      createdAt: shareExisting?.createdAt != null ? shareExisting.createdAt : serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
 
-    await updateDoc(doc(db, 'cvIndex', 'admin'), {
+    const indexRef = doc(db, 'cvIndex', 'admin');
+    const indexSnap = await getDocFromServer(indexRef).catch(() => null);
+    const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
+    await setDoc(indexRef, {
+      vaultKey: index.vaultKey,
       experienceIds: Array.from(expMap.keys()).slice(0, 60),
       projectIds: projectMeta.map((p) => p.id).slice(0, 60),
       techStackIds: Array.from(stackMap.keys()).slice(0, 60),
       referenceIds: Array.from(refMap.keys()).slice(0, 60),
+      inviteTokens: index.inviteTokens,
+      authorId:
+        typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
+          ? indexExisting.authorId
+          : user.uid,
+      createdAt: indexExisting?.createdAt != null ? indexExisting.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp(),
     }).catch(() => undefined);
 
@@ -645,10 +657,27 @@ export async function createInviteLink(params: {
 }
 
 export async function toggleInviteActive(token: string, active: boolean): Promise<void> {
-  if (!auth.currentUser) throw new Error('Authentication required.');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Authentication required.');
   try {
-    await updateDoc(doc(db, 'invites', token), {
+    const invRef = doc(db, 'invites', token);
+    const snap = await getDocFromServer(invRef);
+    if (!snap.exists()) throw new Error('Invite not found.');
+    const existing = snap.data();
+    await setDoc(invRef, {
+      label: typeof existing.label === 'string' ? existing.label : token,
       active,
+      expiresAt: existing.expiresAt ?? null,
+      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+      createdByEmail:
+        typeof existing.createdByEmail === 'string'
+          ? existing.createdByEmail
+          : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
+      authorId:
+        typeof existing.authorId === 'string' && existing.authorId.length > 0
+          ? existing.authorId
+          : user.uid,
+      createdAt: existing.createdAt != null ? existing.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -660,14 +689,31 @@ export async function updateInviteExpiry(
   token: string,
   expiresInDays: number | null
 ): Promise<void> {
-  if (!auth.currentUser) throw new Error('Authentication required.');
+  const user = auth.currentUser;
+  if (!user) throw new Error('Authentication required.');
   const expiresAtTs =
     expiresInDays !== null && expiresInDays > 0
       ? Timestamp.fromMillis(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
       : null;
   try {
-    await updateDoc(doc(db, 'invites', token), {
+    const invRef = doc(db, 'invites', token);
+    const snap = await getDocFromServer(invRef);
+    if (!snap.exists()) throw new Error('Invite not found.');
+    const existing = snap.data();
+    await setDoc(invRef, {
+      label: typeof existing.label === 'string' ? existing.label : token,
+      active: Boolean(existing.active),
       expiresAt: expiresAtTs,
+      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+      createdByEmail:
+        typeof existing.createdByEmail === 'string'
+          ? existing.createdByEmail
+          : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
+      authorId:
+        typeof existing.authorId === 'string' && existing.authorId.length > 0
+          ? existing.authorId
+          : user.uid,
+      createdAt: existing.createdAt != null ? existing.createdAt : serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -695,16 +741,39 @@ export async function rotateShareVaultKey(): Promise<string> {
 
   await syncPublishedCvSnapshot(newKey);
 
-  await updateDoc(doc(db, 'cvIndex', 'admin'), {
+  const indexRef = doc(db, 'cvIndex', 'admin');
+  const indexSnap = await getDocFromServer(indexRef).catch(() => null);
+  const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
+  await setDoc(indexRef, {
+    ...index,
     vaultKey: newKey,
+    authorId:
+      typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
+        ? indexExisting.authorId
+        : user.uid,
+    createdAt: indexExisting?.createdAt != null ? indexExisting.createdAt : serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 
   await Promise.all(
     index.inviteTokens.map(async (token) => {
       try {
-        await updateDoc(doc(db, 'invites', token), {
+        const invRef = doc(db, 'invites', token);
+        const invSnap = await getDocFromServer(invRef);
+        if (!invSnap.exists()) return;
+        const ex = invSnap.data();
+        await setDoc(invRef, {
+          label: typeof ex.label === 'string' ? ex.label : token,
+          active: Boolean(ex.active),
+          expiresAt: ex.expiresAt ?? null,
           vaultKey: newKey,
+          createdByEmail:
+            typeof ex.createdByEmail === 'string'
+              ? ex.createdByEmail
+              : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
+          authorId:
+            typeof ex.authorId === 'string' && ex.authorId.length > 0 ? ex.authorId : user.uid,
+          createdAt: ex.createdAt != null ? ex.createdAt : serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
       } catch {

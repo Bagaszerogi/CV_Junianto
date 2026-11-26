@@ -316,16 +316,16 @@ export function EditableText({
               left: `${boxPos.left}px`,
               width: `${boxSize.width}px`,
             }}
-            className="no-print fixed z-[9999] flex flex-col rounded-xl border border-blue-500/80 bg-white shadow-2xl ring-4 ring-blue-500/15 dark:border-blue-400/80 dark:bg-slate-900 dark:ring-blue-400/15"
+            className="no-print fixed z-[9999] flex flex-col rounded-2xl border border-[var(--brass)] bg-[var(--bg2)] text-[var(--ink)] shadow-2xl ring-4 ring-[color-mix(in_srgb,var(--brass)_18%,transparent)]"
           >
             {/* Top drag bar (drop & tarik posisi) */}
             <div
               onPointerDown={startPointerInteraction('move')}
               title="Tarik untuk memindahkan kotak edit"
-              className="flex cursor-grab items-center justify-between gap-2 rounded-t-xl border-b border-slate-200 bg-slate-50 px-3 py-1.5 active:cursor-grabbing dark:border-slate-800 dark:bg-slate-950"
+              className="flex cursor-grab items-center justify-between gap-2 rounded-t-2xl border-b border-[var(--line)] bg-[var(--bg)] px-3 py-1.5 active:cursor-grabbing"
             >
-              <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
-                <GripHorizontal className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden="true" />
+              <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-[var(--mute)]">
+                <GripHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                 <span className="truncate">
                   Tarik tepi kanan / sudut untuk perlebar ({boxSize.width}px)
                 </span>
@@ -336,7 +336,7 @@ export function EditableText({
                 onClick={toggleExpandWidth}
                 title={isExpanded ? 'Kembalikan ukuran' : 'Perlebar maksimal'}
                 aria-label={isExpanded ? 'Kembalikan ukuran' : 'Perlebar maksimal'}
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
               >
                 {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
               </button>
@@ -353,30 +353,30 @@ export function EditableText({
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKeyDown}
                 style={{ height: `${boxSize.height}px` }}
-                className={`w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-relaxed font-normal text-slate-900 shadow-inner focus:border-blue-500 focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 ${inputClassName}`}
+                className={`w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-sm leading-relaxed font-normal text-[var(--ink)] shadow-inner focus:border-[var(--brass)] focus:outline-none ${inputClassName}`}
               />
 
-              {/* Right edge resize handle (tarik ke samping untuk perlebar) */}
+              {/* Right edge resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-right')}
                 title="Tarik ke kanan / kiri untuk memperlebar"
                 aria-label="Tarik untuk memperlebar"
                 className="group/rh absolute top-2.5 right-0.5 bottom-4 flex w-3 cursor-ew-resize items-center justify-center touch-none"
               >
-                <span className="h-8 w-1 rounded-full bg-slate-300 transition-colors group-hover/rh:bg-blue-600 dark:bg-slate-700 dark:group-hover/rh:bg-blue-400" />
+                <span className="h-8 w-1 rounded-full bg-[var(--line)] transition-colors group-hover/rh:bg-[var(--brass)]" />
               </div>
 
-              {/* Bottom edge resize handle (tarik ke bawah untuk perpanjang) */}
+              {/* Bottom edge resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-bottom')}
                 title="Tarik ke atas / bawah untuk memperpanjang"
                 aria-label="Tarik untuk memperpanjang"
                 className="group/bh absolute right-4 bottom-0.5 left-2.5 flex h-3 cursor-ns-resize items-center justify-center touch-none"
               >
-                <span className="h-1 w-10 rounded-full bg-slate-300 transition-colors group-hover/bh:bg-blue-600 dark:bg-slate-700 dark:group-hover/bh:bg-blue-400" />
+                <span className="h-1 w-10 rounded-full bg-[var(--line)] transition-colors group-hover/bh:bg-[var(--brass)]" />
               </div>
 
-              {/* Bottom-right corner resize handle (tarik lebar & tinggi sekaligus) */}
+              {/* Bottom-right corner resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-corner')}
                 title="Tarik sudut untuk perlebar & perpanjang"
@@ -385,7 +385,7 @@ export function EditableText({
               >
                 <svg
                   viewBox="0 0 12 12"
-                  className="h-3 w-3 text-slate-400 transition-colors group-hover/ch:text-blue-600 dark:text-slate-500 dark:group-hover/ch:text-blue-400"
+                  className="h-3 w-3 text-[var(--mute)] transition-colors group-hover/ch:text-[var(--brass)]"
                   aria-hidden="true"
                 >
                   <path
@@ -399,14 +399,14 @@ export function EditableText({
             </div>
 
             {/* Footer actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-xl border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/60">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-2xl border-t border-[var(--line)] bg-[var(--bg)] px-3 py-2">
               <div className="min-w-0 flex-1">
                 {error ? (
                   <p className="truncate text-[11px] font-medium text-red-600 dark:text-red-400">
                     {error}
                   </p>
                 ) : (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[11px] text-[var(--mute)]">
                     {draft.length}/{maxLength} · {multiline ? 'Ctrl+Enter simpan' : 'Enter simpan'} · Esc batal
                   </p>
                 )}
@@ -417,7 +417,7 @@ export function EditableText({
                   type="button"
                   disabled={isSaving}
                   onClick={cancelEdit}
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-xs font-medium text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>Batal</span>
@@ -426,7 +426,7 @@ export function EditableText({
                   type="button"
                   disabled={isSaving}
                   onClick={(e) => void commitEdit(e)}
-                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-50 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
                 >
                   {isSaving ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
@@ -460,14 +460,14 @@ export function EditableText({
         }}
         className={`group/edit relative inline cursor-pointer rounded-sm transition-colors ${
           isEditing
-            ? 'bg-blue-500/20 outline-2 outline-blue-600 dark:outline-blue-400'
-            : 'hover:bg-blue-500/10 hover:outline-1 hover:outline-dashed hover:outline-blue-500/70'
+            ? 'bg-[color-mix(in_srgb,var(--brass)_20%,transparent)] outline-2 outline-[var(--brass)]'
+            : 'hover:bg-[color-mix(in_srgb,var(--brass)_12%,transparent)] hover:outline-1 hover:outline-dashed hover:outline-[var(--brass)]'
         } ${className}`}
       >
         {value}
         <Pencil
-          className={`no-print ml-1.5 inline-block h-3 w-3 text-blue-600 transition-opacity dark:text-blue-400 ${
-            isEditing ? 'opacity-100' : 'opacity-45 group-hover/edit:opacity-100'
+          className={`no-print ml-1.5 inline-block h-3 w-3 text-[var(--brass)] transition-opacity ${
+            isEditing ? 'opacity-100' : 'opacity-50 group-hover/edit:opacity-100'
           }`}
           aria-hidden="true"
         />

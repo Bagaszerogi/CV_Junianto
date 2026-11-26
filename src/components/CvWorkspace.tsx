@@ -14,7 +14,6 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
-import { ADMIN_EMAIL_ALLOWLIST } from '../firebase';
 import { Locale } from '../data/cvData';
 import {
   CvProfileData,
@@ -269,15 +268,10 @@ export default function CvWorkspace({
   };
 
   const activeSiteCopy = siteContent[locale];
-  const needsEmailVerifyBanner = Boolean(
-    firebaseUser &&
-      !isAdminUser &&
-      !firebaseUser.emailVerified &&
-      ADMIN_EMAIL_ALLOWLIST.has((firebaseUser.email ?? '').trim().toLowerCase())
-  );
+  const needsEmailVerifyBanner = Boolean(firebaseUser && !isAdminUser);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 print:min-h-0 print:bg-white print:text-slate-950 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)] print:min-h-0 print:bg-white print:text-slate-950">
       <Navbar
         locale={locale}
         brandShort={profile.brandShort}
@@ -293,26 +287,26 @@ export default function CvWorkspace({
       />
 
       {isAdminUser && (
-        <div className="no-print border-b border-blue-200 bg-blue-50/90 px-6 py-2 text-xs text-blue-950 dark:border-blue-900/70 dark:bg-blue-950/60 dark:text-blue-100">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
+        <div className="no-print border-b border-[var(--line)] bg-[var(--bg2)] px-6 py-2.5 text-xs text-[var(--ink)]">
+          <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-blue-700 dark:text-blue-400" aria-hidden="true" />
+              <Sparkles className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
               <span className="font-semibold">
                 {locale === 'en' ? 'Full Edit Mode Active' : 'Mode Edit Penuh Aktif'}
               </span>
-              <span className="text-blue-800/80 dark:text-blue-300">
+              <span className="text-[var(--mute)]">
                 {locale === 'en'
                   ? '— Click any text to edit & auto-sync globally.'
                   : '— Klik teks mana saja untuk edit & otomatis terupdate global.'}
               </span>
               {globalSync.status === 'syncing' && (
-                <span className="inline-flex items-center gap-1 font-medium text-blue-700 dark:text-blue-300">
+                <span className="inline-flex items-center gap-1 font-medium text-[var(--brass)]">
                   <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
                   <span>{locale === 'en' ? 'Syncing globally...' : 'Menyinkronkan global...'}</span>
                 </span>
               )}
               {globalSync.status === 'synced' && (
-                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-400">
+                <span className="inline-flex items-center gap-1 font-semibold text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
                   <span>{locale === 'en' ? 'Synced Globally' : 'Tersinkron Global'}</span>
                 </span>
@@ -321,7 +315,7 @@ export default function CvWorkspace({
                 <button
                   type="button"
                   onClick={() => void syncPublishedCvSnapshot().catch(() => undefined)}
-                  className="inline-flex items-center gap-1 font-semibold text-red-700 hover:underline dark:text-red-400 cursor-pointer"
+                  className="inline-flex items-center gap-1 font-semibold text-red-600 hover:underline dark:text-red-400 cursor-pointer"
                 >
                   <AlertCircle className="h-3 w-3" aria-hidden="true" />
                   <span>{locale === 'en' ? 'Retry Global Sync' : 'Sinkron Global Ulang'}</span>
@@ -332,23 +326,23 @@ export default function CvWorkspace({
               <button
                 type="button"
                 onClick={() => setInviteModalOpen(true)}
-                className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-800 hover:bg-blue-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3 py-1 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
               >
-                <Link2 className="h-3 w-3" aria-hidden="true" />
+                <Link2 className="h-3 w-3 text-[var(--brass)]" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Invite Links' : 'Link Undangan'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onOpenAuth('diagnostics')}
-                className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-800 hover:bg-blue-50 dark:border-blue-800 dark:bg-slate-900 dark:text-blue-200 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3 py-1 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
               >
-                <Database className="h-3 w-3" aria-hidden="true" />
+                <Database className="h-3 w-3 text-[var(--brass)]" aria-hidden="true" />
                 <span>{locale === 'en' ? 'DB & SSO Check' : 'Cek DB & SSO'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => openProfileEdit('identity')}
-                className="inline-flex items-center gap-1 rounded-md bg-blue-700 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-blue-800 cursor-pointer"
+                className="inline-flex items-center gap-1 rounded-full bg-[var(--brass)] px-3 py-1 text-[11px] font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
               >
                 <Pencil className="h-3 w-3" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Profile & Photo Editor' : 'Editor Profil & Foto'}</span>
@@ -359,22 +353,32 @@ export default function CvWorkspace({
       )}
 
       {needsEmailVerifyBanner && (
-        <div className="no-print border-b border-amber-200 bg-amber-50 px-6 py-2.5 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/60 dark:text-amber-100">
-          <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
+        <div className="no-print border-b border-[var(--brass)]/35 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg2))] px-6 py-2.5 text-xs text-[var(--ink)]">
+          <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-amber-700 dark:text-amber-400" aria-hidden="true" />
+              <ShieldAlert className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
               <span>
-                {locale === 'en'
-                  ? `Signed in as ${firebaseUser?.email}, waiting for email verification to unlock editing.`
-                  : `Masuk sebagai ${firebaseUser?.email}, menunggu verifikasi email untuk membuka fitur edit.`}
+                {!firebaseUser?.emailVerified
+                  ? locale === 'en'
+                    ? `Signed in as ${firebaseUser?.email}. Verify your email to unlock Firestore editing.`
+                    : `Masuk sebagai ${firebaseUser?.email}. Verifikasi email Anda untuk membuka izin edit & simpan global.`
+                  : locale === 'en'
+                    ? `Signed in as ${firebaseUser?.email}. Waiting for admin authorization in Firestore /admins.`
+                    : `Masuk sebagai ${firebaseUser?.email}. Pastikan email atau UID akun sudah didaftarkan admin utama.`}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => onOpenAuth('email')}
-              className="rounded-md bg-amber-600 px-3 py-1 text-[11px] font-semibold text-white hover:bg-amber-700 cursor-pointer"
+              onClick={() => onOpenAuth(!firebaseUser?.emailVerified ? 'email' : 'diagnostics')}
+              className="rounded-full bg-[var(--brass)] px-3.5 py-1 text-[11px] font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
             >
-              {locale === 'en' ? 'Verify Email Now' : 'Verifikasi Email Sekarang'}
+              {!firebaseUser?.emailVerified
+                ? locale === 'en'
+                  ? 'Verify Email Now'
+                  : 'Verifikasi Email Sekarang'
+                : locale === 'en'
+                  ? 'Check Admin Status'
+                  : 'Cek Status Admin'}
             </button>
           </div>
         </div>
@@ -456,13 +460,13 @@ export default function CvWorkspace({
         onClose={() => setInviteModalOpen(false)}
       />
 
-      {/* Always-floating Back to Top Button (bottom-right) */}
+      {/* Always-floating Back to Top Button (bottom-right brass FAB) */}
       <button
         type="button"
         onClick={handleBackToTop}
         aria-label={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
         title={locale === 'en' ? 'Back to top' : 'Kembali ke atas'}
-        className="no-print fixed right-5 bottom-5 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 text-slate-800 shadow-lg backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-blue-600 hover:bg-blue-700 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700 dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-100 dark:hover:border-blue-500 dark:hover:bg-blue-600 cursor-pointer"
+        className="no-print fixed right-5 bottom-5 z-40 inline-flex h-11 w-11 items-center justify-center rounded-full border border-[var(--brass)] bg-[var(--bg2)] text-[var(--ink)] shadow-xl backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--brass)] hover:text-[#1a1405] cursor-pointer"
       >
         <ArrowUp className="h-5 w-5" aria-hidden="true" />
       </button>

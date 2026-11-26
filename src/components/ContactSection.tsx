@@ -89,45 +89,69 @@ export function ContactSection({
       <section
         id="contact"
         data-animate="section"
-        className="no-print bg-slate-50 py-14 dark:bg-slate-950 md:py-20"
+        className="no-print bg-[var(--bg)] py-16 md:py-24"
       >
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:items-start">
-            {/* Left Info & Quick-Copy Executive Contact */}
-            <div className="lg:col-span-5">
-              <p className="text-xs font-semibold tracking-wide text-blue-700 dark:text-blue-400">
-                <EditableText
-                  value={siteCopy.contactKicker}
-                  canEdit={isAdminUser}
-                  maxLength={80}
-                  onSave={(val) => onSaveSiteCopyField('contactKicker', val)}
-                />
-              </p>
-              <h2 className="mt-2 font-display text-3xl font-bold tracking-tight text-slate-950 text-balance dark:text-white">
-                <EditableText
-                  value={siteCopy.contactTitle}
-                  canEdit={isAdminUser}
-                  maxLength={120}
-                  onSave={(val) => onSaveSiteCopyField('contactTitle', val)}
-                />
-              </h2>
-              <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                <EditableText
-                  value={siteCopy.contactDesc}
-                  canEdit={isAdminUser}
-                  multiline
-                  maxLength={400}
-                  onSave={(val) => onSaveSiteCopyField('contactDesc', val)}
-                />
-              </p>
+        <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)]">
+          {/* Centered Editorial Call-To-Action Header */}
+          <div className="mx-auto max-w-2xl text-center">
+            <p className="inline-flex items-center justify-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase">
+              <span className="inline-block h-px w-6 bg-[var(--brass)]" aria-hidden="true" />
+              <EditableText
+                value={siteCopy.contactKicker}
+                canEdit={isAdminUser}
+                maxLength={80}
+                onSave={(val) => onSaveSiteCopyField('contactKicker', val)}
+              />
+              <span className="inline-block h-px w-6 bg-[var(--brass)]" aria-hidden="true" />
+            </p>
+            <h2 className="mt-3 font-display text-[clamp(2.1rem,5.4vw,4.1rem)] font-bold leading-[1.03] tracking-tight text-[var(--ink)] text-balance">
+              <EditableText
+                value={siteCopy.contactTitle}
+                canEdit={isAdminUser}
+                maxLength={120}
+                onSave={(val) => onSaveSiteCopyField('contactTitle', val)}
+              />
+            </h2>
+            <p className="mx-auto mt-4 max-w-lg text-sm leading-relaxed text-[var(--mute)] sm:text-base">
+              <EditableText
+                value={siteCopy.contactDesc}
+                canEdit={isAdminUser}
+                multiline
+                maxLength={400}
+                onSave={(val) => onSaveSiteCopyField('contactDesc', val)}
+              />
+            </p>
 
-              <div className="mt-7 divide-y divide-slate-200/80 rounded-2xl border border-slate-200/90 bg-white/80 px-5 shadow-2xs dark:divide-slate-800 dark:border-slate-800 dark:bg-slate-900/70">
-                <div className="flex items-center justify-between gap-3 py-3.5 text-sm">
+            <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href={buildWhatsAppUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-6 py-3 text-sm font-semibold text-[#1a1405] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0"
+              >
+                <span>WhatsApp {profile.phoneDisplay}</span>
+                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+              <a
+                href={buildMailtoUrl()}
+                className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] px-6 py-3 text-sm font-semibold text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] whitespace-nowrap shrink-0"
+              >
+                <Mail className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
+                <span>{locale === 'en' ? 'Send Email' : 'Kirim Email'}</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-14 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
+            {/* Left Quick-Copy Contact Card */}
+            <div className="lg:col-span-5">
+              <div className="divide-y divide-[var(--line)] rounded-[22px] border border-[var(--line)] bg-[var(--card)] px-6">
+                <div className="flex items-center justify-between gap-3 py-4 text-sm">
                   <a
                     href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                    className="flex min-w-0 items-center gap-3 text-slate-700 transition-colors hover:text-blue-700 dark:text-slate-200 dark:hover:text-blue-400"
+                    className="flex min-w-0 items-center gap-3 text-[var(--ink)] transition-colors hover:text-[var(--brass)]"
                   >
-                    <Mail className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                    <Mail className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                     <EditableText
                       value={profile.email}
                       canEdit={isAdminUser}
@@ -139,12 +163,12 @@ export function ContactSection({
                   <button
                     type="button"
                     onClick={() => handleCopy(profile.email, 'email')}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-[var(--mute)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
                   >
                     {copiedField === 'email' ? (
                       <>
-                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                        <span className="text-emerald-700 dark:text-emerald-400">
+                        <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        <span className="text-[var(--ink)]">
                           {locale === 'en' ? 'Copied' : 'Disalin'}
                         </span>
                       </>
@@ -157,12 +181,12 @@ export function ContactSection({
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 py-3.5 text-sm">
+                <div className="flex items-center justify-between gap-3 py-4 text-sm">
                   <a
                     href={phoneHref}
-                    className="flex items-center gap-3 font-mono text-slate-700 transition-colors hover:text-blue-700 tabular-nums dark:text-slate-200 dark:hover:text-blue-400"
+                    className="flex items-center gap-3 font-mono text-[var(--ink)] transition-colors hover:text-[var(--brass)] tabular-nums"
                   >
-                    <Phone className="h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                    <Phone className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                     <EditableText
                       value={profile.phoneDisplay}
                       canEdit={isAdminUser}
@@ -173,12 +197,12 @@ export function ContactSection({
                   <button
                     type="button"
                     onClick={() => handleCopy(profile.phoneDisplay, 'phone')}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
+                    className="inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-[var(--mute)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
                   >
                     {copiedField === 'phone' ? (
                       <>
-                        <Check className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                        <span className="text-emerald-700 dark:text-emerald-400">
+                        <Check className="h-3.5 w-3.5 text-emerald-500" />
+                        <span className="text-[var(--ink)]">
                           {locale === 'en' ? 'Copied' : 'Disalin'}
                         </span>
                       </>
@@ -191,8 +215,8 @@ export function ContactSection({
                   </button>
                 </div>
 
-                <div className="flex items-start gap-3 py-3.5 text-sm text-slate-600 dark:text-slate-400">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" aria-hidden="true" />
+                <div className="flex items-start gap-3 py-4 text-sm text-[var(--mute)]">
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                   <EditableText
                     value={profile.address}
                     canEdit={isAdminUser}
@@ -205,8 +229,8 @@ export function ContactSection({
 
             {/* Right Interactive Message Composer */}
             <div className="lg:col-span-7">
-              <div className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs transition-shadow hover:shadow-sm dark:border-slate-800 dark:bg-slate-900 md:p-8">
-                <h3 className="font-display text-lg font-bold text-slate-950 dark:text-white">
+              <div className="rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 md:p-8">
+                <h3 className="font-display text-lg font-bold text-[var(--ink)]">
                   <EditableText
                     value={siteCopy.composerTitle}
                     canEdit={isAdminUser}
@@ -214,7 +238,7 @@ export function ContactSection({
                     onSave={(val) => onSaveSiteCopyField('composerTitle', val)}
                   />
                 </h3>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-[var(--mute)]">
                   <EditableText
                     value={siteCopy.composerDesc}
                     canEdit={isAdminUser}
@@ -227,7 +251,7 @@ export function ContactSection({
                   <div>
                     <label
                       htmlFor="contact-name"
-                      className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="block text-xs font-semibold text-[var(--mute)]"
                     >
                       {locale === 'en' ? 'Your Name' : 'Nama Anda'}
                     </label>
@@ -237,14 +261,14 @@ export function ContactSection({
                       value={senderName}
                       onChange={(e) => setSenderName(e.target.value)}
                       placeholder={locale === 'en' ? 'e.g. HR Manager' : 'mis. HR Manager'}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                      className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
 
                   <div>
                     <label
                       htmlFor="contact-company"
-                      className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                      className="block text-xs font-semibold text-[var(--mute)]"
                     >
                       {locale === 'en' ? 'Hotel / Organization' : 'Hotel / Perusahaan'}
                     </label>
@@ -254,7 +278,7 @@ export function ContactSection({
                       value={company}
                       onChange={(e) => setCompany(e.target.value)}
                       placeholder={locale === 'en' ? 'e.g. Grand Hotel Jakarta' : 'mis. Hotel Nusantara'}
-                      className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                      className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -262,7 +286,7 @@ export function ContactSection({
                 <div className="mt-4">
                   <label
                     htmlFor="contact-message"
-                    className="block text-xs font-semibold text-slate-700 dark:text-slate-300"
+                    className="block text-xs font-semibold text-[var(--mute)]"
                   >
                     {locale === 'en' ? 'Message' : 'Pesan'}
                   </label>
@@ -276,14 +300,14 @@ export function ContactSection({
                         ? 'Share role details, interview schedule, or infrastructure consultation...'
                         : 'Sampaikan detail posisi, jadwal wawancara, atau kebutuhan konsultasi IT...'
                     }
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-slate-50/50 px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 transition-colors focus:border-blue-700 focus:bg-white focus:outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-blue-500"
+                    className="mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2.5 text-sm text-[var(--ink)] placeholder:text-[var(--mute)]/70 focus:border-[var(--brass)] focus:outline-none"
                   />
                 </div>
 
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   <a
                     href={buildMailtoUrl()}
-                    className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-5 py-2.5 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0"
                   >
                     <Mail className="h-4 w-4" aria-hidden="true" />
                     <span>{locale === 'en' ? 'Open Email Draft' : 'Buka Draft Email'}</span>
@@ -293,10 +317,10 @@ export function ContactSection({
                     href={buildWhatsAppUrl()}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-800 transition-colors hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 whitespace-nowrap shrink-0"
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--bg)] px-5 py-2.5 text-sm font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] whitespace-nowrap shrink-0"
                   >
                     <span>{locale === 'en' ? 'Send via WhatsApp' : 'Kirim via WhatsApp'}</span>
-                    <ArrowUpRight className="h-4 w-4 text-slate-500 dark:text-slate-400" aria-hidden="true" />
+                    <ArrowUpRight className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
                   </a>
                 </div>
               </div>
@@ -305,12 +329,13 @@ export function ContactSection({
         </div>
       </section>
 
-      <footer className="no-print border-t border-slate-200 bg-white py-10 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 md:flex-row md:items-center md:justify-between">
+      <footer className="no-print border-t border-[var(--line)] bg-[var(--bg)] py-10">
+        <div className="mx-auto flex max-w-[1120px] flex-col gap-6 px-[clamp(20px,5vw,48px)] md:flex-row md:items-center md:justify-between">
           <div className="flex items-start gap-3">
             <BrandLogo className="mt-0.5 h-9 w-9 shrink-0" />
             <div>
-              <p className="font-display text-sm font-bold text-slate-900 dark:text-white">
+              <p className="font-display text-sm font-bold text-[var(--ink)]">
+                © 2026{' '}
                 <EditableText
                   value={profile.name}
                   canEdit={isAdminUser}
@@ -318,7 +343,7 @@ export function ContactSection({
                   onSave={(val) => onSaveProfilePatch({ name: val })}
                 />
               </p>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-xs text-[var(--mute)]">
                 <EditableText
                   value={siteCopy.footerNote}
                   canEdit={isAdminUser}
@@ -338,18 +363,18 @@ export function ContactSection({
 
           <nav
             aria-label="Footer navigation"
-            className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium text-slate-600 dark:text-slate-300"
+            className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-medium text-[var(--mute)]"
           >
-            <a href="#profile" className="hover:text-blue-700 dark:hover:text-blue-400">
+            <a href="#profile" className="hover:text-[var(--brass)]">
               {siteCopy.navProfile}
             </a>
-            <a href="#experience" className="hover:text-blue-700 dark:hover:text-blue-400">
+            <a href="#experience" className="hover:text-[var(--brass)]">
               {siteCopy.navExperience}
             </a>
-            <a href="#projects" className="hover:text-blue-700 dark:hover:text-blue-400">
+            <a href="#projects" className="hover:text-[var(--brass)]">
               {siteCopy.navProjects}
             </a>
-            <a href="#tech-stack" className="hover:text-blue-700 dark:hover:text-blue-400">
+            <a href="#tech-stack" className="hover:text-[var(--brass)]">
               {siteCopy.navStack}
             </a>
           </nav>
@@ -358,9 +383,9 @@ export function ContactSection({
             <button
               type="button"
               onClick={onPrint}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 transition-colors hover:border-slate-300 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--card)] px-4 py-2 text-xs font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] cursor-pointer"
             >
-              <Printer className="h-3.5 w-3.5" aria-hidden="true" />
+              <Printer className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
               <span>{siteCopy.downloadPdf}</span>
             </button>
           </div>

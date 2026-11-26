@@ -18,6 +18,7 @@ import {
   ExperienceStatus,
 } from '../data/cvData';
 import { upsertFirestoreDoc } from './cvFirestoreApi';
+import { withAdminRetry } from './projectApi';
 import {
   readCvIndex,
   registerEntityInCvIndex,
@@ -369,12 +370,14 @@ export async function createExperienceInFirestore(
   const path = `experiences/${id}`;
 
   try {
-    await setDoc(doc(db, 'experiences', id), {
-      ...sanitized,
-      authorId: currentUser.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await withAdminRetry(() =>
+      setDoc(doc(db, 'experiences', id), {
+        ...sanitized,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    );
     await registerEntityInCvIndex('experienceIds', id, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
@@ -393,7 +396,7 @@ export async function deleteExperienceFromFirestore(id: string): Promise<void> {
 
   const path = `experiences/${id}`;
   try {
-    await deleteDoc(doc(db, 'experiences', id));
+    await withAdminRetry(() => deleteDoc(doc(db, 'experiences', id)));
     await registerEntityInCvIndex('experienceIds', id, 'remove');
     schedulePublishedSnapshotSync();
   } catch (error) {

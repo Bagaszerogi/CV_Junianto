@@ -9,6 +9,7 @@ import {
   SiteCopyLocale,
   subscribeReferences,
 } from '../utils/cvFirestoreApi';
+import { formatReadableFirestoreError } from '../firebase';
 import { EditableText } from './EditableText';
 
 interface EducationReferencesSectionProps {
@@ -61,7 +62,7 @@ export function EducationReferencesSection({
         setLoadError(null);
       },
       (err) => {
-        setLoadError(err.message);
+        setLoadError(formatReadableFirestoreError(err));
       }
     );
     return () => unsubscribe();
@@ -135,14 +136,7 @@ export function EducationReferencesSection({
       );
       setIsRefModalOpen(false);
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setFormError(msg);
+      setFormError(formatReadableFirestoreError(err));
     } finally {
       setIsSaving(false);
     }
@@ -152,7 +146,7 @@ export function EducationReferencesSection({
     try {
       await deleteReferenceFromFirestore(id);
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : String(err));
+      setLoadError(formatReadableFirestoreError(err));
     }
   };
 

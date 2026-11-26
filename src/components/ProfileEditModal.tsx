@@ -6,6 +6,7 @@ import {
   CvProfileData,
   saveProfileToFirestore,
 } from '../utils/cvFirestoreApi';
+import { formatReadableFirestoreError } from '../firebase';
 import { sanitizePortraitSrc } from '../utils/safeUrls';
 
 export type ProfileEditTab = 'identity' | 'contact' | 'metrics' | 'education';
@@ -72,14 +73,7 @@ export function ProfileEditModal({
       await saveProfileToFirestore(draft, Boolean(profile.fromFirestore));
       onClose();
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setError(msg);
+      setError(formatReadableFirestoreError(err));
     } finally {
       setIsSaving(false);
     }

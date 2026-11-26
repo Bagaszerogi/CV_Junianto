@@ -25,6 +25,7 @@ import {
   updateFirestoreProject,
 } from '../utils/projectApi';
 import { sanitizeProjectImageSrc } from '../utils/safeUrls';
+import { formatReadableFirestoreError } from '../firebase';
 
 interface ProjectsSectionProps {
   locale: Locale;
@@ -103,14 +104,7 @@ export function ProjectsSection({
         setIsLoading(false);
       },
       (err) => {
-        let message = err.message;
-        try {
-          const parsed = JSON.parse(err.message) as { error?: string };
-          if (parsed?.error) message = parsed.error;
-        } catch {
-          // Keep message
-        }
-        setLoadError(message);
+        setLoadError(formatReadableFirestoreError(err));
         setIsLoading(false);
       }
     );
@@ -291,14 +285,7 @@ export function ProjectsSection({
         closeModal();
       }
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setFormError(msg);
+      setFormError(formatReadableFirestoreError(err));
     } finally {
       setIsSaving(false);
     }
@@ -335,14 +322,7 @@ export function ProjectsSection({
         setActiveLightboxId(null);
       }
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setLoadError(msg);
+      setLoadError(formatReadableFirestoreError(err));
     }
   };
 

@@ -21,6 +21,7 @@ import {
   UI_COPY,
 } from '../data/cvData';
 import { SiteCopyLocale } from '../utils/cvFirestoreApi';
+import { formatReadableFirestoreError } from '../firebase';
 import { EditableText } from './EditableText';
 import { ExperienceTimelineSkeleton } from './Skeletons';
 import {
@@ -154,14 +155,7 @@ export function ExperienceSection({
         setIsLoading(false);
       },
       (err) => {
-        let message = err.message;
-        try {
-          const parsed = JSON.parse(err.message) as { error?: string };
-          if (parsed?.error) message = parsed.error;
-        } catch {
-          // Keep message
-        }
-        setLoadError(message);
+        setLoadError(formatReadableFirestoreError(err));
         setIsLoading(false);
       }
     );
@@ -177,16 +171,7 @@ export function ExperienceSection({
     setCollapsedIds((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const extractError = (err: unknown): string => {
-    let msg = err instanceof Error ? err.message : String(err);
-    try {
-      const parsed = JSON.parse(msg) as { error?: string };
-      if (parsed?.error) msg = parsed.error;
-    } catch {
-      // Keep raw msg
-    }
-    return msg;
-  };
+  const extractError = (err: unknown): string => formatReadableFirestoreError(err);
 
   const persistStages = async (exp: FirestoreExperienceItem, nextStages: CareerStage[]) => {
     const primary = nextStages[0];

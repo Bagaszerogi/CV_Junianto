@@ -27,6 +27,7 @@ import {
   toggleInviteActive,
   updateInviteExpiry,
 } from '../utils/inviteApi';
+import { formatReadableFirestoreError } from '../firebase';
 
 interface InviteManagerModalProps {
   isOpen: boolean;
@@ -74,7 +75,7 @@ export function InviteManagerModal({
       setInvites(data.invites);
       setVaultKey(data.vaultKey);
     } catch (err) {
-      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setErrorMsg(formatReadableFirestoreError(err));
     } finally {
       setIsLoading(false);
     }
@@ -90,16 +91,7 @@ export function InviteManagerModal({
 
   if (!isOpen) return null;
 
-  const parseMsg = (err: unknown): string => {
-    const raw = err instanceof Error ? err.message : String(err);
-    try {
-      const parsed = JSON.parse(raw) as { error?: string };
-      if (parsed?.error) return parsed.error;
-    } catch {
-      // Keep raw
-    }
-    return raw;
-  };
+  const parseMsg = (err: unknown): string => formatReadableFirestoreError(err);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();

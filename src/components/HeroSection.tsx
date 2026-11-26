@@ -19,6 +19,7 @@ import {
   SiteCopyLocale,
 } from '../utils/cvFirestoreApi';
 import { sanitizeEmailForHref, sanitizePortraitSrc, sanitizeWhatsAppHref } from '../utils/safeUrls';
+import { formatReadableFirestoreError } from '../firebase';
 import { EditableText } from './EditableText';
 import { NetworkMeshCanvas } from './NetworkMeshCanvas';
 import { ProfileEditTab } from './ProfileEditModal';
@@ -155,14 +156,7 @@ export function HeroSection({
       const compressed = await compressPortraitImage(file);
       await onSaveProfilePatch({ portraitDataUrl: compressed });
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setPhotoError(msg);
+      setPhotoError(formatReadableFirestoreError(err));
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -175,14 +169,7 @@ export function HeroSection({
     try {
       await onSaveProfilePatch({ portraitDataUrl: '' });
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setPhotoError(msg);
+      setPhotoError(formatReadableFirestoreError(err));
     } finally {
       setIsRemovingPhoto(false);
     }

@@ -17,7 +17,7 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { auth, FIREBASE_PUBLIC_META } from '../firebase';
+import { auth, FIREBASE_PUBLIC_META, formatReadableFirestoreError } from '../firebase';
 import { Locale } from '../data/cvData';
 import {
   DatabaseAuditReport,
@@ -433,14 +433,7 @@ export function AdminAuthModal({
       await runDiagnostics();
       onAdminVerified?.();
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setSeedMessage(msg);
+      setSeedMessage(formatReadableFirestoreError(err));
     } finally {
       setIsSeeding(false);
     }
@@ -459,14 +452,7 @@ export function AdminAuthModal({
       await runDiagnostics();
       onAdminVerified?.();
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setSeedMessage(msg);
+      setSeedMessage(formatReadableFirestoreError(err));
     } finally {
       setIsSyncingGlobal(false);
     }
@@ -493,14 +479,7 @@ export function AdminAuthModal({
             : `Email "${added.value}" berhasil diotorisasi di Firestore /admins.`
       );
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setAdminManageError(msg);
+      setAdminManageError(formatReadableFirestoreError(err));
     } finally {
       setIsManagingAdmin(false);
     }
@@ -516,14 +495,7 @@ export function AdminAuthModal({
       setCoreAdminEmails(list.coreEmails);
       setAddedAdminEmails(list.addedEmails);
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setAdminManageError(msg);
+      setAdminManageError(formatReadableFirestoreError(err));
     } finally {
       setIsManagingAdmin(false);
     }
@@ -790,21 +762,50 @@ export function AdminAuthModal({
                   </div>
 
                   {auditReport.authRequired && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-[var(--line)] pt-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setAuthMethod('google')}
-                        className="rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-[11px] font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
-                      >
-                        {locale === 'en' ? 'Sign in with Google SSO' : 'Login via Google SSO'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAuthMethod('email')}
-                        className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
-                      >
-                        Email & Password
-                      </button>
+                    <div className="mt-3 space-y-2.5 border-t border-[var(--line)] pt-2.5">
+                      <p className="text-[11px] leading-relaxed text-[var(--ink)]">
+                        {auditReport.authState.blockReason === 'email-unverified'
+                          ? locale === 'en'
+                            ? 'Why locked: This Email/Password account is unverified (emailVerified: false), so Firestore blocks read/write. Use Google SSO, verify the email link, or ask the main admin to authorize your UID above.'
+                            : 'Penyebab terkunci: Akun Email/Password ini belum terverifikasi (emailVerified: false), sehingga Firestore menolak izin. Solusi: Masuk lewat Google SSO, klik link verifikasi email, atau minta admin utama menambahkan UID di atas.'
+                          : auditReport.authState.blockReason === 'not-in-admin-list'
+                            ? locale === 'en'
+                              ? 'Why locked: Your email is verified, but neither your email nor UID is listed in Firestore /admins yet.'
+                              : 'Penyebab terkunci: Email terverifikasi, tetapi email/UID ini belum didaftarkan di daftar Admin Firestore.'
+                            : locale === 'en'
+                              ? 'Why locked: You are not signed in yet. Sign in with Google SSO or verified Email/Password first, then click Re-test.'
+                              : 'Penyebab terkunci: Anda belum login. Login lewat Google SSO atau Email/Password terverifikasi terlebih dahulu, lalu tekan Uji Ulang.'}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleGoogleSignIn()}
+                          disabled={isSubmitting}
+                          className="rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-[11px] font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
+                        >
+                          {locale === 'en' ? 'Sign in with Google SSO' : 'Login via Google SSO'}
+                        </button>
+                        {auditReport.authState.blockReason === 'email-unverified' ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAuthMethod('email');
+                              setNeedsVerification(true);
+                            }}
+                            className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+                          >
+                            {locale === 'en' ? 'Verify Email / Copy UID' : 'Verifikasi Email / Salin UID'}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setAuthMethod('email')}
+                            className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-[11px] font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+                          >
+                            Email & Password
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

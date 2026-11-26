@@ -9,6 +9,7 @@ import {
   Pencil,
   X,
 } from 'lucide-react';
+import { formatReadableFirestoreError } from '../firebase';
 
 interface EditableTextProps {
   value: string;
@@ -154,14 +155,7 @@ export function EditableText({
       await onSave(normalized.slice(0, maxLength));
       setIsEditing(false);
     } catch (err) {
-      let msg = err instanceof Error ? err.message : String(err);
-      try {
-        const parsed = JSON.parse(msg) as { error?: string };
-        if (parsed?.error) msg = parsed.error;
-      } catch {
-        // Keep msg
-      }
-      setError(msg);
+      setError(formatReadableFirestoreError(err));
     } finally {
       setIsSaving(false);
     }

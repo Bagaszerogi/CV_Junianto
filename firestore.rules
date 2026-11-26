@@ -836,6 +836,7 @@ service cloud.firestore {
           'active',
           'expiresAt',
           'vaultKey',
+          'createdByEmail',
           'authorId',
           'createdAt',
           'updatedAt'

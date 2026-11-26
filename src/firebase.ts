@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { doc, getDocFromServer, getFirestore } from 'firebase/firestore';
+import { doc, getDocFromServer, getFirestore, Timestamp } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -49,6 +49,45 @@ export interface FirestoreErrorInfo {
       email?: string | null;
     }[];
   };
+}
+
+export function hasValidFirestoreTimestamp(val: unknown): boolean {
+  if (val instanceof Timestamp) return true;
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    typeof (val as { toMillis?: unknown }).toMillis === 'function'
+  );
+}
+
+export function isPermissionError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return msg.includes('permission') || msg.includes('insufficient');
+}
+
+export function formatReadableFirestoreError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  try {
+    const parsed = JSON.parse(raw) as Partial<FirestoreErrorInfo>;
+    if (parsed?.error) {
+      const target = [parsed.operationType, parsed.path].filter(Boolean).join(' ');
+      const email = parsed.authInfo?.email;
+      const verified = parsed.authInfo?.emailVerified;
+      if (isPermissionError(parsed.error)) {
+        if (!email) {
+          return `${parsed.error}${target ? ` (${target})` : ''} — Sesi login belum aktif, silakan masuk kembali.`;
+        }
+        if (verified === false) {
+          return `${parsed.error}${target ? ` (${target})` : ''} — Akun ${email} belum terverifikasi (emailVerified: false). Verifikasi email atau masuk via Google SSO.`;
+        }
+        return `${parsed.error}${target ? ` (${target})` : ''} — Akun: ${email}. Cek Cek DB & SSO jika masih gagal.`;
+      }
+      return target ? `${parsed.error} (${target})` : parsed.error;
+    }
+  } catch {
+    // Raw non-JSON error
+  }
+  return raw;
 }
 
 export function handleFirestoreError(

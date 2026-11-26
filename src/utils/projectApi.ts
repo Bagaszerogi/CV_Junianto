@@ -28,6 +28,8 @@ import {
   db,
   googleProvider,
   handleFirestoreError,
+  hasValidFirestoreTimestamp,
+  isPermissionError,
   OperationType,
 } from '../firebase';
 import { isValidEmailAddress } from './safeUrls';
@@ -138,8 +140,10 @@ export async function syncAdminRecord(
 
   const provider = user.providerData?.[0]?.providerId || 'firebase';
   const existingAddedBy =
-    existingUidData && typeof existingUidData.addedBy === 'string'
-      ? existingUidData.addedBy
+    existingUidData &&
+    typeof existingUidData.addedBy === 'string' &&
+    existingUidData.addedBy.trim().length > 0
+      ? existingUidData.addedBy.trim()
       : !user.emailVerified
         ? user.uid
         : null;
@@ -152,7 +156,11 @@ export async function syncAdminRecord(
       ...(existingAddedBy ? { addedBy: existingAddedBy } : {}),
       updatedAt: serverTimestamp(),
     });
-    if (user.emailVerified && ADMIN_EMAIL_ALLOWLIST.has(normalized)) {
+    if (
+      user.emailVerified &&
+      isValidEmailAddress(normalized) &&
+      (ADMIN_EMAIL_ALLOWLIST.has(normalized) || existingUidData !== null)
+    ) {
       await setDoc(doc(db, 'admins', normalized), {
         email: normalized,
         role: 'admin',
@@ -166,6 +174,21 @@ export async function syncAdminRecord(
     const msg = err instanceof Error ? err.message : String(err);
     console.warn('Admin registry sync warning:', msg);
     return { synced: false, error: msg };
+  }
+}
+
+export async function withAdminRetry<T>(task: () => Promise<T>): Promise<T> {
+  try {
+    return await task();
+  } catch (err) {
+    const user = auth.currentUser;
+    if (user && isPermissionError(err)) {
+      await user.getIdToken(true).catch(() => undefined);
+      await syncAdminRecord(user).catch(() => undefined);
+      await user.getIdToken(true).catch(() => undefined);
+      return await task();
+    }
+    throw err;
   }
 }
 
@@ -204,36 +227,41 @@ export async function addAdminAccessToFirestore(
   if (isValidEmailAddress(cleanEmail)) {
     const emailDocRef = doc(db, 'admins', cleanEmail);
     try {
-      await setDoc(emailDocRef, {
-        email: cleanEmail,
-        role: 'admin',
-        provider: 'firestore-admin',
-        addedBy: currentUser.uid,
-        updatedAt: serverTimestamp(),
-      });
+      await withAdminRetry(async () => {
+        await setDoc(emailDocRef, {
+          email: cleanEmail,
+          role: 'admin',
+          provider: 'firestore-admin',
+          addedBy: currentUser.uid,
+          updatedAt: serverTimestamp(),
+        });
 
-      const regRef = doc(db, 'adminsRegistry', 'emails');
-      const regSnap = await getDocFromServer(regRef);
-      const prevList =
-        regSnap.exists() && Array.isArray(regSnap.data()?.emails)
-          ? (regSnap.data().emails as unknown[])
-              .filter((x): x is string => typeof x === 'string')
-              .map((x) => x.trim().toLowerCase())
-          : [];
-      const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
+        const regRef = doc(db, 'adminsRegistry', 'emails');
+        const regSnap = await getDocFromServer(regRef);
+        const prevList =
+          regSnap.exists() && Array.isArray(regSnap.data()?.emails)
+            ? (regSnap.data().emails as unknown[])
+                .filter((x): x is string => typeof x === 'string')
+                .map((x) => x.trim().toLowerCase())
+            : [];
+        const nextList = Array.from(new Set([...prevList, cleanEmail])).slice(0, 50);
 
-      const regData = regSnap.exists() ? regSnap.data() : null;
-      const authorId =
-        typeof regData?.authorId === 'string' && regData.authorId.length > 0
-          ? regData.authorId
-          : currentUser.uid;
-      const createdAt = regData?.createdAt != null ? regData.createdAt : serverTimestamp();
+        const regData = regSnap.exists() ? regSnap.data() : null;
+        const authorId =
+          typeof regData?.authorId === 'string' && regData.authorId.length > 0
+            ? regData.authorId
+            : currentUser.uid;
+        const createdAt =
+          regData && hasValidFirestoreTimestamp(regData.createdAt)
+            ? regData.createdAt
+            : serverTimestamp();
 
-      await setDoc(regRef, {
-        emails: nextList,
-        authorId,
-        createdAt,
-        updatedAt: serverTimestamp(),
+        await setDoc(regRef, {
+          emails: nextList,
+          authorId,
+          createdAt,
+          updatedAt: serverTimestamp(),
+        });
       });
       return { kind: 'email', value: cleanEmail };
     } catch (error) {
@@ -244,12 +272,14 @@ export async function addAdminAccessToFirestore(
   if (UID_PATTERN.test(trimmed)) {
     const uidDocRef = doc(db, 'admins', trimmed);
     try {
-      await setDoc(uidDocRef, {
-        email: 'uid-admin@cv-junianto.local',
-        role: 'admin',
-        provider: 'uid-admin',
-        addedBy: currentUser.uid,
-        updatedAt: serverTimestamp(),
+      await withAdminRetry(async () => {
+        await setDoc(uidDocRef, {
+          email: 'uid-admin@cv-junianto.local',
+          role: 'admin',
+          provider: 'uid-admin',
+          addedBy: currentUser.uid,
+          updatedAt: serverTimestamp(),
+        });
       });
       return { kind: 'uid', value: trimmed };
     } catch (error) {
@@ -277,28 +307,32 @@ export async function removeAdminEmailFromFirestore(rawEmail: string): Promise<v
   }
 
   try {
-    await deleteDoc(doc(db, 'admins', cleanEmail));
+    await withAdminRetry(async () => {
+      await deleteDoc(doc(db, 'admins', cleanEmail));
 
-    const regRef = doc(db, 'adminsRegistry', 'emails');
-    const regSnap = await getDocFromServer(regRef);
-    if (regSnap.exists() && Array.isArray(regSnap.data()?.emails)) {
-      const regData = regSnap.data();
-      const nextList = (regData.emails as unknown[])
-        .filter((x): x is string => typeof x === 'string')
-        .map((x) => x.trim().toLowerCase())
-        .filter((x) => x !== cleanEmail);
-      const authorId =
-        typeof regData?.authorId === 'string' && regData.authorId.length > 0
-          ? regData.authorId
-          : currentUser.uid;
-      const createdAt = regData?.createdAt != null ? regData.createdAt : serverTimestamp();
-      await setDoc(regRef, {
-        emails: nextList,
-        authorId,
-        createdAt,
-        updatedAt: serverTimestamp(),
-      });
-    }
+      const regRef = doc(db, 'adminsRegistry', 'emails');
+      const regSnap = await getDocFromServer(regRef);
+      if (regSnap.exists() && Array.isArray(regSnap.data()?.emails)) {
+        const regData = regSnap.data();
+        const nextList = (regData.emails as unknown[])
+          .filter((x): x is string => typeof x === 'string')
+          .map((x) => x.trim().toLowerCase())
+          .filter((x) => x !== cleanEmail);
+        const authorId =
+          typeof regData?.authorId === 'string' && regData.authorId.length > 0
+            ? regData.authorId
+            : currentUser.uid;
+        const createdAt = hasValidFirestoreTimestamp(regData?.createdAt)
+          ? regData.createdAt
+          : serverTimestamp();
+        await setDoc(regRef, {
+          emails: nextList,
+          authorId,
+          createdAt,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    });
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, `admins/${cleanEmail}`);
   }
@@ -534,12 +568,14 @@ export async function createFirestoreProject(input: {
   const path = `projects/${projectId}`;
 
   try {
-    await setDoc(doc(db, 'projects', projectId), {
-      ...sanitized,
-      authorId: currentUser.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await withAdminRetry(() =>
+      setDoc(doc(db, 'projects', projectId), {
+        ...sanitized,
+        authorId: currentUser.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    );
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
@@ -569,39 +605,26 @@ export async function updateFirestoreProject(
   const sanitized = sanitizeProjectFields(input);
   const path = `projects/${projectId}`;
 
-  const runWrite = async () => {
-    const docRef = doc(db, 'projects', projectId);
-    const snap = await getDocFromServer(docRef);
-    const existing = snap.exists() ? snap.data() : null;
-    const authorId =
-      typeof existing?.authorId === 'string' && existing.authorId.length > 0
-        ? existing.authorId
-        : currentUser.uid;
-    const hasValidCreatedAt =
-      existing?.createdAt instanceof Timestamp ||
-      typeof existing?.createdAt?.toMillis === 'function';
-    const createdAt = hasValidCreatedAt ? existing.createdAt : serverTimestamp();
-    await setDoc(docRef, {
-      ...sanitized,
-      authorId,
-      createdAt,
-      updatedAt: serverTimestamp(),
-    });
-  };
-
   try {
-    try {
-      await runWrite();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-      if (msg.includes('permission') || msg.includes('insufficient')) {
-        await currentUser.getIdToken(true).catch(() => undefined);
-        await syncAdminRecord(currentUser).catch(() => undefined);
-        await runWrite();
-      } else {
-        throw err;
-      }
-    }
+    await withAdminRetry(async () => {
+      const docRef = doc(db, 'projects', projectId);
+      const snap = await getDocFromServer(docRef);
+      const existing = snap.exists() ? snap.data() : null;
+      const authorId =
+        typeof existing?.authorId === 'string' && existing.authorId.length > 0
+          ? existing.authorId
+          : currentUser.uid;
+      const createdAt =
+        existing && hasValidFirestoreTimestamp(existing.createdAt)
+          ? existing.createdAt
+          : serverTimestamp();
+      await setDoc(docRef, {
+        ...sanitized,
+        authorId,
+        createdAt,
+        updatedAt: serverTimestamp(),
+      });
+    });
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
@@ -620,7 +643,7 @@ export async function deleteFirestoreProject(projectId: string): Promise<void> {
 
   const path = `projects/${projectId}`;
   try {
-    await deleteDoc(doc(db, 'projects', projectId));
+    await withAdminRetry(() => deleteDoc(doc(db, 'projects', projectId)));
     await registerEntityInCvIndex('projectIds', projectId, 'remove');
     schedulePublishedSnapshotSync();
   } catch (error) {

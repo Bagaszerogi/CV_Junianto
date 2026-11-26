@@ -11,7 +11,15 @@ import {
   setDoc,
   Timestamp,
 } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  handleFirestoreError,
+  hasValidFirestoreTimestamp,
+  isPermissionError,
+  OperationType,
+} from '../firebase';
+import { isValidEmailAddress } from './safeUrls';
 import type {
   ExperienceItem,
   ExperienceStatus,
@@ -207,19 +215,58 @@ async function discoverAdminCollectionIds(
   }
 }
 
+async function runInviteAdminRetry<T>(task: () => Promise<T>): Promise<T> {
+  try {
+    return await task();
+  } catch (err) {
+    const user = auth.currentUser;
+    if (user && isPermissionError(err)) {
+      await user.getIdToken(true).catch(() => undefined);
+      const { syncAdminRecord } = await import('./projectApi');
+      await syncAdminRecord(user).catch(() => undefined);
+      await user.getIdToken(true).catch(() => undefined);
+      return await task();
+    }
+    throw err;
+  }
+}
+
 export async function ensureCvIndex(): Promise<CvIndexDoc> {
   const user = auth.currentUser;
   if (!user) throw new Error('Authentication required.');
 
-  const existing = await readCvIndex();
-  const { EXPERIENCES, TECH_STACK, REFERENCES } = await import('../data/cvData');
-  const defaultExpIds = EXPERIENCES.map((e) => e.id);
-  const defaultStackIds = TECH_STACK.map((t) => t.id);
-  const defaultRefIds = REFERENCES.map((_, i) => `ref_default_${i}`);
+  const indexRef = doc(db, 'cvIndex', 'admin');
+  const existingSnap = await runInviteAdminRetry(() => getDocFromServer(indexRef));
+  const existingRaw = existingSnap.exists() ? existingSnap.data() : null;
+  const existing: CvIndexDoc | null = existingRaw
+    ? {
+        vaultKey: typeof existingRaw.vaultKey === 'string' ? existingRaw.vaultKey : '',
+        experienceIds: Array.isArray(existingRaw.experienceIds)
+          ? existingRaw.experienceIds.filter((x): x is string => typeof x === 'string')
+          : [],
+        projectIds: Array.isArray(existingRaw.projectIds)
+          ? existingRaw.projectIds.filter((x): x is string => typeof x === 'string')
+          : [],
+        techStackIds: Array.isArray(existingRaw.techStackIds)
+          ? existingRaw.techStackIds.filter((x): x is string => typeof x === 'string')
+          : [],
+        referenceIds: Array.isArray(existingRaw.referenceIds)
+          ? existingRaw.referenceIds.filter((x): x is string => typeof x === 'string')
+          : [],
+        inviteTokens: Array.isArray(existingRaw.inviteTokens)
+          ? existingRaw.inviteTokens.filter((x): x is string => typeof x === 'string')
+          : [],
+      }
+    : null;
 
   if (existing && VAULT_KEY_PATTERN.test(existing.vaultKey)) {
     return existing;
   }
+
+  const { EXPERIENCES, TECH_STACK, REFERENCES } = await import('../data/cvData');
+  const defaultExpIds = EXPERIENCES.map((e) => e.id);
+  const defaultStackIds = TECH_STACK.map((t) => t.id);
+  const defaultRefIds = REFERENCES.map((_, i) => `ref_default_${i}`);
 
   const [expIds, projIds, stackIds, refIds] = await Promise.all([
     discoverAdminCollectionIds('experiences', defaultExpIds),
@@ -229,9 +276,10 @@ export async function ensureCvIndex(): Promise<CvIndexDoc> {
   ]);
 
   const initial: CvIndexDoc = {
-    vaultKey: existing?.vaultKey && VAULT_KEY_PATTERN.test(existing.vaultKey)
-      ? existing.vaultKey
-      : generateRandomVaultKey(),
+    vaultKey:
+      existing?.vaultKey && VAULT_KEY_PATTERN.test(existing.vaultKey)
+        ? existing.vaultKey
+        : generateRandomVaultKey(),
     experienceIds: expIds,
     projectIds: projIds,
     techStackIds: stackIds,
@@ -239,12 +287,23 @@ export async function ensureCvIndex(): Promise<CvIndexDoc> {
     inviteTokens: existing?.inviteTokens ?? [],
   };
 
-  await setDoc(doc(db, 'cvIndex', 'admin'), {
-    ...initial,
-    authorId: user.uid,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+  const preservedAuthorId =
+    typeof existingRaw?.authorId === 'string' && existingRaw.authorId.length > 0
+      ? existingRaw.authorId
+      : user.uid;
+  const preservedCreatedAt =
+    existingRaw && hasValidFirestoreTimestamp(existingRaw.createdAt)
+      ? existingRaw.createdAt
+      : serverTimestamp();
+
+  await runInviteAdminRetry(() =>
+    setDoc(indexRef, {
+      ...initial,
+      authorId: preservedAuthorId,
+      createdAt: preservedCreatedAt,
+      updatedAt: serverTimestamp(),
+    })
+  );
 
   return initial;
 }
@@ -259,26 +318,28 @@ export async function registerEntityInCvIndex(
   try {
     const index = await ensureCvIndex();
     const indexRef = doc(db, 'cvIndex', 'admin');
-    const snap = await getDocFromServer(indexRef).catch(() => null);
-    const existing = snap?.exists() ? snap.data() : null;
-    const current = index[field];
-    const next =
-      mode === 'add'
-        ? Array.from(new Set([...current, id])).slice(0, field === 'inviteTokens' ? 100 : 60)
-        : current.filter((item) => item !== id);
+    await runInviteAdminRetry(async () => {
+      const snap = await getDocFromServer(indexRef).catch(() => null);
+      const existing = snap?.exists() ? snap.data() : null;
+      const current = index[field];
+      const next =
+        mode === 'add'
+          ? Array.from(new Set([...current, id])).slice(0, field === 'inviteTokens' ? 100 : 60)
+          : current.filter((item) => item !== id);
 
-    await setDoc(indexRef, {
-      ...index,
-      [field]: next,
-      authorId:
-        typeof existing?.authorId === 'string' && existing.authorId.length > 0
-          ? existing.authorId
-          : user.uid,
-      createdAt:
-        existing?.createdAt instanceof Timestamp || typeof existing?.createdAt?.toMillis === 'function'
-          ? existing.createdAt
-          : serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      await setDoc(indexRef, {
+        ...index,
+        [field]: next,
+        authorId:
+          typeof existing?.authorId === 'string' && existing.authorId.length > 0
+            ? existing.authorId
+            : user.uid,
+        createdAt:
+          existing && hasValidFirestoreTimestamp(existing.createdAt)
+            ? existing.createdAt
+            : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     });
   } catch (err) {
     console.warn('cvIndex sync warning:', err);
@@ -472,27 +533,27 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
 
         const assetId = `${vaultKey}__${id}`;
         const assetRef = doc(db, 'cvProjectAssets', assetId);
-        const assetSnap = await getDocFromServer(assetRef).catch(() => null);
-        const assetExisting = assetSnap?.exists() ? assetSnap.data() : null;
-        await setDoc(assetRef, {
-          projectId: id,
-          imageDataUrl,
-          authorId:
-            typeof assetExisting?.authorId === 'string' && assetExisting.authorId.length > 0
-              ? assetExisting.authorId
-              : user.uid,
-          createdAt:
-            assetExisting?.createdAt instanceof Timestamp || typeof assetExisting?.createdAt?.toMillis === 'function'
-              ? assetExisting.createdAt
-              : serverTimestamp(),
-          updatedAt: serverTimestamp(),
+        await runInviteAdminRetry(async () => {
+          const assetSnap = await getDocFromServer(assetRef).catch(() => null);
+          const assetExisting = assetSnap?.exists() ? assetSnap.data() : null;
+          await setDoc(assetRef, {
+            projectId: id,
+            imageDataUrl,
+            authorId:
+              typeof assetExisting?.authorId === 'string' && assetExisting.authorId.length > 0
+                ? assetExisting.authorId
+                : user.uid,
+            createdAt:
+              assetExisting && hasValidFirestoreTimestamp(assetExisting.createdAt)
+                ? assetExisting.createdAt
+                : serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
         });
       })
     );
 
     const shareRef = doc(db, 'cvShares', vaultKey);
-    const shareSnap = await getDocFromServer(shareRef).catch(() => null);
-    const shareExisting = shareSnap?.exists() ? shareSnap.data() : null;
     const shareData = {
       profile: profilePayload,
       siteContent: sitePayload,
@@ -502,38 +563,44 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
       projectMeta: projectMeta.sort((a, b) => a.createdAtMs - b.createdAtMs),
     };
 
-    await setDoc(shareRef, {
-      ...shareData,
-      authorId:
-        typeof shareExisting?.authorId === 'string' && shareExisting.authorId.length > 0
-          ? shareExisting.authorId
-          : user.uid,
-      createdAt:
-        shareExisting?.createdAt instanceof Timestamp || typeof shareExisting?.createdAt?.toMillis === 'function'
-          ? shareExisting.createdAt
-          : serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await runInviteAdminRetry(async () => {
+      const shareSnap = await getDocFromServer(shareRef).catch(() => null);
+      const shareExisting = shareSnap?.exists() ? shareSnap.data() : null;
+      await setDoc(shareRef, {
+        ...shareData,
+        authorId:
+          typeof shareExisting?.authorId === 'string' && shareExisting.authorId.length > 0
+            ? shareExisting.authorId
+            : user.uid,
+        createdAt:
+          shareExisting && hasValidFirestoreTimestamp(shareExisting.createdAt)
+            ? shareExisting.createdAt
+            : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     });
 
     const indexRef = doc(db, 'cvIndex', 'admin');
-    const indexSnap = await getDocFromServer(indexRef).catch(() => null);
-    const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
-    await setDoc(indexRef, {
-      vaultKey: index.vaultKey,
-      experienceIds: Array.from(expMap.keys()).slice(0, 60),
-      projectIds: projectMeta.map((p) => p.id).slice(0, 60),
-      techStackIds: Array.from(stackMap.keys()).slice(0, 60),
-      referenceIds: Array.from(refMap.keys()).slice(0, 60),
-      inviteTokens: index.inviteTokens,
-      authorId:
-        typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
-          ? indexExisting.authorId
-          : user.uid,
-      createdAt:
-        indexExisting?.createdAt instanceof Timestamp || typeof indexExisting?.createdAt?.toMillis === 'function'
-          ? indexExisting.createdAt
-          : serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await runInviteAdminRetry(async () => {
+      const indexSnap = await getDocFromServer(indexRef).catch(() => null);
+      const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
+      await setDoc(indexRef, {
+        vaultKey: index.vaultKey,
+        experienceIds: Array.from(expMap.keys()).slice(0, 60),
+        projectIds: projectMeta.map((p) => p.id).slice(0, 60),
+        techStackIds: Array.from(stackMap.keys()).slice(0, 60),
+        referenceIds: Array.from(refMap.keys()).slice(0, 60),
+        inviteTokens: index.inviteTokens,
+        authorId:
+          typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
+            ? indexExisting.authorId
+            : user.uid,
+        createdAt:
+          indexExisting && hasValidFirestoreTimestamp(indexExisting.createdAt)
+            ? indexExisting.createdAt
+            : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     }).catch(() => undefined);
 
     emitGlobalSyncState({
@@ -638,19 +705,24 @@ export async function createInviteLink(params: {
       ? Timestamp.fromMillis(Date.now() + params.expiresInDays * 24 * 60 * 60 * 1000)
       : null;
 
-  const createdByEmail = (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase();
+  const fallbackEmail =
+    user.email && isValidEmailAddress(user.email.trim())
+      ? user.email.trim().toLowerCase()
+      : 'admin@cv-junianto.vercel.app';
 
   try {
-    await setDoc(doc(db, 'invites', rawToken), {
-      label: cleanLabel,
-      active: true,
-      expiresAt: expiresAtTs,
-      vaultKey: index.vaultKey,
-      createdByEmail,
-      authorId: user.uid,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await runInviteAdminRetry(() =>
+      setDoc(doc(db, 'invites', rawToken), {
+        label: cleanLabel,
+        active: true,
+        expiresAt: expiresAtTs,
+        vaultKey: index.vaultKey,
+        createdByEmail: fallbackEmail,
+        authorId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      })
+    );
     await registerEntityInCvIndex('inviteTokens', rawToken, 'add');
   } catch (err) {
     handleFirestoreError(err, OperationType.CREATE, `invites/${rawToken}`);
@@ -662,7 +734,7 @@ export async function createInviteLink(params: {
     active: true,
     expiresAtMs: expiresAtTs ? expiresAtTs.toMillis() : null,
     vaultKey: index.vaultKey,
-    createdByEmail,
+    createdByEmail: fallbackEmail,
     createdAtMs: Date.now(),
     updatedAtMs: Date.now(),
   };
@@ -671,26 +743,36 @@ export async function createInviteLink(params: {
 export async function toggleInviteActive(token: string, active: boolean): Promise<void> {
   const user = auth.currentUser;
   if (!user) throw new Error('Authentication required.');
+  const fallbackEmail =
+    user.email && isValidEmailAddress(user.email.trim())
+      ? user.email.trim().toLowerCase()
+      : 'admin@cv-junianto.vercel.app';
   try {
-    const invRef = doc(db, 'invites', token);
-    const snap = await getDocFromServer(invRef);
-    if (!snap.exists()) throw new Error('Invite not found.');
-    const existing = snap.data();
-    await setDoc(invRef, {
-      label: typeof existing.label === 'string' ? existing.label : token,
-      active,
-      expiresAt: existing.expiresAt ?? null,
-      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
-      createdByEmail:
-        typeof existing.createdByEmail === 'string'
-          ? existing.createdByEmail
-          : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
-      authorId:
-        typeof existing.authorId === 'string' && existing.authorId.length > 0
-          ? existing.authorId
-          : user.uid,
-      createdAt: existing.createdAt != null ? existing.createdAt : serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await runInviteAdminRetry(async () => {
+      const invRef = doc(db, 'invites', token);
+      const snap = await getDocFromServer(invRef);
+      if (!snap.exists()) throw new Error('Invite not found.');
+      const existing = snap.data();
+      const createdByEmail =
+        typeof existing.createdByEmail === 'string' &&
+        isValidEmailAddress(existing.createdByEmail.trim())
+          ? existing.createdByEmail.trim().toLowerCase()
+          : fallbackEmail;
+      await setDoc(invRef, {
+        label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
+        active,
+        expiresAt: existing.expiresAt ?? null,
+        vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+        createdByEmail,
+        authorId:
+          typeof existing.authorId === 'string' && existing.authorId.length > 0
+            ? existing.authorId
+            : user.uid,
+        createdAt: hasValidFirestoreTimestamp(existing.createdAt)
+          ? existing.createdAt
+          : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `invites/${token}`);
@@ -707,26 +789,36 @@ export async function updateInviteExpiry(
     expiresInDays !== null && expiresInDays > 0
       ? Timestamp.fromMillis(Date.now() + expiresInDays * 24 * 60 * 60 * 1000)
       : null;
+  const fallbackEmail =
+    user.email && isValidEmailAddress(user.email.trim())
+      ? user.email.trim().toLowerCase()
+      : 'admin@cv-junianto.vercel.app';
   try {
-    const invRef = doc(db, 'invites', token);
-    const snap = await getDocFromServer(invRef);
-    if (!snap.exists()) throw new Error('Invite not found.');
-    const existing = snap.data();
-    await setDoc(invRef, {
-      label: typeof existing.label === 'string' ? existing.label : token,
-      active: Boolean(existing.active),
-      expiresAt: expiresAtTs,
-      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
-      createdByEmail:
-        typeof existing.createdByEmail === 'string'
-          ? existing.createdByEmail
-          : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
-      authorId:
-        typeof existing.authorId === 'string' && existing.authorId.length > 0
-          ? existing.authorId
-          : user.uid,
-      createdAt: existing.createdAt != null ? existing.createdAt : serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await runInviteAdminRetry(async () => {
+      const invRef = doc(db, 'invites', token);
+      const snap = await getDocFromServer(invRef);
+      if (!snap.exists()) throw new Error('Invite not found.');
+      const existing = snap.data();
+      const createdByEmail =
+        typeof existing.createdByEmail === 'string' &&
+        isValidEmailAddress(existing.createdByEmail.trim())
+          ? existing.createdByEmail.trim().toLowerCase()
+          : fallbackEmail;
+      await setDoc(invRef, {
+        label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
+        active: Boolean(existing.active),
+        expiresAt: expiresAtTs,
+        vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+        createdByEmail,
+        authorId:
+          typeof existing.authorId === 'string' && existing.authorId.length > 0
+            ? existing.authorId
+            : user.uid,
+        createdAt: hasValidFirestoreTimestamp(existing.createdAt)
+          ? existing.createdAt
+          : serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `invites/${token}`);
@@ -736,7 +828,7 @@ export async function updateInviteExpiry(
 export async function deleteInviteLink(token: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
-    await deleteDoc(doc(db, 'invites', token));
+    await runInviteAdminRetry(() => deleteDoc(doc(db, 'invites', token)));
     await registerEntityInCvIndex('inviteTokens', token, 'remove');
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `invites/${token}`);
@@ -750,43 +842,58 @@ export async function rotateShareVaultKey(): Promise<string> {
   const index = await ensureCvIndex();
   const oldKey = index.vaultKey;
   const newKey = generateRandomVaultKey();
+  const fallbackEmail =
+    user.email && isValidEmailAddress(user.email.trim())
+      ? user.email.trim().toLowerCase()
+      : 'admin@cv-junianto.vercel.app';
 
   await syncPublishedCvSnapshot(newKey);
 
   const indexRef = doc(db, 'cvIndex', 'admin');
-  const indexSnap = await getDocFromServer(indexRef).catch(() => null);
-  const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
-  await setDoc(indexRef, {
-    ...index,
-    vaultKey: newKey,
-    authorId:
-      typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
-        ? indexExisting.authorId
-        : user.uid,
-    createdAt: indexExisting?.createdAt != null ? indexExisting.createdAt : serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  await runInviteAdminRetry(async () => {
+    const indexSnap = await getDocFromServer(indexRef).catch(() => null);
+    const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
+    await setDoc(indexRef, {
+      ...index,
+      vaultKey: newKey,
+      authorId:
+        typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
+          ? indexExisting.authorId
+          : user.uid,
+      createdAt:
+        indexExisting && hasValidFirestoreTimestamp(indexExisting.createdAt)
+          ? indexExisting.createdAt
+          : serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   });
 
   await Promise.all(
     index.inviteTokens.map(async (token) => {
       try {
-        const invRef = doc(db, 'invites', token);
-        const invSnap = await getDocFromServer(invRef);
-        if (!invSnap.exists()) return;
-        const ex = invSnap.data();
-        await setDoc(invRef, {
-          label: typeof ex.label === 'string' ? ex.label : token,
-          active: Boolean(ex.active),
-          expiresAt: ex.expiresAt ?? null,
-          vaultKey: newKey,
-          createdByEmail:
-            typeof ex.createdByEmail === 'string'
-              ? ex.createdByEmail
-              : (user.email ?? 'admin@cv-junianto.vercel.app').trim().toLowerCase(),
-          authorId:
-            typeof ex.authorId === 'string' && ex.authorId.length > 0 ? ex.authorId : user.uid,
-          createdAt: ex.createdAt != null ? ex.createdAt : serverTimestamp(),
-          updatedAt: serverTimestamp(),
+        await runInviteAdminRetry(async () => {
+          const invRef = doc(db, 'invites', token);
+          const invSnap = await getDocFromServer(invRef);
+          if (!invSnap.exists()) return;
+          const ex = invSnap.data();
+          const createdByEmail =
+            typeof ex.createdByEmail === 'string' &&
+            isValidEmailAddress(ex.createdByEmail.trim())
+              ? ex.createdByEmail.trim().toLowerCase()
+              : fallbackEmail;
+          await setDoc(invRef, {
+            label: typeof ex.label === 'string' && ex.label.trim() ? ex.label.trim() : token,
+            active: Boolean(ex.active),
+            expiresAt: ex.expiresAt ?? null,
+            vaultKey: newKey,
+            createdByEmail,
+            authorId:
+              typeof ex.authorId === 'string' && ex.authorId.length > 0 ? ex.authorId : user.uid,
+            createdAt: hasValidFirestoreTimestamp(ex.createdAt)
+              ? ex.createdAt
+              : serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
         });
       } catch {
         // Ignore stale token

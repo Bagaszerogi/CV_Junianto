@@ -52,6 +52,9 @@ export interface DatabaseAuditReport {
     providerIds: string[];
     inAllowlist: boolean;
     adminDocSynced: boolean | null;
+    adminUidDocExists: boolean | null;
+    adminEmailDocExists: boolean | null;
+    blockReason: 'not-signed-in' | 'email-unverified' | 'not-in-admin-list' | null;
   };
   collections: CollectionCheckResult[];
 }
@@ -197,6 +200,9 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
         providerIds: [],
         inAllowlist: false,
         adminDocSynced: null,
+        adminUidDocExists: null,
+        adminEmailDocExists: null,
+        blockReason: 'not-signed-in',
       },
       collections: PRIVATE_COLLECTIONS.map((item) => ({
         key: item.key,
@@ -210,6 +216,23 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
     };
   }
 
+  let adminUidDocExists = false;
+  let adminEmailDocExists = false;
+  try {
+    const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
+    adminUidDocExists = uidSnap.exists();
+  } catch {
+    adminUidDocExists = false;
+  }
+  if (user.emailVerified && emailLower) {
+    try {
+      const emailSnap = await getDocFromServer(doc(db, 'admins', emailLower));
+      adminEmailDocExists = emailSnap.exists();
+    } catch {
+      adminEmailDocExists = false;
+    }
+  }
+
   const isAuthorizedAdmin = await checkIsAdminUser(user);
   let adminDocSynced: boolean | null = false;
 
@@ -217,18 +240,9 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
     const syncRes = await syncAdminRecord(user);
     if (syncRes.synced) {
       adminDocSynced = true;
+      adminUidDocExists = true;
     } else {
-      try {
-        const uidSnap = await getDocFromServer(doc(db, 'admins', user.uid));
-        if (uidSnap.exists()) {
-          adminDocSynced = true;
-        } else if (user.emailVerified && emailLower) {
-          const emailSnap = await getDocFromServer(doc(db, 'admins', emailLower));
-          adminDocSynced = emailSnap.exists();
-        }
-      } catch {
-        adminDocSynced = false;
-      }
+      adminDocSynced = adminUidDocExists || adminEmailDocExists;
     }
   } else {
     const probe = await probeFirestoreServerReachable();
@@ -251,6 +265,9 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
         providerIds: user.providerData?.map((p) => p.providerId) ?? [],
         inAllowlist,
         adminDocSynced: false,
+        adminUidDocExists,
+        adminEmailDocExists,
+        blockReason: !user.emailVerified ? 'email-unverified' : 'not-in-admin-list',
       },
       collections: PRIVATE_COLLECTIONS.map((item) => ({
         key: item.key,
@@ -311,6 +328,9 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
       providerIds: user.providerData?.map((p) => p.providerId) ?? [],
       inAllowlist,
       adminDocSynced,
+      adminUidDocExists,
+      adminEmailDocExists,
+      blockReason: null,
     },
     collections: checks,
   };

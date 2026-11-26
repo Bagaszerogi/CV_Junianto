@@ -9,9 +9,14 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  Timestamp,
 } from 'firebase/firestore';
-import { auth, db, handleFirestoreError, OperationType } from '../firebase';
+import {
+  auth,
+  db,
+  handleFirestoreError,
+  hasValidFirestoreTimestamp,
+  OperationType,
+} from '../firebase';
 import {
   CV_PROFILE,
   EDUCATION,
@@ -28,7 +33,7 @@ import {
   registerEntityInCvIndex,
   schedulePublishedSnapshotSync,
 } from './inviteApi';
-import { syncAdminRecord } from './projectApi';
+import { withAdminRetry } from './projectApi';
 
 export interface SiteCopyLocale {
   navProfile: string;
@@ -338,8 +343,26 @@ export async function saveProfileToFirestore(
     },
   };
 
-  if (!payload.name || !payload.email || !payload.phoneDisplay || !payload.address) {
-    throw new Error('Name, Email, Phone, and Address are required.');
+  if (
+    !payload.name ||
+    !payload.brandShort ||
+    !payload.titleEn ||
+    !payload.currentCompany ||
+    !payload.currentRole ||
+    !payload.summaryEn ||
+    !payload.email ||
+    !payload.phoneDisplay ||
+    !payload.address
+  ) {
+    throw new Error('Name, Brand, Title, Current Role, Summary, Email, Phone, and Address are required.');
+  }
+  if (
+    !payload.education.institution ||
+    !payload.education.majorEn ||
+    !payload.education.period ||
+    !payload.education.gpaEn
+  ) {
+    throw new Error('Education institution, major, period, and GPA are required.');
   }
   if (!isValidEmailAddress(payload.email)) {
     throw new Error('Please enter a valid email address.');
@@ -369,7 +392,7 @@ export async function upsertFirestoreDoc(
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Authentication required.');
 
-  const runWrite = async (): Promise<void> => {
+  await withAdminRetry(async () => {
     const snap = await getDocFromServer(docRef);
     if (!snap.exists()) {
       await setDoc(docRef, {
@@ -386,10 +409,7 @@ export async function upsertFirestoreDoc(
       typeof existing?.authorId === 'string' && existing.authorId.length > 0
         ? existing.authorId
         : currentUser.uid;
-    const hasValidCreatedAt =
-      existing?.createdAt instanceof Timestamp ||
-      typeof existing?.createdAt?.toMillis === 'function';
-    const preservedCreatedAt = hasValidCreatedAt
+    const preservedCreatedAt = hasValidFirestoreTimestamp(existing?.createdAt)
       ? existing.createdAt
       : serverTimestamp();
 
@@ -399,20 +419,7 @@ export async function upsertFirestoreDoc(
       createdAt: preservedCreatedAt,
       updatedAt: serverTimestamp(),
     });
-  };
-
-  try {
-    await runWrite();
-  } catch (err) {
-    const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
-    if (msg.includes('permission') || msg.includes('insufficient')) {
-      await currentUser.getIdToken(true).catch(() => undefined);
-      await syncAdminRecord(currentUser).catch(() => undefined);
-      await runWrite();
-      return;
-    }
-    throw err;
-  }
+  });
 }
 
 export function subscribeTechStacks(
@@ -542,7 +549,7 @@ export async function saveTechStackToFirestore(
 export async function deleteTechStackFromFirestore(id: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
-    await deleteDoc(doc(db, 'techStacks', id));
+    await withAdminRetry(() => deleteDoc(doc(db, 'techStacks', id)));
     await registerEntityInCvIndex('techStackIds', id, 'remove');
     schedulePublishedSnapshotSync();
   } catch (error) {
@@ -682,7 +689,7 @@ export async function saveReferenceToFirestore(
 export async function deleteReferenceFromFirestore(id: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
-    await deleteDoc(doc(db, 'references', id));
+    await withAdminRetry(() => deleteDoc(doc(db, 'references', id)));
     await registerEntityInCvIndex('referenceIds', id, 'remove');
     schedulePublishedSnapshotSync();
   } catch (error) {

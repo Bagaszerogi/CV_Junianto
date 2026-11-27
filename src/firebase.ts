@@ -73,6 +73,10 @@ export function formatReadableFirestoreError(err: unknown): string {
       const target = [parsed.operationType, parsed.path].filter(Boolean).join(' ');
       const email = parsed.authInfo?.email;
       const verified = parsed.authInfo?.emailVerified;
+      const providers = parsed.authInfo?.providerInfo
+        ?.map((p) => p?.providerId)
+        .filter(Boolean)
+        .join(', ');
       if (isPermissionError(parsed.error)) {
         if (!email) {
           return `${parsed.error}${target ? ` (${target})` : ''} — Sesi login belum aktif, silakan masuk kembali.`;
@@ -80,7 +84,7 @@ export function formatReadableFirestoreError(err: unknown): string {
         if (verified === false) {
           return `${parsed.error}${target ? ` (${target})` : ''} — Akun ${email} belum terverifikasi (emailVerified: false). Verifikasi email atau masuk via Google SSO.`;
         }
-        return `${parsed.error}${target ? ` (${target})` : ''} — Akun: ${email}. Cek Cek DB & SSO jika masih gagal.`;
+        return `${parsed.error}${target ? ` (${target})` : ''} — Akun: ${email} (verified${providers ? `, ${providers}` : ''}, DB: ${FIREBASE_PUBLIC_META.firestoreDatabaseId.slice(0, 18)}…). Buka "Cek DB & SSO" untuk detail.`;
       }
       return target ? `${parsed.error} (${target})` : parsed.error;
     }

@@ -698,17 +698,17 @@ export function AdminAuthModal({
                 <div className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-3.5 text-[11px] leading-relaxed">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-semibold text-[var(--ink)]">
-                      {!auditReport.overallConnected
+                      {!auditReport.overallConnected || (!auditReport.authRequired && !auditReport.authState.writeAccessOk)
                         ? locale === 'en'
-                          ? 'Connection Issue Detected'
-                          : 'Ada Gangguan Koneksi'
+                          ? 'Permission / Connection Issue Detected'
+                          : 'Ada Gangguan Izin / Koneksi'
                         : auditReport.authRequired
                           ? locale === 'en'
                             ? 'Firestore Online · Protected Mode'
                             : 'Firestore Online · Database Terlindungi'
                           : locale === 'en'
-                            ? 'Firestore Connected & Admin Authorized'
-                            : 'Terhubung & Admin Terotorisasi'}
+                            ? 'Firestore Connected · Read & Write Active'
+                            : 'Terhubung · Baca & Simpan Aktif'}
                     </span>
                     <span className="font-mono text-[var(--mute)]">
                       {auditReport.totalLatencyMs} ms · {auditReport.checkedAt}
@@ -719,7 +719,7 @@ export function AdminAuthModal({
                       <span className="font-medium text-[var(--ink)]">Project:</span>{' '}
                       <span className="font-mono">{auditReport.projectId}</span>
                     </div>
-                    <div className="truncate">
+                    <div className="break-all">
                       <span className="font-medium text-[var(--ink)]">Database ID:</span>{' '}
                       <span className="font-mono">{auditReport.databaseId}</span>
                     </div>
@@ -733,7 +733,10 @@ export function AdminAuthModal({
                         <span className="font-mono">
                           {auditReport.authState.email} (
                           {auditReport.authState.emailVerified ? 'verified' : 'unverified'}
-                          {auditReport.authState.adminDocSynced ? ' · /admins synced' : ''})
+                          {auditReport.authState.providerIds.length > 0
+                            ? ` · ${auditReport.authState.providerIds.join(', ')}`
+                            : ''}
+                          {auditReport.authState.adminDocSynced ? ' · /admins write OK' : ''})
                         </span>
                       ) : (
                         <span>
@@ -743,6 +746,28 @@ export function AdminAuthModal({
                         </span>
                       )}
                     </div>
+                    {auditReport.authState.signedIn && !auditReport.authRequired && (
+                      <div>
+                        <span className="font-medium text-[var(--ink)]">
+                          {locale === 'en' ? 'Firestore Write:' : 'Izin Simpan Firestore:'}
+                        </span>{' '}
+                        <span
+                          className={`font-mono font-semibold ${
+                            auditReport.authState.writeAccessOk
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
+                          {auditReport.authState.writeAccessOk
+                            ? locale === 'en'
+                              ? 'OK (/admins/{uid} verified)'
+                              : 'AKTIF (/admins/{uid} terverifikasi)'
+                            : locale === 'en'
+                              ? 'BLOCKED'
+                              : 'TERBLOKIR'}
+                        </span>
+                      </div>
+                    )}
                     {auditReport.authState.uid && (
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium text-[var(--ink)]">UID:</span>{' '}
@@ -760,6 +785,15 @@ export function AdminAuthModal({
                       </div>
                     )}
                   </div>
+
+                  {auditReport.authState.adminSyncError && (
+                    <div className="mt-2.5 rounded-xl border border-red-400/40 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-700 dark:text-red-200">
+                      <span className="font-semibold">
+                        {locale === 'en' ? 'Admin Write Probe Error: ' : 'Detail Gagal Tulis /admins: '}
+                      </span>
+                      <span className="break-words">{auditReport.authState.adminSyncError}</span>
+                    </div>
+                  )}
 
                   {auditReport.authRequired && (
                     <div className="mt-3 space-y-2.5 border-t border-[var(--line)] pt-2.5">

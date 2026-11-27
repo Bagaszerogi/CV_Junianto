@@ -376,12 +376,30 @@ export async function saveProfileToFirestore(
     await upsertFirestoreDoc(docRef, payload, 'profile/main');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(
-      error,
-      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE,
-      'profile/main'
-    );
+    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, 'profile/main');
   }
+}
+
+export class UpsertStepError extends Error {
+  readonly op: OperationType;
+  readonly causeError: unknown;
+
+  constructor(op: OperationType, causeError: unknown) {
+    super(causeError instanceof Error ? causeError.message : String(causeError));
+    this.op = op;
+    this.causeError = causeError;
+  }
+}
+
+export function unwrapUpsertError(
+  error: unknown,
+  fallbackOp: OperationType
+): { op: OperationType; cause: unknown } {
+  if (error instanceof UpsertStepError) {
+    return { op: error.op, cause: error.causeError };
+  }
+  return { op: fallbackOp, cause: error };
 }
 
 export async function upsertFirestoreDoc(
@@ -392,33 +410,42 @@ export async function upsertFirestoreDoc(
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Authentication required.');
 
-  await withAdminRetry(async () => {
-    const snap = await getDocFromServer(docRef);
-    if (!snap.exists()) {
-      await setDoc(docRef, {
+  const snap = await withAdminRetry(() => getDocFromServer(docRef)).catch((err) => {
+    throw new UpsertStepError(OperationType.GET, err);
+  });
+
+  if (!snap.exists()) {
+    await withAdminRetry(() =>
+      setDoc(docRef, {
         ...payload,
         authorId: currentUser.uid,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
-      return;
-    }
+      })
+    ).catch((err) => {
+      throw new UpsertStepError(OperationType.CREATE, err);
+    });
+    return;
+  }
 
-    const existing = snap.data();
-    const preservedAuthorId =
-      typeof existing?.authorId === 'string' && existing.authorId.length > 0
-        ? existing.authorId
-        : currentUser.uid;
-    const preservedCreatedAt = hasValidFirestoreTimestamp(existing?.createdAt)
-      ? existing.createdAt
-      : serverTimestamp();
+  const existing = snap.data();
+  const preservedAuthorId =
+    typeof existing?.authorId === 'string' && existing.authorId.length > 0
+      ? existing.authorId
+      : currentUser.uid;
+  const preservedCreatedAt = hasValidFirestoreTimestamp(existing?.createdAt)
+    ? existing.createdAt
+    : serverTimestamp();
 
-    await setDoc(docRef, {
+  await withAdminRetry(() =>
+    setDoc(docRef, {
       ...payload,
       authorId: preservedAuthorId,
       createdAt: preservedCreatedAt,
       updatedAt: serverTimestamp(),
-    });
+    })
+  ).catch((err) => {
+    throw new UpsertStepError(OperationType.UPDATE, err);
   });
 }
 
@@ -542,7 +569,8 @@ export async function saveTechStackToFirestore(
     await registerEntityInCvIndex('techStackIds', cleanId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, `techStacks/${cleanId}`);
+    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, `techStacks/${cleanId}`);
   }
 }
 
@@ -682,7 +710,8 @@ export async function saveReferenceToFirestore(
     await registerEntityInCvIndex('referenceIds', cleanId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, `references/${cleanId}`);
+    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, `references/${cleanId}`);
   }
 }
 
@@ -948,10 +977,7 @@ export async function saveSiteContentToFirestore(
     await upsertFirestoreDoc(doc(db, 'siteContent', 'main'), { en, id }, 'siteContent/main');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(
-      error,
-      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE,
-      'siteContent/main'
-    );
+    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, 'siteContent/main');
   }
 }

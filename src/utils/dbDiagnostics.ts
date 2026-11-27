@@ -52,8 +52,10 @@ export interface DatabaseAuditReport {
     providerIds: string[];
     inAllowlist: boolean;
     adminDocSynced: boolean | null;
+    adminSyncError: string | null;
     adminUidDocExists: boolean | null;
     adminEmailDocExists: boolean | null;
+    writeAccessOk: boolean;
     blockReason: 'not-signed-in' | 'email-unverified' | 'not-in-admin-list' | null;
   };
   collections: CollectionCheckResult[];
@@ -200,8 +202,10 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
         providerIds: [],
         inAllowlist: false,
         adminDocSynced: null,
+        adminSyncError: null,
         adminUidDocExists: null,
         adminEmailDocExists: null,
+        writeAccessOk: false,
         blockReason: 'not-signed-in',
       },
       collections: PRIVATE_COLLECTIONS.map((item) => ({
@@ -215,6 +219,8 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
       })),
     };
   }
+
+  await user.getIdToken(true).catch(() => undefined);
 
   let adminUidDocExists = false;
   let adminEmailDocExists = false;
@@ -235,14 +241,17 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
 
   const isAuthorizedAdmin = await checkIsAdminUser(user);
   let adminDocSynced: boolean | null = false;
+  let adminSyncError: string | null = null;
 
   if (isAuthorizedAdmin) {
     const syncRes = await syncAdminRecord(user);
     if (syncRes.synced) {
       adminDocSynced = true;
       adminUidDocExists = true;
+      await user.getIdToken(true).catch(() => undefined);
     } else {
       adminDocSynced = adminUidDocExists || adminEmailDocExists;
+      adminSyncError = syncRes.error ?? 'Failed to write /admins/{uid}.';
     }
   } else {
     const probe = await probeFirestoreServerReachable();
@@ -265,8 +274,10 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
         providerIds: user.providerData?.map((p) => p.providerId) ?? [],
         inAllowlist,
         adminDocSynced: false,
+        adminSyncError: null,
         adminUidDocExists,
         adminEmailDocExists,
+        writeAccessOk: false,
         blockReason: !user.emailVerified ? 'email-unverified' : 'not-in-admin-list',
       },
       collections: PRIVATE_COLLECTIONS.map((item) => ({
@@ -281,12 +292,17 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
     };
   }
 
+  let indexWriteOk = false;
   let cvIdx = await readCvIndex();
   if (!cvIdx) {
     try {
       cvIdx = await ensureCvIndex();
-    } catch {
+      indexWriteOk = true;
+    } catch (err) {
       cvIdx = null;
+      if (!adminSyncError) {
+        adminSyncError = err instanceof Error ? err.message : String(err);
+      }
     }
   }
 
@@ -308,6 +324,7 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
 
   const checks = await Promise.all(checkPromises);
   const overallConnected = checks.every((c) => c.status !== 'error');
+  const writeAccessOk = Boolean(adminDocSynced || indexWriteOk);
 
   return {
     checkedAt: new Date().toLocaleTimeString(),
@@ -328,8 +345,10 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
       providerIds: user.providerData?.map((p) => p.providerId) ?? [],
       inAllowlist,
       adminDocSynced,
+      adminSyncError,
       adminUidDocExists,
       adminEmailDocExists,
+      writeAccessOk,
       blockReason: null,
     },
     collections: checks,

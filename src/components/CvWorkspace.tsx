@@ -15,6 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Locale } from '../data/cvData';
+import { formatReadableFirestoreError } from '../firebase';
 import {
   CvProfileData,
   DEFAULT_PROFILE_DATA,
@@ -88,6 +89,7 @@ export default function CvWorkspace({
     lastSyncedAt: null,
     error: null,
   });
+  const [masterReadError, setMasterReadError] = useState<string | null>(null);
   const lenisRef = useRef<Lenis | null>(null);
 
   useEffect(() => {
@@ -104,20 +106,29 @@ export default function CvWorkspace({
 
   // Live master subscriptions ONLY when signed in as verified Admin
   useEffect(() => {
-    if (!authReady || !isAdminUser || !firebaseUser) return;
+    if (!authReady || !isAdminUser || !firebaseUser) {
+      setMasterReadError(null);
+      return;
+    }
 
     void ensureCvIndex().catch(() => undefined);
 
     const unsubProfile = subscribeProfile(
-      (data) => setProfile(data),
-      () => {
-        // Keep current/default profile on read failure
+      (data) => {
+        setMasterReadError(null);
+        setProfile(data);
+      },
+      (err) => {
+        setMasterReadError(formatReadableFirestoreError(err));
       }
     );
     const unsubSiteContent = subscribeSiteContent(
-      (data) => setSiteContent(data),
-      () => {
-        // Keep current/default copy on read failure
+      (data) => {
+        setMasterReadError(null);
+        setSiteContent(data);
+      },
+      (err) => {
+        setMasterReadError(formatReadableFirestoreError(err));
       }
     );
     return () => {
@@ -348,6 +359,24 @@ export default function CvWorkspace({
                 <span>{locale === 'en' ? 'Profile & Photo Editor' : 'Editor Profil & Foto'}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {isAdminUser && masterReadError && (
+        <div className="no-print border-b border-red-500/35 bg-red-500/10 px-6 py-2.5 text-xs text-red-700 dark:text-red-300">
+          <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{masterReadError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenAuth('diagnostics')}
+              className="rounded-full border border-red-500/40 bg-red-500/15 px-3 py-1 text-[11px] font-semibold hover:bg-red-500/25 cursor-pointer"
+            >
+              {locale === 'en' ? 'Open DB & SSO Check' : 'Buka Cek DB & SSO'}
+            </button>
           </div>
         </div>
       )}

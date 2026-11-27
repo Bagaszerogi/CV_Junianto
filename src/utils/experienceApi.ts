@@ -17,7 +17,7 @@ import {
   ExperienceItem,
   ExperienceStatus,
 } from '../data/cvData';
-import { upsertFirestoreDoc } from './cvFirestoreApi';
+import { unwrapUpsertError, upsertFirestoreDoc } from './cvFirestoreApi';
 import { withAdminRetry } from './projectApi';
 import {
   readCvIndex,
@@ -353,7 +353,8 @@ export async function saveExperienceToFirestore(
     await registerEntityInCvIndex('experienceIds', sanitizedId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE, path);
+    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, path);
   }
 }
 

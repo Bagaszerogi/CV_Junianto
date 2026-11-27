@@ -48,7 +48,10 @@ service cloud.firestore {
     }
 
     function isVerifiedEmail() {
-      return request.auth.token.email_verified == true && request.auth.token.email is string;
+      return 'email_verified' in request.auth.token &&
+        request.auth.token.email_verified == true &&
+        'email' in request.auth.token &&
+        request.auth.token.email is string;
     }
 
     function isAdmin() {
@@ -64,8 +67,8 @@ service cloud.firestore {
     }
 
     function isValidPortrait(val) {
-      return val is string && (val == "" || (val.size() >= 5 && val.size() <= 750000 && !val.matches('.*\\.\\..*') && (
-        val.matches('^/assets/[a-zA-Z0-9_./-]+$') ||
+      return val is string && (val == "" || (val.size() >= 5 && val.size() <= 750000 && (
+        (!val.matches('.*\\.\\..*') && val.matches('^/assets/[a-zA-Z0-9_./-]+$')) ||
         val.matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$')
       )));
     }

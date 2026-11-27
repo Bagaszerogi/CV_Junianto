@@ -396,7 +396,7 @@ export function EditableText({
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-2xl border-t border-[var(--line)] bg-[var(--bg)] px-3 py-2">
               <div className="min-w-0 flex-1">
                 {error ? (
-                  <p className="truncate text-[11px] font-medium text-red-600 dark:text-red-400">
+                  <p className="break-words whitespace-normal text-[11px] font-medium text-red-600 dark:text-red-400">
                     {error}
                   </p>
                 ) : (

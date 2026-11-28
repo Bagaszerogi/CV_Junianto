@@ -92,14 +92,16 @@ export function HeroSection({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [isRemovingPhoto, setIsRemovingPhoto] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoSavedMsg, setPhotoSavedMsg] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setImgError(false);
-  }, [profile.portraitDataUrl]);
+    setPhotoError(null);
+  }, [profile.portraitDataUrl, isAdminUser]);
 
-  // Subtle ambient float + pointer parallax on the arched portrait frame
+  // Subtle ambient float + pointer parallax on the arched portrait frame (clamped to avoid horizontal over-frame)
   useEffect(() => {
     const el = frameRef.current;
     if (!el || typeof window === 'undefined') return;
@@ -117,11 +119,12 @@ export function HeroSection({
     };
 
     const tick = (t: number) => {
+      const allowX = window.innerWidth >= 768;
       const px = mx / Math.max(1, window.innerWidth) - 0.5;
       const py = my / Math.max(1, window.innerHeight) - 0.5;
-      ox += (px * -16 - ox) * 0.06;
-      oy += (py * -12 - oy) * 0.06;
-      const floatY = Math.sin(t * 0.0012) * 5;
+      ox += ((allowX ? px * -8 : 0) - ox) * 0.06;
+      oy += (py * -6 - oy) * 0.06;
+      const floatY = Math.sin(t * 0.0012) * 3.5;
       el.style.transform = `translate3d(${ox.toFixed(1)}px, ${(oy + floatY).toFixed(1)}px, 0)`;
       rafId = window.requestAnimationFrame(tick);
     };
@@ -151,10 +154,13 @@ export function HeroSection({
     e.target.value = '';
     if (!file || !isAdminUser) return;
     setPhotoError(null);
+    setPhotoSavedMsg(null);
     setIsUploadingPhoto(true);
     try {
       const compressed = await compressPortraitImage(file);
       await onSaveProfilePatch({ portraitDataUrl: compressed });
+      setPhotoSavedMsg(locale === 'en' ? 'Photo saved automatically' : 'Foto tersimpan otomatis');
+      window.setTimeout(() => setPhotoSavedMsg(null), 3000);
     } catch (err) {
       setPhotoError(formatReadableFirestoreError(err));
     } finally {
@@ -165,9 +171,12 @@ export function HeroSection({
   const handleRemovePhoto = async () => {
     if (!isAdminUser) return;
     setPhotoError(null);
+    setPhotoSavedMsg(null);
     setIsRemovingPhoto(true);
     try {
       await onSaveProfilePatch({ portraitDataUrl: '' });
+      setPhotoSavedMsg(locale === 'en' ? 'Photo removed automatically' : 'Foto dihapus otomatis');
+      window.setTimeout(() => setPhotoSavedMsg(null), 3000);
     } catch (err) {
       setPhotoError(formatReadableFirestoreError(err));
     } finally {
@@ -213,15 +222,15 @@ export function HeroSection({
   return (
     <section
       id="profile"
-      className="print-section relative overflow-hidden border-b border-[var(--line)] bg-[var(--bg)]"
+      className="print-section relative overflow-x-clip border-b border-[var(--line)] bg-[var(--bg)]"
     >
       <NetworkMeshCanvas theme={theme} />
 
-      <div className="relative z-10 mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] py-12 print:px-0 print:py-0 md:py-16">
+      <div className="relative z-10 mx-auto max-w-[1120px] px-[clamp(16px,5vw,48px)] py-12 print:px-0 print:py-0 md:py-16">
         {/* Top Toolbar: Brass Kicker Line + Theme & Language Switches */}
         <div className="flex flex-wrap items-center justify-between gap-4">
-          <p className="flex items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase">
-            <span className="inline-block h-px w-8 bg-[var(--brass)] print:hidden" aria-hidden="true" />
+          <p className="flex min-w-0 flex-1 items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase">
+            <span className="inline-block h-px w-8 shrink-0 bg-[var(--brass)] print:hidden" aria-hidden="true" />
             <EditableText
               value={locale === 'en' ? profile.kickerEn : profile.kickerId}
               canEdit={isAdminUser}
@@ -232,7 +241,7 @@ export function HeroSection({
             />
           </p>
 
-          <div className="no-print flex items-center gap-2.5">
+          <div className="no-print flex shrink-0 items-center gap-2.5">
             <button
               type="button"
               onClick={() => onThemeChange(theme === 'dark' ? 'light' : 'dark')}
@@ -277,9 +286,9 @@ export function HeroSection({
         {/* Hero Editorial Grid */}
         <div className="mt-8 grid grid-cols-1 gap-10 print:mt-3 print:grid-cols-12 print:gap-5 lg:grid-cols-12 lg:items-center">
           {/* Left Column: Kinetic Display Name, Title, Summary, Magnetic Actions */}
-          <div className="flex flex-col justify-between print:col-span-7 lg:col-span-7">
-            <div>
-              <h1 className="font-display text-[clamp(2.5rem,6.6vw,5.1rem)] font-bold leading-[0.98] tracking-[-0.025em] text-[var(--ink)] text-balance print:text-2xl">
+          <div className="flex min-w-0 flex-col justify-between print:col-span-7 lg:col-span-7">
+            <div className="min-w-0">
+              <h1 className="font-display text-[clamp(2.2rem,6vw,4.9rem)] font-bold leading-[0.98] tracking-[-0.025em] break-words text-[var(--ink)] text-balance print:text-2xl">
                 {isAdminUser ? (
                   <EditableText
                     value={profile.name}
@@ -292,7 +301,7 @@ export function HeroSection({
                 )}
               </h1>
 
-              <p className="mt-4 text-lg font-semibold text-[var(--brass)] print:mt-1 print:text-sm sm:text-xl">
+              <p className="mt-4 break-words text-lg font-semibold text-[var(--brass)] print:mt-1 print:text-sm sm:text-xl">
                 <EditableText
                   value={locale === 'en' ? profile.titleEn : profile.titleId}
                   canEdit={isAdminUser}
@@ -303,7 +312,7 @@ export function HeroSection({
                 />
               </p>
 
-              <p className="mt-6 max-w-[48ch] text-base leading-relaxed text-[var(--mute)] print:mt-3 print:text-xs print:leading-snug sm:text-[1.08rem]">
+              <p className="mt-6 max-w-[48ch] break-words text-base leading-relaxed text-[var(--mute)] print:mt-3 print:text-xs print:leading-snug sm:text-[1.08rem]">
                 <EditableText
                   value={locale === 'en' ? profile.summaryEn : profile.summaryId}
                   canEdit={isAdminUser}
@@ -317,13 +326,13 @@ export function HeroSection({
             </div>
 
             {/* Rounded Pill CTAs */}
-            <div className="no-print mt-8 flex flex-wrap items-center gap-3 pt-2">
+            <div className="no-print mt-8 flex max-w-full flex-wrap items-center gap-3 pt-2">
               <button
                 type="button"
                 onClick={onPrint}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-6 py-3 text-sm font-semibold text-[#1a1405] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex max-w-full items-center gap-2 rounded-full bg-[var(--brass)] px-6 py-3 text-sm font-semibold text-[#1a1405] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 cursor-pointer"
               >
-                <Printer className="h-4 w-4" aria-hidden="true" />
+                <Printer className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <EditableText
                   value={siteCopy.downloadPdf}
                   canEdit={isAdminUser}
@@ -334,9 +343,9 @@ export function HeroSection({
 
               <a
                 href={`mailto:${sanitizeEmailForHref(profile.email)}?subject=${encodeURIComponent(`Hospitality IT Opportunity — ${profile.name}`)}`}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] px-6 py-3 text-sm font-semibold text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] whitespace-nowrap shrink-0"
+                className="inline-flex max-w-full items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] px-6 py-3 text-sm font-semibold text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] whitespace-nowrap shrink-0"
               >
-                <Mail className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
+                <Mail className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                 <EditableText
                   value={siteCopy.heroSendEmail}
                   canEdit={isAdminUser}
@@ -387,12 +396,12 @@ export function HeroSection({
           </div>
 
           {/* Right Column: Large Arched Brass Portrait Frame (PNG/Cutout Ready) + Compact Dossier */}
-          <div className="flex flex-col items-center lg:col-span-5 lg:items-end print:col-span-5 print:items-stretch">
+          <div className="flex min-w-0 flex-col items-center lg:col-span-5 lg:items-end print:col-span-5 print:items-stretch">
             {/* Large Standalone Arched Portrait */}
             <div className="flex w-full flex-col items-center lg:items-end print:hidden">
               <div
                 ref={frameRef}
-                className="group/photo relative aspect-[4/5] w-[220px] max-w-full rounded-t-full rounded-b-[28px] border border-[var(--brass)] bg-[var(--card)] p-2.5 shadow-xl sm:w-[270px] lg:w-[320px]"
+                className="group/photo relative aspect-[4/5] w-[220px] max-w-full rounded-t-full rounded-b-[28px] border border-[var(--brass)] bg-[var(--card)] p-2.5 shadow-xl will-change-transform sm:w-[270px] lg:w-[320px]"
               >
                 <div className="relative h-full w-full overflow-hidden rounded-t-full rounded-b-[20px] bg-gradient-to-b from-[var(--bg2)] to-[var(--bg)]">
                   {showPhoto ? (
@@ -447,8 +456,8 @@ export function HeroSection({
                     <span>
                       {isUploadingPhoto
                         ? locale === 'en'
-                          ? 'Processing...'
-                          : 'Memproses...'
+                          ? 'Saving automatically...'
+                          : 'Menyimpan otomatis...'
                         : locale === 'en'
                           ? 'Upload PNG / Photo'
                           : 'Upload PNG / Ganti Foto'}
@@ -478,19 +487,25 @@ export function HeroSection({
                 </div>
               )}
 
+              {photoSavedMsg && (
+                <p className="mt-2 text-center text-xs font-semibold text-emerald-600 lg:text-right dark:text-emerald-400">
+                  ✓ {photoSavedMsg}
+                </p>
+              )}
+
               {photoError && (
-                <p className="mt-2 max-w-[320px] text-center text-xs font-medium text-red-600 lg:text-right dark:text-red-400">
+                <p className="mt-2 max-w-[320px] break-words text-center text-xs font-medium text-red-600 lg:text-right dark:text-red-400">
                   {photoError}
                 </p>
               )}
             </div>
 
-            {/* Compact Executive Dossier Card (also carries compact print portrait on A4 export) */}
-            <div className="print-dossier-card mt-5 w-full max-w-[380px] rounded-[22px] border border-[var(--line)] bg-[var(--bg2)]/88 p-5 backdrop-blur-sm print:mt-0 print:max-w-full print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-3.5 sm:p-6">
+            {/* Compact Executive Dossier Card */}
+            <div className="print-dossier-card mt-5 w-full max-w-[380px] overflow-hidden rounded-[22px] border border-[var(--line)] bg-[var(--bg2)]/88 p-5 backdrop-blur-sm print:mt-0 print:max-w-full print:rounded-lg print:border-slate-300 print:bg-slate-50 print:p-3.5 sm:p-6">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] px-3 py-1 text-[11px] font-semibold tracking-wide text-[var(--brass)] uppercase print:hidden">
-                    <span className="brass-pulse h-1.5 w-1.5 rounded-full bg-[var(--brass)]" aria-hidden="true" />
+                  <span className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] px-3 py-1 text-[11px] font-semibold tracking-wide text-[var(--brass)] uppercase print:hidden">
+                    <span className="brass-pulse h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brass)]" aria-hidden="true" />
                     <EditableText
                       value={siteCopy.heroActiveBadge}
                       canEdit={isAdminUser}
@@ -499,7 +514,7 @@ export function HeroSection({
                     />
                   </span>
 
-                  <p className="mt-2.5 font-display text-base font-bold tracking-tight text-[var(--ink)] print:mt-0 print:text-sm sm:text-lg">
+                  <p className="mt-2.5 break-words font-display text-base font-bold tracking-tight text-[var(--ink)] print:mt-0 print:text-sm sm:text-lg">
                     <EditableText
                       value={profile.currentCompany}
                       canEdit={isAdminUser}
@@ -507,7 +522,7 @@ export function HeroSection({
                       onSave={(val) => onSaveProfilePatch({ currentCompany: val })}
                     />
                   </p>
-                  <p className="mt-0.5 text-sm font-semibold text-[var(--ice)] print:text-xs">
+                  <p className="mt-0.5 break-words text-sm font-semibold text-[var(--ice)] print:text-xs">
                     <EditableText
                       value={profile.currentRole}
                       canEdit={isAdminUser}
@@ -515,7 +530,7 @@ export function HeroSection({
                       onSave={(val) => onSaveProfilePatch({ currentRole: val })}
                     />
                   </p>
-                  <p className="mt-1 text-xs text-[var(--mute)] print:text-[10px]">
+                  <p className="mt-1 break-words text-xs text-[var(--mute)] print:text-[10px]">
                     <EditableText
                       value={siteCopy.heroPropertyScale}
                       canEdit={isAdminUser}
@@ -546,14 +561,14 @@ export function HeroSection({
                 <div className="flex items-center justify-between gap-3 py-2.5 print:py-1">
                   <a
                     href={phoneHref}
-                    className="flex min-w-0 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
                   >
                     <Phone className="h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                     <EditableText
                       value={profile.phoneDisplay}
                       canEdit={isAdminUser}
                       maxLength={40}
-                      className="font-mono tabular-nums"
+                      className="truncate font-mono tabular-nums"
                       onSave={(val) => onSaveProfilePatch({ phoneDisplay: val })}
                     />
                   </a>
@@ -582,7 +597,7 @@ export function HeroSection({
                 <div className="flex items-center justify-between gap-3 py-2.5 print:py-1">
                   <a
                     href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                    className="flex min-w-0 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
+                    className="flex min-w-0 flex-1 items-center gap-2.5 text-[var(--ink)] transition-colors hover:text-[var(--brass)] print:text-slate-800"
                   >
                     <Mail className="h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
                     <EditableText
@@ -617,7 +632,7 @@ export function HeroSection({
 
                 <div className="flex items-start gap-2.5 pt-2.5 print:pt-1">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brass)] print:h-3.5 print:w-3.5 print:text-slate-500" aria-hidden="true" />
-                  <span className="leading-snug text-[var(--mute)] print:text-slate-700">
+                  <span className="min-w-0 flex-1 break-words leading-snug text-[var(--mute)] print:text-slate-700">
                     <EditableText
                       value={profile.address}
                       canEdit={isAdminUser}
@@ -628,14 +643,15 @@ export function HeroSection({
                 </div>
               </div>
 
-              <div className="no-print mt-4 flex items-center justify-between border-t border-[var(--line)] pt-3 text-xs text-[var(--mute)]">
+              <div className="no-print mt-4 flex items-center justify-between gap-2 border-t border-[var(--line)] pt-3 text-xs text-[var(--mute)]">
                 <EditableText
                   value={siteCopy.heroDossierFooter}
                   canEdit={isAdminUser}
                   maxLength={100}
+                  className="min-w-0 flex-1"
                   onSave={(val) => onSaveSiteCopyField('heroDossierFooter', val)}
                 />
-                <span className="font-mono text-[11px] text-[var(--brass)]">EN / ID</span>
+                <span className="shrink-0 font-mono text-[11px] text-[var(--brass)]">EN / ID</span>
               </div>
             </div>
           </div>
@@ -646,9 +662,9 @@ export function HeroSection({
           {profile.metrics.map((metric, idx) => (
             <div
               key={idx}
-              className="border-b border-[var(--line)] py-5 pr-4 last:border-b-0 sm:border-r sm:px-5 sm:first:pl-0 sm:last:border-r-0 lg:border-b-0 print:border-slate-200 print:px-3 print:py-2"
+              className="min-w-0 border-b border-[var(--line)] px-0 py-5 last:border-b-0 sm:px-5 sm:odd:border-r sm:odd:pl-0 sm:even:pr-0 sm:[&:nth-last-child(-n+2)]:border-b-0 lg:border-b-0 lg:border-r lg:px-5 lg:odd:pl-5 lg:even:pr-5 lg:first:pl-0 lg:last:border-r-0 lg:last:pr-0 print:border-slate-200 print:px-3 print:py-2"
             >
-              <p className="font-display text-3xl font-bold tracking-tight text-[var(--brass)] tabular-nums print:text-base sm:text-4xl">
+              <p className="break-words font-display text-3xl font-bold tracking-tight text-[var(--brass)] tabular-nums print:text-base sm:text-4xl">
                 <EditableText
                   value={locale === 'en' ? metric.value : metric.valueId}
                   canEdit={isAdminUser}
@@ -656,7 +672,7 @@ export function HeroSection({
                   onSave={(val) => handleSaveMetricField(idx, 'value', val)}
                 />
               </p>
-              <p className="mt-1.5 text-sm font-semibold text-[var(--ink)] print:mt-0.5 print:text-[11px]">
+              <p className="mt-1.5 break-words text-sm font-semibold text-[var(--ink)] print:mt-0.5 print:text-[11px]">
                 <EditableText
                   value={locale === 'en' ? metric.label : metric.labelId}
                   canEdit={isAdminUser}
@@ -664,7 +680,7 @@ export function HeroSection({
                   onSave={(val) => handleSaveMetricField(idx, 'label', val)}
                 />
               </p>
-              <p className="mt-0.5 text-xs text-[var(--mute)] print:text-[10px]">
+              <p className="mt-0.5 break-words text-xs text-[var(--mute)] print:text-[10px]">
                 <EditableText
                   value={locale === 'en' ? metric.detail : metric.detailId}
                   canEdit={isAdminUser}

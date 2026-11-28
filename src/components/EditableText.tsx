@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState, KeyboardEvent, MouseEvent, Po
 import { createPortal } from 'react-dom';
 import {
   Check,
+  CheckCircle2,
   GripHorizontal,
   Loader2,
   Maximize2,
   Minimize2,
   Pencil,
-  X,
+  RotateCcw,
 } from 'lucide-react';
 import { formatReadableFirestoreError } from '../firebase';
 
@@ -25,6 +26,7 @@ interface EditableTextProps {
 }
 
 type DragMode = 'move' | 'resize-right' | 'resize-bottom' | 'resize-corner';
+type AutoSaveStatus = 'idle' | 'pending' | 'saving' | 'saved' | 'error';
 
 const MIN_WIDTH = 220;
 const MIN_HEIGHT = 48;
@@ -43,7 +45,7 @@ export function EditableText({
 }: EditableTextProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(value);
-  const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<AutoSaveStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -51,9 +53,17 @@ export function EditableText({
   const [boxSize, setBoxSize] = useState({ width: 380, height: 84 });
 
   const triggerRef = useRef<HTMLElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const previousSizeRef = useRef<{ width: number; height: number } | null>(null);
   const dragCleanupRef = useRef<(() => void) | null>(null);
+  const initialValueRef = useRef(value);
+  const lastSavedValueRef = useRef(value);
+  const onSaveRef = useRef(onSave);
+
+  useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
 
   useEffect(() => {
     return () => {
@@ -64,8 +74,72 @@ export function EditableText({
   useEffect(() => {
     if (!isEditing) {
       setDraft(value);
+      lastSavedValueRef.current = value;
     }
   }, [value, isEditing]);
+
+  const normalizeText = useCallback(
+    (raw: string) =>
+      (multiline ? raw.trim() : raw.replace(/\s+/g, ' ').trim()).slice(0, maxLength),
+    [maxLength, multiline]
+  );
+
+  const persistDraftNow = useCallback(
+    async (rawDraft: string) => {
+      const normalized = normalizeText(rawDraft);
+      const lastNormalized = normalizeText(lastSavedValueRef.current);
+
+      if (!normalized) {
+        setError('Teks tidak boleh kosong.');
+        setAutoSaveStatus('error');
+        return false;
+      }
+      if (normalized === lastNormalized) {
+        setError(null);
+        return true;
+      }
+
+      setAutoSaveStatus('saving');
+      setError(null);
+      try {
+        await onSaveRef.current(normalized);
+        lastSavedValueRef.current = normalized;
+        setAutoSaveStatus('saved');
+        return true;
+      } catch (err) {
+        setError(formatReadableFirestoreError(err));
+        setAutoSaveStatus('error');
+        return false;
+      }
+    },
+    [normalizeText]
+  );
+
+  // Debounced live auto-save while typing
+  useEffect(() => {
+    if (!isEditing) return;
+
+    const normalized = normalizeText(draft);
+    const lastNormalized = normalizeText(lastSavedValueRef.current);
+
+    if (!normalized) {
+      setError('Teks tidak boleh kosong.');
+      setAutoSaveStatus('error');
+      return;
+    }
+
+    setError(null);
+    if (normalized === lastNormalized) {
+      return;
+    }
+
+    setAutoSaveStatus('pending');
+    const timer = window.setTimeout(() => {
+      void persistDraftNow(draft);
+    }, 420);
+
+    return () => window.clearTimeout(timer);
+  }, [draft, isEditing, normalizeText, persistDraftNow]);
 
   const computeInitialLayout = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -73,19 +147,20 @@ export function EditableText({
     const vh = window.innerHeight;
     const rect = triggerRef.current?.getBoundingClientRect();
 
-    const estimatedTextWidth = Math.min(680, Math.max(320, value.length * 8.5 + 96));
+    const estimatedTextWidth = Math.min(640, Math.max(300, value.length * 8.2 + 96));
     const initialWidth = Math.min(
       vw - 24,
-      Math.max(MIN_WIDTH, rect ? Math.max(rect.width + 120, estimatedTextWidth) : estimatedTextWidth)
+      Math.max(MIN_WIDTH, rect ? Math.max(rect.width + 100, estimatedTextWidth) : estimatedTextWidth)
     );
 
     const estimatedRows = Math.max(
       multiline ? 3 : 1,
-      Math.min(8, Math.ceil((value.length * 8.5) / Math.max(240, initialWidth - 36)))
+      Math.min(8, Math.ceil((value.length * 8.2) / Math.max(220, initialWidth - 36)))
     );
-    const initialHeight = multiline || value.length > 70
-      ? Math.max(108, Math.min(260, estimatedRows * 24 + 28))
-      : Math.max(54, estimatedRows * 24 + 22);
+    const initialHeight =
+      multiline || value.length > 70
+        ? Math.max(104, Math.min(240, estimatedRows * 24 + 28))
+        : Math.max(54, estimatedRows * 24 + 22);
 
     const estimatedTotalHeight = initialHeight + 96;
 
@@ -105,8 +180,11 @@ export function EditableText({
   }, [multiline, value]);
 
   const openEditor = useCallback(() => {
+    initialValueRef.current = value;
+    lastSavedValueRef.current = value;
     setDraft(value);
     setError(null);
+    setAutoSaveStatus('idle');
     computeInitialLayout();
     setIsEditing(true);
   }, [computeInitialLayout, value]);
@@ -126,52 +204,70 @@ export function EditableText({
     }
   }, [isEditing, multiline]);
 
-  const cancelEdit = useCallback((e?: MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    setDraft(value);
-    setError(null);
-    setIsEditing(false);
-  }, [value]);
-
-  const commitEdit = useCallback(async (e?: MouseEvent) => {
-    e?.preventDefault();
-    e?.stopPropagation();
-    const normalized = multiline ? draft.trim() : draft.replace(/\s+/g, ' ').trim();
-    const currentNormalized = multiline ? value.trim() : value.replace(/\s+/g, ' ').trim();
-
-    if (!normalized) {
-      setError('Teks tidak boleh kosong.');
-      return;
-    }
-    if (normalized === currentNormalized) {
+  const closeAndFlushEdit = useCallback(
+    async (e?: MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      const normalized = normalizeText(draft);
+      if (!normalized) {
+        setError('Teks tidak boleh kosong.');
+        return;
+      }
+      if (normalized !== normalizeText(lastSavedValueRef.current)) {
+        const ok = await persistDraftNow(draft);
+        if (!ok) return;
+      }
+      setError(null);
       setIsEditing(false);
-      return;
-    }
+    },
+    [draft, normalizeText, persistDraftNow]
+  );
 
-    setIsSaving(true);
-    setError(null);
-    try {
-      await onSave(normalized.slice(0, maxLength));
+  const revertAndClose = useCallback(
+    async (e?: MouseEvent) => {
+      e?.preventDefault();
+      e?.stopPropagation();
+      const initialNormalized = normalizeText(initialValueRef.current);
+      if (initialNormalized && initialNormalized !== normalizeText(lastSavedValueRef.current)) {
+        await persistDraftNow(initialNormalized);
+      }
+      setDraft(initialValueRef.current);
+      setError(null);
+      setAutoSaveStatus('idle');
       setIsEditing(false);
-    } catch (err) {
-      setError(formatReadableFirestoreError(err));
-    } finally {
-      setIsSaving(false);
-    }
-  }, [draft, maxLength, multiline, onSave, value]);
+    },
+    [normalizeText, persistDraftNow]
+  );
+
+  // Close & auto-flush when clicking outside floating editor
+  useEffect(() => {
+    if (!isEditing) return;
+    const handleOutsideDown = (e: globalThis.MouseEvent) => {
+      const target = e.target as Node | null;
+      if (editorRef.current?.contains(target)) return;
+      if (triggerRef.current?.contains(target)) return;
+      const normalized = normalizeText(draft);
+      if (normalized) {
+        void closeAndFlushEdit();
+      } else {
+        setIsEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideDown);
+    return () => document.removeEventListener('mousedown', handleOutsideDown);
+  }, [closeAndFlushEdit, draft, isEditing, normalizeText]);
 
   useEffect(() => {
     if (!isEditing) return;
     const handleWindowKeyDown = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        cancelEdit();
+        void revertAndClose();
       }
     };
     window.addEventListener('keydown', handleWindowKeyDown);
     return () => window.removeEventListener('keydown', handleWindowKeyDown);
-  }, [cancelEdit, isEditing]);
+  }, [isEditing, revertAndClose]);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -211,7 +307,10 @@ export function EditableText({
 
       if (mode === 'move') {
         const nextLeft = Math.max(8, Math.min(startPos.left + dx, vw - startSize.width - 8));
-        const nextTop = Math.max(8, Math.min(startPos.top + dy, vh - Math.min(startSize.height + 92, vh - 24)));
+        const nextTop = Math.max(
+          8,
+          Math.min(startPos.top + dy, vh - Math.min(startSize.height + 92, vh - 24))
+        );
         setBoxPos({ top: Math.round(nextTop), left: Math.round(nextLeft) });
         return;
       }
@@ -253,7 +352,7 @@ export function EditableText({
 
     if (!isExpanded) {
       previousSizeRef.current = { ...boxSize };
-      const targetWidth = Math.min(820, vw - 24);
+      const targetWidth = Math.min(780, vw - 24);
       const targetHeight = Math.min(320, Math.max(boxSize.height, multiline ? 180 : 96));
       setBoxPos((prev) => ({
         left: Math.max(12, Math.min(prev.left, vw - targetWidth - 12)),
@@ -268,7 +367,11 @@ export function EditableText({
   };
 
   if (!canEdit) {
-    return <Component className={className}>{value}</Component>;
+    return (
+      <Component className={`max-w-full [overflow-wrap:anywhere] ${className}`}>
+        {value}
+      </Component>
+    );
   }
 
   const startEdit = (e: MouseEvent) => {
@@ -281,15 +384,15 @@ export function EditableText({
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      cancelEdit();
+      void revertAndClose();
     } else if (!multiline && e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       e.stopPropagation();
-      void commitEdit();
+      void closeAndFlushEdit();
     } else if (multiline && e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       e.stopPropagation();
-      void commitEdit();
+      void closeAndFlushEdit();
     }
   };
 
@@ -297,8 +400,9 @@ export function EditableText({
     isEditing && typeof document !== 'undefined'
       ? createPortal(
           <div
+            ref={editorRef}
             role="dialog"
-            aria-label={ariaLabel ? `Edit ${ariaLabel}` : 'Edit teks'}
+            aria-label={ariaLabel ? `Edit ${ariaLabel}` : 'Edit teks otomatis'}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -310,18 +414,18 @@ export function EditableText({
               left: `${boxPos.left}px`,
               width: `${boxSize.width}px`,
             }}
-            className="no-print fixed z-[9999] flex flex-col rounded-2xl border border-[var(--brass)] bg-[var(--bg2)] text-[var(--ink)] shadow-2xl ring-4 ring-[color-mix(in_srgb,var(--brass)_18%,transparent)]"
+            className="no-print fixed z-[9999] flex max-w-[calc(100vw-24px)] flex-col overflow-hidden rounded-2xl border border-[var(--brass)] bg-[var(--bg2)] text-[var(--ink)] shadow-2xl ring-4 ring-[color-mix(in_srgb,var(--brass)_18%,transparent)]"
           >
-            {/* Top drag bar (drop & tarik posisi) */}
+            {/* Top drag bar */}
             <div
               onPointerDown={startPointerInteraction('move')}
               title="Tarik untuk memindahkan kotak edit"
-              className="flex cursor-grab items-center justify-between gap-2 rounded-t-2xl border-b border-[var(--line)] bg-[var(--bg)] px-3 py-1.5 active:cursor-grabbing"
+              className="flex cursor-grab items-center justify-between gap-2 border-b border-[var(--line)] bg-[var(--bg)] px-3 py-1.5 active:cursor-grabbing"
             >
               <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-[var(--mute)]">
                 <GripHorizontal className="h-3.5 w-3.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                 <span className="truncate">
-                  Tarik tepi kanan / sudut untuk perlebar ({boxSize.width}px)
+                  Auto-Save · Tarik tepi untuk perlebar ({boxSize.width}px)
                 </span>
               </div>
               <button
@@ -336,13 +440,12 @@ export function EditableText({
               </button>
             </div>
 
-            {/* Editable textarea + right/bottom/corner drag handles */}
+            {/* Editable textarea + resize handles */}
             <div className="relative p-2.5 pr-4 pb-3.5">
               <textarea
                 ref={textareaRef}
                 value={draft}
                 maxLength={maxLength}
-                disabled={isSaving}
                 placeholder={placeholder}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -350,7 +453,6 @@ export function EditableText({
                 className={`w-full resize-none rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-sm leading-relaxed font-normal text-[var(--ink)] shadow-inner focus:border-[var(--brass)] focus:outline-none ${inputClassName}`}
               />
 
-              {/* Right edge resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-right')}
                 title="Tarik ke kanan / kiri untuk memperlebar"
@@ -360,7 +462,6 @@ export function EditableText({
                 <span className="h-8 w-1 rounded-full bg-[var(--line)] transition-colors group-hover/rh:bg-[var(--brass)]" />
               </div>
 
-              {/* Bottom edge resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-bottom')}
                 title="Tarik ke atas / bawah untuk memperpanjang"
@@ -370,7 +471,6 @@ export function EditableText({
                 <span className="h-1 w-10 rounded-full bg-[var(--line)] transition-colors group-hover/bh:bg-[var(--brass)]" />
               </div>
 
-              {/* Bottom-right corner resize handle */}
               <div
                 onPointerDown={startPointerInteraction('resize-corner')}
                 title="Tarik sudut untuk perlebar & perpanjang"
@@ -392,42 +492,53 @@ export function EditableText({
               </div>
             </div>
 
-            {/* Footer actions */}
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-b-2xl border-t border-[var(--line)] bg-[var(--bg)] px-3 py-2">
+            {/* Footer auto-save status & quick actions */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] bg-[var(--bg)] px-3 py-2">
               <div className="min-w-0 flex-1">
                 {error ? (
                   <p className="break-words whitespace-normal text-[11px] font-medium text-red-600 dark:text-red-400">
                     {error}
                   </p>
+                ) : autoSaveStatus === 'saving' ? (
+                  <p className="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--brass)]">
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                    <span>Menyimpan otomatis...</span>
+                  </p>
+                ) : autoSaveStatus === 'saved' ? (
+                  <p className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                    <span>Tersimpan otomatis · {draft.length}/{maxLength}</span>
+                  </p>
+                ) : autoSaveStatus === 'pending' ? (
+                  <p className="text-[11px] text-[var(--brass)]">
+                    Menyimpan sebentar lagi... ({draft.length}/{maxLength})
+                  </p>
                 ) : (
                   <p className="text-[11px] text-[var(--mute)]">
-                    {draft.length}/{maxLength} · {multiline ? 'Ctrl+Enter simpan' : 'Enter simpan'} · Esc batal
+                    {draft.length}/{maxLength} · Auto-save aktif
                   </p>
                 )}
               </div>
 
               <div className="flex items-center gap-1.5">
+                {normalizeText(draft) !== normalizeText(initialValueRef.current) && (
+                  <button
+                    type="button"
+                    onClick={(e) => void revertAndClose(e)}
+                    title="Kembalikan teks awal (Esc)"
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-2.5 py-1 text-[11px] font-medium text-[var(--mute)] hover:border-[var(--brass)] hover:text-[var(--ink)] cursor-pointer"
+                  >
+                    <RotateCcw className="h-3 w-3" aria-hidden="true" />
+                    <span>Reset</span>
+                  </button>
+                )}
                 <button
                   type="button"
-                  disabled={isSaving}
-                  onClick={cancelEdit}
-                  className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-xs font-medium text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+                  onClick={(e) => void closeAndFlushEdit(e)}
+                  className="inline-flex items-center gap-1 rounded-full bg-[var(--brass)] px-3 py-1 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
                 >
-                  <X className="h-3.5 w-3.5" aria-hidden="true" />
-                  <span>Batal</span>
-                </button>
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={(e) => void commitEdit(e)}
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--brass)] px-3.5 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
-                >
-                  {isSaving ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-                  ) : (
-                    <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                  )}
-                  <span>Simpan</span>
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>Selesai</span>
                 </button>
               </div>
             </div>
@@ -444,7 +555,7 @@ export function EditableText({
         role="button"
         tabIndex={0}
         aria-label={ariaLabel ? `${ariaLabel} (klik untuk edit)` : 'Klik untuk edit teks'}
-        title="Klik untuk edit teks (bisa tarik untuk perlebar)"
+        title="Klik untuk edit teks (tersimpan otomatis)"
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
@@ -452,7 +563,7 @@ export function EditableText({
             openEditor();
           }
         }}
-        className={`group/edit relative inline cursor-pointer rounded-sm transition-colors ${
+        className={`group/edit relative inline max-w-full cursor-pointer rounded-sm transition-colors [overflow-wrap:anywhere] ${
           isEditing
             ? 'bg-[color-mix(in_srgb,var(--brass)_20%,transparent)] outline-2 outline-[var(--brass)]'
             : 'hover:bg-[color-mix(in_srgb,var(--brass)_12%,transparent)] hover:outline-1 hover:outline-dashed hover:outline-[var(--brass)]'
@@ -460,7 +571,7 @@ export function EditableText({
       >
         {value}
         <Pencil
-          className={`no-print ml-1.5 inline-block h-3 w-3 text-[var(--brass)] transition-opacity ${
+          className={`no-print ml-1.5 inline-block h-3 w-3 shrink-0 text-[var(--brass)] transition-opacity ${
             isEditing ? 'opacity-100' : 'opacity-50 group-hover/edit:opacity-100'
           }`}
           aria-hidden="true"

@@ -1,5 +1,5 @@
-import { FormEvent, MouseEvent, useEffect, useState } from 'react';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { FormEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Locale, TechCategory, UI_COPY } from '../data/cvData';
 import {
   deleteTechStackFromFirestore,
@@ -44,6 +44,11 @@ export function TechStackSection({
   const [sortOrder, setSortOrder] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'invalid'>('idle');
+
+  const editingItemRef = useRef<FirestoreTechCategory | null>(null);
+  const lastSavedDigestRef = useRef('');
+  const autoSaveTimerRef = useRef<number | null>(null);
 
   const t = UI_COPY[locale].sections;
 
@@ -85,7 +90,34 @@ export function TechStackSection({
     el.style.setProperty('--my', `${y.toFixed(1)}%`);
   };
 
+  const buildStackPayload = useCallback(
+    (itemId: string) => {
+      const items = itemsText
+        .split(',')
+        .map((s) => s.trim().slice(0, 100))
+        .filter(Boolean)
+        .slice(0, 40);
+      const clampedOrder = Math.min(1000, Math.max(0, Math.round(Number(sortOrder) || 0)));
+      const cleanLabel = label.trim().slice(0, 100);
+      const cleanLabelId = (labelId || label).trim().slice(0, 100);
+      const isValid = cleanLabel.length >= 1 && items.length >= 1;
+      const payload = {
+        id: itemId,
+        group,
+        label: cleanLabel,
+        labelId: cleanLabelId,
+        items,
+        sortOrder: clampedOrder,
+      };
+      const digest = JSON.stringify(payload);
+      return { isValid, payload, digest };
+    },
+    [group, itemsText, label, labelId, sortOrder]
+  );
+
   const openAddModal = () => {
+    editingItemRef.current = null;
+    lastSavedDigestRef.current = '';
     setEditingItem(null);
     setGroup('core');
     setLabel('');
@@ -93,10 +125,21 @@ export function TechStackSection({
     setItemsText('');
     setSortOrder(categories.length);
     setFormError(null);
+    setAutoSaveState('idle');
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: FirestoreTechCategory) => {
+    editingItemRef.current = item;
+    const initialDigest = JSON.stringify({
+      id: item.id,
+      group: item.group,
+      label: item.label.trim().slice(0, 100),
+      labelId: (item.labelId || item.label).trim().slice(0, 100),
+      items: item.items.map((s) => s.trim().slice(0, 100)).filter(Boolean).slice(0, 40),
+      sortOrder: Math.min(1000, Math.max(0, Math.round(Number(item.sortOrder) || 0))),
+    });
+    lastSavedDigestRef.current = initialDigest;
     setEditingItem(item);
     setGroup(item.group);
     setLabel(item.label);
@@ -104,19 +147,85 @@ export function TechStackSection({
     setItemsText(item.items.join(', '));
     setSortOrder(item.sortOrder);
     setFormError(null);
+    setAutoSaveState('idle');
     setIsModalOpen(true);
+  };
+
+  const persistStackEdit = useCallback(async () => {
+    const current = editingItemRef.current;
+    if (!current) return;
+    const { isValid, payload, digest } = buildStackPayload(current.id);
+    if (!isValid) {
+      setAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastSavedDigestRef.current) return;
+
+    setAutoSaveState('saving');
+    setFormError(null);
+    try {
+      await saveTechStackToFirestore(payload, Boolean(current.fromFirestore));
+      lastSavedDigestRef.current = digest;
+      const updated = { ...payload, fromFirestore: true };
+      editingItemRef.current = updated;
+      setEditingItem(updated);
+      setAutoSaveState('saved');
+    } catch (err) {
+      setFormError(formatReadableFirestoreError(err));
+      setAutoSaveState('idle');
+    }
+  }, [buildStackPayload]);
+
+  useEffect(() => {
+    if (!isModalOpen || !editingItemRef.current) return;
+    const { isValid, digest } = buildStackPayload(editingItemRef.current.id);
+    if (!isValid) {
+      setAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastSavedDigestRef.current) return;
+
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void persistStackEdit();
+    }, 480);
+
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [buildStackPayload, isModalOpen, persistStackEdit]);
+
+  const closeModal = () => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (editingItemRef.current) {
+      void persistStackEdit();
+    }
+    editingItemRef.current = null;
+    setEditingItem(null);
+    setIsModalOpen(false);
   };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
+    if (editingItemRef.current) {
+      await persistStackEdit();
+      return;
+    }
     setFormError(null);
 
-    const items = itemsText
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const newId = `stack_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const { isValid, payload } = buildStackPayload(newId);
 
-    if (!label.trim() || items.length === 0) {
+    if (!isValid) {
       setFormError(
         locale === 'en'
           ? 'Category label and at least one tool are required.'
@@ -127,20 +236,7 @@ export function TechStackSection({
 
     setIsSaving(true);
     try {
-      const id = editingItem
-        ? editingItem.id
-        : `stack_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await saveTechStackToFirestore(
-        {
-          id,
-          group,
-          label: label.trim(),
-          labelId: (labelId || label).trim(),
-          items,
-          sortOrder: Number(sortOrder) || 0,
-        },
-        Boolean(editingItem?.fromFirestore)
-      );
+      await saveTechStackToFirestore(payload, false);
       setIsModalOpen(false);
     } catch (err) {
       setFormError(formatReadableFirestoreError(err));
@@ -161,7 +257,7 @@ export function TechStackSection({
     <section
       id="tech-stack"
       data-animate="section"
-      className="print-section border-b border-[var(--line)] bg-[var(--bg)] pb-14 print:bg-white print:py-5 md:pb-20"
+      className="print-section overflow-x-clip border-b border-[var(--line)] bg-[var(--bg)] pb-14 print:bg-white print:py-5 md:pb-20"
     >
       {/* Full-bleed Hospitality Systems Marquee Ribbon */}
       {marqueeItems.length > 0 && (
@@ -176,7 +272,7 @@ export function TechStackSection({
 
       <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] pt-6 print:px-0 print:pt-0">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="flex items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase print:text-[10px]">
               <span className="inline-block h-px w-6 bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
@@ -205,7 +301,7 @@ export function TechStackSection({
             </p>
           </div>
 
-          <div className="no-print flex flex-wrap items-center gap-3 self-start">
+          <div className="no-print flex max-w-full flex-wrap items-center gap-3 self-start">
             {isAdminUser && (
               <button
                 type="button"
@@ -220,7 +316,7 @@ export function TechStackSection({
             <div
               role="tablist"
               aria-label="Filter technology stack categories"
-              className="flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1"
+              className="flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-1 sm:rounded-full"
             >
               {filterKeys.map((key) => (
                 <button
@@ -257,10 +353,10 @@ export function TechStackSection({
             <div
               key={category.id}
               onMouseMove={handleCardPointerMove}
-              className="editorial-card print-break-inside-avoid flex flex-col justify-between p-7 print:p-3"
+              className="editorial-card print-break-inside-avoid flex min-w-0 flex-col justify-between p-6 print:p-3 sm:p-7"
             >
-              <div className="relative z-10 flex items-baseline justify-between gap-4">
-                <h3 className="font-display text-xl font-bold text-[var(--ink)] print:text-xs">
+              <div className="relative z-10 flex min-w-0 items-baseline justify-between gap-4">
+                <h3 className="min-w-0 flex-1 font-display text-xl font-bold text-[var(--ink)] [overflow-wrap:anywhere] print:text-xs">
                   <EditableText
                     value={locale === 'en' ? category.label : category.labelId}
                     canEdit={isAdminUser}
@@ -276,7 +372,7 @@ export function TechStackSection({
                     }
                   />
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   {isAdminUser && (
                     <div className="no-print flex items-center gap-1.5">
                       <button
@@ -354,25 +450,34 @@ export function TechStackSection({
           aria-labelledby="stack-modal-title"
           className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-lg rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-7">
+          <div className="max-h-[92vh] w-full max-w-[min(32rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-5 text-[var(--ink)] shadow-2xl sm:p-6 md:p-7">
             <div className="flex items-start justify-between gap-4">
-              <h3
-                id="stack-modal-title"
-                className="font-display text-lg font-bold text-[var(--ink)]"
-              >
-                {editingItem
-                  ? locale === 'en'
-                    ? 'Edit Tech Category'
-                    : 'Ubah Kategori Keahlian'
-                  : locale === 'en'
-                    ? 'Add Tech Category'
-                    : 'Tambah Kategori Keahlian'}
-              </h3>
+              <div className="min-w-0 flex-1">
+                <h3
+                  id="stack-modal-title"
+                  className="font-display text-lg font-bold text-[var(--ink)]"
+                >
+                  {editingItem
+                    ? locale === 'en'
+                      ? 'Edit Tech Category'
+                      : 'Ubah Kategori Keahlian'
+                    : locale === 'en'
+                      ? 'Add Tech Category'
+                      : 'Tambah Kategori Keahlian'}
+                </h3>
+                {editingItem && (
+                  <p className="mt-0.5 text-xs text-[var(--mute)]">
+                    {locale === 'en'
+                      ? 'Every change saves automatically to Firestore.'
+                      : 'Setiap perubahan tersimpan otomatis ke Cloud Firestore.'}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={closeModal}
                 aria-label="Close modal"
-                className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
+                className="shrink-0 rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -470,27 +575,70 @@ export function TechStackSection({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
-                >
-                  {locale === 'en' ? 'Cancel' : 'Batal'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
-                >
-                  {isSaving
-                    ? locale === 'en'
-                      ? 'Saving...'
-                      : 'Menyimpan...'
-                    : locale === 'en'
-                      ? 'Save'
-                      : 'Simpan'}
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                {editingItem ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2 text-xs">
+                      {autoSaveState === 'saving' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Auto-saving...' : 'Menyimpan otomatis...'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'saved' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {locale === 'en'
+                              ? 'Saved automatically'
+                              : 'Tersimpan otomatis'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'invalid' ? (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en'
+                            ? 'Enter category & at least 1 item to auto-save'
+                            : 'Isi kategori & minimal 1 teknologi untuk auto-save'}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Done' : 'Selesai'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Cancel' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSaving
+                        ? locale === 'en'
+                          ? 'Saving...'
+                          : 'Menyimpan...'
+                        : locale === 'en'
+                          ? 'Save'
+                          : 'Simpan'}
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           </div>

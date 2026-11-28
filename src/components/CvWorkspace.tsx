@@ -91,6 +91,18 @@ export default function CvWorkspace({
   });
   const [masterReadError, setMasterReadError] = useState<string | null>(null);
   const lenisRef = useRef<Lenis | null>(null);
+  const profileRef = useRef<CvProfileData>(profile);
+  const siteContentRef = useRef<SiteContentData>(siteContent);
+  const profileQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const siteContentQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    profileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    siteContentRef.current = siteContent;
+  }, [siteContent]);
 
   useEffect(() => {
     return subscribeGlobalSyncStatus(setGlobalSync);
@@ -99,6 +111,8 @@ export default function CvWorkspace({
   // Sync invited snapshot when not in admin edit mode
   useEffect(() => {
     if (!isAdminUser && inviteSession) {
+      profileRef.current = inviteSession.profile;
+      siteContentRef.current = inviteSession.siteContent;
       setProfile(inviteSession.profile);
       setSiteContent(inviteSession.siteContent);
     }
@@ -116,6 +130,7 @@ export default function CvWorkspace({
     const unsubProfile = subscribeProfile(
       (data) => {
         setMasterReadError(null);
+        profileRef.current = data;
         setProfile(data);
       },
       (err) => {
@@ -125,6 +140,7 @@ export default function CvWorkspace({
     const unsubSiteContent = subscribeSiteContent(
       (data) => {
         setMasterReadError(null);
+        siteContentRef.current = data;
         setSiteContent(data);
       },
       (err) => {
@@ -151,9 +167,10 @@ export default function CvWorkspace({
     if (prefersReducedMotion) return;
 
     const lenis = new Lenis({
-      duration: 1.05,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      lerp: 0.085,
       smoothWheel: true,
+      wheelMultiplier: 0.95,
+      touchMultiplier: 1.5,
     });
     lenisRef.current = lenis;
 
@@ -174,7 +191,7 @@ export default function CvWorkspace({
       const dest = document.querySelector(hash);
       if (dest) {
         e.preventDefault();
-        lenis.scrollTo(dest as HTMLElement, { offset: -64 });
+        lenis.scrollTo(dest as HTMLElement, { offset: -72 });
       }
     };
     document.addEventListener('click', handleAnchorClick);
@@ -184,16 +201,16 @@ export default function CvWorkspace({
       sections.forEach((section) => {
         gsap.fromTo(
           section,
-          { opacity: 0.92, y: 18 },
+          { opacity: 0.94, y: 12 },
           {
             opacity: 1,
             y: 0,
-            duration: 0.45,
+            duration: 0.4,
             ease: 'power2.out',
             clearProps: 'transform,opacity',
             scrollTrigger: {
               trigger: section,
-              start: 'top 88%',
+              start: 'top 90%',
               once: true,
             },
           }
@@ -227,34 +244,86 @@ export default function CvWorkspace({
     setProfileEditModal({ open: true, tab });
   };
 
-  const handleSaveProfilePatch = async (patch: Partial<CvProfileData>) => {
-    const nextProfile: CvProfileData = {
-      ...profile,
-      ...patch,
-    };
-    await saveProfileToFirestore(nextProfile, Boolean(profile.fromFirestore));
+  const enqueueProfileWrite = (
+    buildNext: (latest: CvProfileData) => CvProfileData
+  ): Promise<void> => {
+    const run = profileQueueRef.current.catch(() => undefined).then(async () => {
+      const latest = profileRef.current;
+      const nextProfile = buildNext(latest);
+      profileRef.current = { ...nextProfile, fromFirestore: latest.fromFirestore };
+      setProfile(profileRef.current);
+      try {
+        await saveProfileToFirestore(nextProfile, Boolean(latest.fromFirestore));
+        profileRef.current = { ...nextProfile, fromFirestore: true };
+        setProfile(profileRef.current);
+      } catch (err) {
+        profileRef.current = latest;
+        setProfile(latest);
+        throw err;
+      }
+    });
+    profileQueueRef.current = run.catch(() => undefined);
+    return run;
   };
 
-  const handleSaveEducationField = async (patch: Partial<EducationData>) => {
-    const nextProfile: CvProfileData = {
-      ...profile,
+  const enqueueSiteContentWrite = (
+    buildNext: (latest: SiteContentData) => SiteContentData
+  ): Promise<void> => {
+    const run = siteContentQueueRef.current.catch(() => undefined).then(async () => {
+      const latest = siteContentRef.current;
+      const nextSiteContent = buildNext(latest);
+      siteContentRef.current = { ...nextSiteContent, fromFirestore: latest.fromFirestore };
+      setSiteContent(siteContentRef.current);
+      try {
+        await saveSiteContentToFirestore(nextSiteContent, Boolean(latest.fromFirestore));
+        siteContentRef.current = { ...nextSiteContent, fromFirestore: true };
+        setSiteContent(siteContentRef.current);
+      } catch (err) {
+        siteContentRef.current = latest;
+        setSiteContent(latest);
+        throw err;
+      }
+    });
+    siteContentQueueRef.current = run.catch(() => undefined);
+    return run;
+  };
+
+  const handleSaveProfilePatch = (patch: Partial<CvProfileData>) => {
+    return enqueueProfileWrite((latest) => {
+      let nextWhatsappHref = patch.whatsappHref;
+      if (patch.phoneDisplay !== undefined && patch.whatsappHref === undefined) {
+        const digits = patch.phoneDisplay.replace(/\D/g, '');
+        if (digits.length >= 6) {
+          const waDigits = digits.startsWith('0') ? `62${digits.slice(1)}` : digits;
+          nextWhatsappHref = `https://wa.me/${waDigits}`;
+        }
+      }
+      return {
+        ...latest,
+        ...patch,
+        ...(nextWhatsappHref ? { whatsappHref: nextWhatsappHref } : {}),
+      };
+    });
+  };
+
+  const handleSaveEducationField = (patch: Partial<EducationData>) => {
+    return enqueueProfileWrite((latest) => ({
+      ...latest,
       education: {
-        ...profile.education,
+        ...latest.education,
         ...patch,
       },
-    };
-    await saveProfileToFirestore(nextProfile, Boolean(profile.fromFirestore));
+    }));
   };
 
-  const handleSaveSiteCopyField = async (field: keyof SiteCopyLocale, value: string) => {
-    const nextSiteContent: SiteContentData = {
-      ...siteContent,
+  const handleSaveSiteCopyField = (field: keyof SiteCopyLocale, value: string) => {
+    return enqueueSiteContentWrite((latest) => ({
+      ...latest,
       [locale]: {
-        ...siteContent[locale],
+        ...latest[locale],
         [field]: value,
       },
-    };
-    await saveSiteContentToFirestore(nextSiteContent, Boolean(siteContent.fromFirestore));
+    }));
   };
 
   const handleSyncCurrentRoleToProfile = async (params: {
@@ -267,14 +336,13 @@ export default function CvWorkspace({
       currentRole: params.role,
     });
     if (params.scaleContext && params.scaleContext.trim()) {
-      const nextSiteContent: SiteContentData = {
-        ...siteContent,
+      await enqueueSiteContentWrite((latest) => ({
+        ...latest,
         [locale]: {
-          ...siteContent[locale],
-          heroPropertyScale: params.scaleContext.trim().slice(0, 140),
+          ...latest[locale],
+          heroPropertyScale: params.scaleContext!.trim().slice(0, 140),
         },
-      };
-      await saveSiteContentToFirestore(nextSiteContent, Boolean(siteContent.fromFirestore));
+      }));
     }
   };
 
@@ -282,7 +350,7 @@ export default function CvWorkspace({
   const needsEmailVerifyBanner = Boolean(firebaseUser && !isAdminUser);
 
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)] print:min-h-0 print:bg-white print:text-slate-950">
+    <div className="min-h-screen overflow-x-clip bg-[var(--bg)] text-[var(--ink)] print:min-h-0 print:bg-white print:text-slate-950">
       <Navbar
         locale={locale}
         brandShort={profile.brandShort}
@@ -298,17 +366,17 @@ export default function CvWorkspace({
       />
 
       {isAdminUser && (
-        <div className="no-print border-b border-[var(--line)] bg-[var(--bg2)] px-6 py-2.5 text-xs text-[var(--ink)]">
+        <div className="no-print border-b border-[var(--line)] bg-[var(--bg2)] px-4 py-2.5 text-xs text-[var(--ink)] sm:px-6">
           <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-[var(--brass)]" aria-hidden="true" />
               <span className="font-semibold">
-                {locale === 'en' ? 'Full Edit Mode Active' : 'Mode Edit Penuh Aktif'}
+                {locale === 'en' ? 'Auto-Save Edit Mode Active' : 'Mode Edit Auto-Save Aktif'}
               </span>
               <span className="text-[var(--mute)]">
                 {locale === 'en'
-                  ? '— Click any text to edit & auto-sync globally.'
-                  : '— Klik teks mana saja untuk edit & otomatis terupdate global.'}
+                  ? '— Edit any text or photo and changes save automatically.'
+                  : '— Ubah teks atau foto mana saja, langsung tersimpan & terupdate global otomatis.'}
               </span>
               {globalSync.status === 'syncing' && (
                 <span className="inline-flex items-center gap-1 font-medium text-[var(--brass)]">
@@ -364,11 +432,11 @@ export default function CvWorkspace({
       )}
 
       {isAdminUser && masterReadError && (
-        <div className="no-print border-b border-red-500/35 bg-red-500/10 px-6 py-2.5 text-xs text-red-700 dark:text-red-300">
+        <div className="no-print border-b border-red-500/35 bg-red-500/10 px-4 py-2.5 text-xs text-red-700 dark:text-red-300 sm:px-6">
           <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 items-center gap-2">
               <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>{masterReadError}</span>
+              <span className="break-words">{masterReadError}</span>
             </div>
             <button
               type="button"
@@ -382,11 +450,11 @@ export default function CvWorkspace({
       )}
 
       {needsEmailVerifyBanner && (
-        <div className="no-print border-b border-[var(--brass)]/35 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg2))] px-6 py-2.5 text-xs text-[var(--ink)]">
+        <div className="no-print border-b border-[var(--brass)]/35 bg-[color-mix(in_srgb,var(--brass)_12%,var(--bg2))] px-4 py-2.5 text-xs text-[var(--ink)] sm:px-6">
           <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <ShieldAlert className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
-              <span>
+            <div className="flex min-w-0 items-center gap-2">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
+              <span className="break-words">
                 {!firebaseUser?.emailVerified
                   ? locale === 'en'
                     ? `Signed in as ${firebaseUser?.email}. Verify your email to unlock Firestore editing.`
@@ -413,7 +481,7 @@ export default function CvWorkspace({
         </div>
       )}
 
-      <main className="print:mx-auto print:max-w-full">
+      <main className="overflow-x-clip print:mx-auto print:max-w-full">
         <HeroSection
           locale={locale}
           onLocaleChange={onLocaleChange}
@@ -480,6 +548,7 @@ export default function CvWorkspace({
         initialTab={profileEditModal.tab}
         locale={locale}
         profile={profile}
+        onSaveProfile={handleSaveProfilePatch}
         onClose={() => setProfileEditModal((prev) => ({ ...prev, open: false }))}
       />
 

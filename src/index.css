@@ -36,13 +36,14 @@
     scroll-padding-top: 5rem;
     background-color: var(--bg);
     color: var(--ink);
+    overflow-x: clip;
   }
 
   body {
     background-color: var(--bg);
     color: var(--ink);
-    transition: background-color 0.55s var(--ease), color 0.55s var(--ease);
-    overflow-x: hidden;
+    transition: background-color 0.45s var(--ease), color 0.45s var(--ease);
+    overflow-x: clip;
   }
 
   h1,

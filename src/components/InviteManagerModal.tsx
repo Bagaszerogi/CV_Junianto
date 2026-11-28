@@ -238,14 +238,14 @@ export function InviteManagerModal({
       aria-labelledby="invite-manager-title"
       className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-8">
+      <div className="max-h-[92vh] w-full max-w-[min(42rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-5 text-[var(--ink)] shadow-2xl sm:p-6 md:p-8">
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
               <Link2 className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h3
                 id="invite-manager-title"
                 className="font-display text-lg font-bold text-[var(--ink)]"
@@ -443,9 +443,9 @@ export function InviteManagerModal({
                     className="rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-display text-sm font-bold text-[var(--ink)]">
+                          <span className="font-display text-sm font-bold text-[var(--ink)] [overflow-wrap:anywhere]">
                             {item.label}
                           </span>
                           <span
@@ -470,7 +470,7 @@ export function InviteManagerModal({
                                   : 'Aktif'}
                           </span>
                         </div>
-                        <p className="mt-1 truncate font-mono text-xs text-[var(--brass)]">
+                        <p className="mt-1 break-all font-mono text-xs text-[var(--brass)]">
                           {fullUrl}
                         </p>
                         <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--mute)]">

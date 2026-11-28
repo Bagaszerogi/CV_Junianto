@@ -1,5 +1,5 @@
-import { FormEvent, MouseEvent, useEffect, useState } from 'react';
-import { Check, Copy, Pencil, Phone, Plus, Trash2, X } from 'lucide-react';
+import { FormEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Copy, Loader2, Pencil, Phone, Plus, Trash2, X } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import {
   deleteReferenceFromFirestore,
@@ -48,6 +48,11 @@ export function EducationReferencesSection({
   const [refOrder, setRefOrder] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'invalid'>('idle');
+
+  const editingRefObjRef = useRef<FirestoreReferenceItem | null>(null);
+  const lastSavedRefDigestRef = useRef('');
+  const refAutoSaveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isAdminUser && invitedReferences) {
@@ -87,30 +92,142 @@ export function EducationReferencesSection({
     }
   };
 
+  const buildRefPayload = useCallback(
+    (id: string) => {
+      const cleanName = refName.trim().slice(0, 120);
+      const cleanRole = refRole.trim().slice(0, 140);
+      const cleanPhone = refPhone.trim().slice(0, 40);
+      const clampedOrder = Math.min(1000, Math.max(0, Math.round(Number(refOrder) || 0)));
+      const isValid = cleanName.length > 0 && cleanRole.length > 0 && cleanPhone.length > 0;
+      const payload = {
+        id,
+        name: cleanName,
+        role: cleanRole,
+        phone: cleanPhone,
+        sortOrder: clampedOrder,
+      };
+      const digest = JSON.stringify(payload);
+      return { isValid, payload, digest };
+    },
+    [refName, refOrder, refPhone, refRole]
+  );
+
   const openAddRef = () => {
+    editingRefObjRef.current = null;
+    lastSavedRefDigestRef.current = '';
     setEditingRef(null);
     setRefName('');
     setRefRole('');
     setRefPhone('');
     setRefOrder(references.length);
     setFormError(null);
+    setAutoSaveState('idle');
     setIsRefModalOpen(true);
   };
 
   const openEditRef = (item: FirestoreReferenceItem) => {
+    editingRefObjRef.current = item;
+    const initialDigest = JSON.stringify({
+      id: item.id,
+      name: item.name.trim().slice(0, 120),
+      role: item.role.trim().slice(0, 140),
+      phone: item.phone.trim().slice(0, 40),
+      sortOrder: Math.min(1000, Math.max(0, Math.round(Number(item.sortOrder) || 0))),
+    });
+    lastSavedRefDigestRef.current = initialDigest;
     setEditingRef(item);
     setRefName(item.name);
     setRefRole(item.role);
     setRefPhone(item.phone);
     setRefOrder(item.sortOrder);
     setFormError(null);
+    setAutoSaveState('idle');
     setIsRefModalOpen(true);
+  };
+
+  const persistRefEdit = useCallback(async () => {
+    const current = editingRefObjRef.current;
+    if (!current) return;
+    const { isValid, payload, digest } = buildRefPayload(current.id);
+    if (!isValid) {
+      setAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastSavedRefDigestRef.current) return;
+
+    setAutoSaveState('saving');
+    setFormError(null);
+    try {
+      await saveReferenceToFirestore(payload, Boolean(current.fromFirestore));
+      lastSavedRefDigestRef.current = digest;
+      const digits = payload.phone.replace(/\D/g, '');
+      const phoneHref = digits.startsWith('0')
+        ? `tel:+62${digits.slice(1)}`
+        : digits
+          ? `tel:+${digits}`
+          : '#';
+      const updated: FirestoreReferenceItem = {
+        ...payload,
+        phoneHref,
+        fromFirestore: true,
+      };
+      editingRefObjRef.current = updated;
+      setEditingRef(updated);
+      setAutoSaveState('saved');
+    } catch (err) {
+      setFormError(formatReadableFirestoreError(err));
+      setAutoSaveState('idle');
+    }
+  }, [buildRefPayload]);
+
+  useEffect(() => {
+    if (!isRefModalOpen || !editingRefObjRef.current) return;
+    const { isValid, digest } = buildRefPayload(editingRefObjRef.current.id);
+    if (!isValid) {
+      setAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastSavedRefDigestRef.current) return;
+
+    if (refAutoSaveTimerRef.current !== null) {
+      window.clearTimeout(refAutoSaveTimerRef.current);
+    }
+    refAutoSaveTimerRef.current = window.setTimeout(() => {
+      refAutoSaveTimerRef.current = null;
+      void persistRefEdit();
+    }, 480);
+
+    return () => {
+      if (refAutoSaveTimerRef.current !== null) {
+        window.clearTimeout(refAutoSaveTimerRef.current);
+        refAutoSaveTimerRef.current = null;
+      }
+    };
+  }, [buildRefPayload, isRefModalOpen, persistRefEdit]);
+
+  const closeRefModal = () => {
+    if (refAutoSaveTimerRef.current !== null) {
+      window.clearTimeout(refAutoSaveTimerRef.current);
+      refAutoSaveTimerRef.current = null;
+    }
+    if (editingRefObjRef.current) {
+      void persistRefEdit();
+    }
+    editingRefObjRef.current = null;
+    setEditingRef(null);
+    setIsRefModalOpen(false);
   };
 
   const handleSaveRef = async (e: FormEvent) => {
     e.preventDefault();
+    if (editingRefObjRef.current) {
+      await persistRefEdit();
+      return;
+    }
     setFormError(null);
-    if (!refName.trim() || !refRole.trim() || !refPhone.trim()) {
+    const id = `ref_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const { isValid, payload } = buildRefPayload(id);
+    if (!isValid) {
       setFormError(
         locale === 'en'
           ? 'Name, role, and phone number are required.'
@@ -121,19 +238,7 @@ export function EducationReferencesSection({
 
     setIsSaving(true);
     try {
-      const id = editingRef
-        ? editingRef.id
-        : `ref_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      await saveReferenceToFirestore(
-        {
-          id,
-          name: refName.trim(),
-          role: refRole.trim(),
-          phone: refPhone.trim(),
-          sortOrder: Number(refOrder) || 0,
-        },
-        Boolean(editingRef?.fromFirestore)
-      );
+      await saveReferenceToFirestore(payload, false);
       setIsRefModalOpen(false);
     } catch (err) {
       setFormError(formatReadableFirestoreError(err));
@@ -154,14 +259,14 @@ export function EducationReferencesSection({
     <section
       id="education"
       data-animate="section"
-      className="print-section border-b border-[var(--line)] bg-[var(--bg2)] py-14 print:bg-white print:py-5 md:py-20"
+      className="print-section overflow-x-clip border-b border-[var(--line)] bg-[var(--bg2)] py-14 print:bg-white print:py-5 md:py-20"
     >
       <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] print:px-0">
         <div className="grid grid-cols-1 gap-10 print:grid-cols-12 print:gap-5 lg:grid-cols-12">
           {/* Left: Education */}
-          <div className="print:col-span-5 lg:col-span-5">
-            <div className="flex items-end justify-between gap-4">
-              <div>
+          <div className="min-w-0 print:col-span-5 lg:col-span-5">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase print:text-[10px]">
                   <span className="inline-block h-px w-6 bg-[var(--brass)] print:hidden" aria-hidden="true" />
                   <EditableText
@@ -185,7 +290,7 @@ export function EducationReferencesSection({
                 <button
                   type="button"
                   onClick={onEditEducation}
-                  className="no-print inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3.5 py-1.5 text-xs font-semibold text-[var(--brass)] hover:border-[var(--brass)] cursor-pointer"
+                  className="no-print inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg)] px-3.5 py-1.5 text-xs font-semibold text-[var(--brass)] hover:border-[var(--brass)] whitespace-nowrap cursor-pointer"
                 >
                   <Pencil className="h-3 w-3" aria-hidden="true" />
                   <span>{locale === 'en' ? 'Edit' : 'Ubah'}</span>
@@ -195,7 +300,7 @@ export function EducationReferencesSection({
 
             <div
               onMouseMove={handleCardPointerMove}
-              className="editorial-card print-break-inside-avoid mt-6 bg-[var(--bg)]/85 p-6 print:mt-3 print:rounded-lg print:bg-white print:p-3.5 sm:p-7"
+              className="editorial-card print-break-inside-avoid mt-6 min-w-0 bg-[var(--bg)]/85 p-6 [overflow-wrap:anywhere] print:mt-3 print:rounded-lg print:bg-white print:p-3.5 sm:p-7"
             >
               <div className="relative z-10 flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono text-xs font-medium text-[var(--mute)] tabular-nums print:text-[10px]">
@@ -250,9 +355,9 @@ export function EducationReferencesSection({
           </div>
 
           {/* Right: Professional References */}
-          <div className="print:col-span-7 lg:col-span-7">
+          <div className="min-w-0 print:col-span-7 lg:col-span-7">
             <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase print:text-[10px]">
                   <span className="inline-block h-px w-6 bg-[var(--brass)] print:hidden" aria-hidden="true" />
                   <EditableText
@@ -284,7 +389,7 @@ export function EducationReferencesSection({
                 <button
                   type="button"
                   onClick={openAddRef}
-                  className="no-print inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
+                  className="no-print inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>{locale === 'en' ? 'Add Reference' : 'Tambah Referensi'}</span>
@@ -306,10 +411,10 @@ export function EducationReferencesSection({
                 <div
                   key={ref.id}
                   onMouseMove={handleCardPointerMove}
-                  className="editorial-card print-break-inside-avoid group flex flex-col justify-between bg-[var(--bg)]/85 p-5 print:rounded-lg print:bg-white print:p-3"
+                  className="editorial-card print-break-inside-avoid group flex min-w-0 flex-col justify-between bg-[var(--bg)]/85 p-5 print:rounded-lg print:bg-white print:p-3"
                 >
-                  <div className="relative z-10 flex items-start justify-between gap-2">
-                    <div>
+                  <div className="relative z-10 flex min-w-0 items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                       <h3 className="font-display text-base font-bold text-[var(--ink)] print:text-xs">
                         <EditableText
                           value={ref.name}
@@ -355,16 +460,17 @@ export function EducationReferencesSection({
                     )}
                   </div>
 
-                  <div className="relative z-10 mt-4 flex items-center justify-between gap-2 border-t border-[var(--line)] pt-3 print:mt-2 print:pt-1.5">
+                  <div className="relative z-10 mt-4 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--line)] pt-3 print:mt-2 print:pt-1.5">
                     <a
                       href={ref.phoneHref}
-                      className="inline-flex items-center gap-2 font-mono text-xs font-medium text-[var(--ink)] transition-colors hover:text-[var(--brass)] tabular-nums print:text-[10px]"
+                      className="inline-flex min-w-0 flex-1 items-center gap-2 font-mono text-xs font-medium text-[var(--ink)] transition-colors hover:text-[var(--brass)] tabular-nums print:text-[10px]"
                     >
-                      <Phone className="h-3.5 w-3.5 text-[var(--brass)] print:h-3 print:w-3" aria-hidden="true" />
+                      <Phone className="h-3.5 w-3.5 shrink-0 text-[var(--brass)] print:h-3 print:w-3" aria-hidden="true" />
                       <EditableText
                         value={ref.phone}
                         canEdit={isAdminUser}
                         maxLength={40}
+                        className="min-w-0 [overflow-wrap:anywhere]"
                         onSave={(val) =>
                           saveReferenceToFirestore({ ...ref, phone: val }, ref.fromFirestore)
                         }
@@ -407,25 +513,34 @@ export function EducationReferencesSection({
           aria-labelledby="ref-modal-title"
           className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
         >
-          <div className="w-full max-w-md rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-7">
+          <div className="max-h-[92vh] w-full max-w-[min(28rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-5 text-[var(--ink)] shadow-2xl sm:p-6 md:p-7">
             <div className="flex items-start justify-between gap-4">
-              <h3
-                id="ref-modal-title"
-                className="font-display text-lg font-bold text-[var(--ink)]"
-              >
-                {editingRef
-                  ? locale === 'en'
-                    ? 'Edit Reference'
-                    : 'Ubah Referensi'
-                  : locale === 'en'
-                    ? 'Add Reference'
-                    : 'Tambah Referensi'}
-              </h3>
+              <div className="min-w-0 flex-1">
+                <h3
+                  id="ref-modal-title"
+                  className="font-display text-lg font-bold text-[var(--ink)]"
+                >
+                  {editingRef
+                    ? locale === 'en'
+                      ? 'Edit Reference'
+                      : 'Ubah Referensi'
+                    : locale === 'en'
+                      ? 'Add Reference'
+                      : 'Tambah Referensi'}
+                </h3>
+                {editingRef && (
+                  <p className="mt-0.5 text-xs text-[var(--mute)]">
+                    {locale === 'en'
+                      ? 'Changes save automatically to Cloud Firestore.'
+                      : 'Perubahan tersimpan otomatis ke Cloud Firestore.'}
+                  </p>
+                )}
+              </div>
               <button
                 type="button"
-                onClick={() => setIsRefModalOpen(false)}
+                onClick={closeRefModal}
                 aria-label="Close modal"
-                className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] cursor-pointer"
+                className="shrink-0 rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -504,27 +619,68 @@ export function EducationReferencesSection({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsRefModalOpen(false)}
-                  className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
-                >
-                  {locale === 'en' ? 'Cancel' : 'Batal'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
-                >
-                  {isSaving
-                    ? locale === 'en'
-                      ? 'Saving...'
-                      : 'Menyimpan...'
-                    : locale === 'en'
-                      ? 'Save'
-                      : 'Simpan'}
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                {editingRef ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2 text-xs">
+                      {autoSaveState === 'saving' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Auto-saving...' : 'Menyimpan otomatis...'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'saved' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Saved automatically' : 'Tersimpan otomatis'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'invalid' ? (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en'
+                            ? 'Complete required (*) fields to auto-save'
+                            : 'Lengkapi kolom wajib (*) untuk auto-save'}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeRefModal}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Done' : 'Selesai'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeRefModal}
+                      className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Cancel' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSaving
+                        ? locale === 'en'
+                          ? 'Saving...'
+                          : 'Menyimpan...'
+                        : locale === 'en'
+                          ? 'Save'
+                          : 'Simpan'}
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           </div>

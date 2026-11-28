@@ -1,15 +1,26 @@
-import { useEffect, useRef, useState, DragEvent, ChangeEvent, FormEvent, MouseEvent } from 'react';
 import {
-  Plus,
-  Upload,
-  X,
-  Trash2,
-  Pencil,
+  ChangeEvent,
+  DragEvent,
+  FormEvent,
+  MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import {
+  Calendar,
+  Check,
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
+  Loader2,
   Lock,
-  Calendar,
+  Pencil,
+  Plus,
+  Trash2,
+  Upload,
+  X,
 } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import { SiteCopyLocale } from '../utils/cvFirestoreApi';
@@ -74,12 +85,16 @@ export function ProjectsSection({
   const [isDragging, setIsDragging] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [autoSaveState, setAutoSaveState] = useState<'idle' | 'saving' | 'saved' | 'invalid'>('idle');
 
   // Lightbox modal state
   const [activeLightboxId, setActiveLightboxId] = useState<string | null>(null);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const editingIdRef = useRef<string | null>(null);
+  const lastSavedDigestRef = useRef('');
+  const autoSaveTimerRef = useRef<number | null>(null);
 
   const handleCardMouseMove = (e: MouseEvent<HTMLElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -141,7 +156,32 @@ export function ProjectsSection({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeLightboxId, activeLightboxIndex, filteredProjects, isModalOpen]);
 
-  const resetForm = () => {
+  const buildProjectPayload = useCallback(
+    (overrideImage?: string, overrideTitle?: string) => {
+      const nextTitle = (overrideTitle ?? title).trim().slice(0, 140);
+      const nextProperty = property.trim().slice(0, 140);
+      const nextYear = year.trim().slice(0, 24);
+      const nextDesc = description.trim().slice(0, 1200);
+      const nextImg = overrideImage ?? imageDataUrl;
+      const yearOk = nextYear.length >= 1 && /^[0-9A-Za-z\s-]+$/.test(nextYear);
+      const isValid = Boolean(nextImg) && nextTitle.length >= 1 && yearOk;
+      const payload = {
+        title: nextTitle,
+        property: nextProperty,
+        year: nextYear,
+        category,
+        description: nextDesc,
+        imageDataUrl: nextImg,
+      };
+      const digest = `${nextTitle}||${nextProperty}||${nextYear}||${category}||${nextDesc}||${nextImg.length}||${nextImg.slice(0, 48)}`;
+      return { isValid, yearOk, payload, digest };
+    },
+    [category, description, imageDataUrl, property, title, year]
+  );
+
+  const resetForm = useCallback(() => {
+    editingIdRef.current = null;
+    lastSavedDigestRef.current = '';
     setEditingId(null);
     setTitle('');
     setProperty('');
@@ -151,9 +191,10 @@ export function ProjectsSection({
     setImageDataUrl('');
     setShowOptionalDetails(false);
     setFormError(null);
+    setAutoSaveState('idle');
     setIsProcessingImage(false);
     setIsSaving(false);
-  };
+  }, []);
 
   const openNewUploadModal = () => {
     if (!isAdminUser) {
@@ -169,6 +210,8 @@ export function ProjectsSection({
       onOpenAuth();
       return;
     }
+    editingIdRef.current = item.id;
+    lastSavedDigestRef.current = `${item.title.trim()}||${item.property.trim()}||${item.year.trim()}||${item.category}||${item.description.trim()}||${item.imageDataUrl.length}||${item.imageDataUrl.slice(0, 48)}`;
     setEditingId(item.id);
     setTitle(item.title);
     setProperty(item.property);
@@ -178,24 +221,86 @@ export function ProjectsSection({
     setImageDataUrl(item.imageDataUrl);
     setShowOptionalDetails(Boolean(item.property || item.description));
     setFormError(null);
+    setAutoSaveState('idle');
     setActiveLightboxId(null);
     setIsModalOpen(true);
   };
 
-  const closeModal = () => {
+  const persistExistingProject = useCallback(
+    async (overrideImage?: string, overrideTitle?: string) => {
+      const targetId = editingIdRef.current;
+      if (!targetId || !isAdminUser) return;
+      const { isValid, payload, digest } = buildProjectPayload(overrideImage, overrideTitle);
+      if (!isValid) {
+        setAutoSaveState('invalid');
+        return;
+      }
+      if (digest === lastSavedDigestRef.current) return;
+
+      setAutoSaveState('saving');
+      setFormError(null);
+      try {
+        await updateFirestoreProject(targetId, payload);
+        lastSavedDigestRef.current = digest;
+        setAutoSaveState('saved');
+      } catch (err) {
+        setFormError(formatReadableFirestoreError(err));
+        setAutoSaveState('idle');
+      }
+    },
+    [buildProjectPayload, isAdminUser]
+  );
+
+  useEffect(() => {
+    if (!isModalOpen || !editingIdRef.current || isProcessingImage) return;
+    const { isValid, digest } = buildProjectPayload();
+    if (!isValid) {
+      setAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastSavedDigestRef.current) return;
+
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void persistExistingProject();
+    }, 480);
+
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
+  }, [buildProjectPayload, isModalOpen, isProcessingImage, persistExistingProject]);
+
+  const closeModal = useCallback(() => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    if (editingIdRef.current && !isProcessingImage) {
+      void persistExistingProject();
+    }
     setIsModalOpen(false);
     resetForm();
-  };
+  }, [isProcessingImage, persistExistingProject, resetForm]);
 
   const handleSelectedFile = async (file: File) => {
     setFormError(null);
     setIsProcessingImage(true);
     try {
       const compressed = await compressImageFile(file);
-      setImageDataUrl(compressed);
+      let nextTitle = title;
       if (!title.trim()) {
-        const cleanName = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
-        setTitle(cleanName);
+        nextTitle = file.name.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
+        setTitle(nextTitle);
+      }
+      setImageDataUrl(compressed);
+      if (editingIdRef.current) {
+        await persistExistingProject(compressed, nextTitle);
       }
     } catch (err) {
       setFormError(
@@ -235,7 +340,14 @@ export function ProjectsSection({
       return;
     }
 
-    if (!imageDataUrl) {
+    if (editingIdRef.current) {
+      await persistExistingProject();
+      return;
+    }
+
+    const { isValid, yearOk, payload } = buildProjectPayload();
+
+    if (!payload.imageDataUrl) {
       setFormError(
         locale === 'en'
           ? 'Please upload a project photo first.'
@@ -244,7 +356,7 @@ export function ProjectsSection({
       return;
     }
 
-    if (!title.trim()) {
+    if (!payload.title) {
       setFormError(
         locale === 'en'
           ? 'Project name is required.'
@@ -253,33 +365,20 @@ export function ProjectsSection({
       return;
     }
 
-    if (!year.trim()) {
+    if (!yearOk || !isValid) {
       setFormError(
         locale === 'en'
-          ? 'Project year is required.'
-          : 'Tahun proyek wajib diisi.'
+          ? 'Project year is required (letters, numbers, spaces, or hyphens only).'
+          : 'Tahun proyek wajib diisi (huruf, angka, spasi, atau tanda -).'
       );
       return;
     }
 
     setIsSaving(true);
     try {
-      const payload = {
-        title: title.trim(),
-        property: property.trim(),
-        year: year.trim(),
-        category,
-        description: description.trim(),
-        imageDataUrl,
-      };
+      await createFirestoreProject(payload);
 
-      if (editingId) {
-        await updateFirestoreProject(editingId, payload);
-      } else {
-        await createFirestoreProject(payload);
-      }
-
-      if (addAnotherAfter && !editingId) {
+      if (addAnotherAfter) {
         resetForm();
       } else {
         closeModal();
@@ -339,14 +438,14 @@ export function ProjectsSection({
     <section
       id="projects"
       data-animate="section"
-      className={`print-section border-b border-[var(--line)] bg-[var(--bg)] py-16 print:bg-white print:py-5 md:py-24 ${
+      className={`print-section overflow-x-clip border-b border-[var(--line)] bg-[var(--bg)] py-16 print:bg-white print:py-5 md:py-24 ${
         projects.length === 0 ? 'print:hidden' : ''
       }`}
     >
       <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] print:px-0">
         {/* Section Header + Upload Toolbar */}
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="inline-flex items-center gap-3 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--brass)] print:text-[10px]">
               <span className="inline-block h-px w-[22px] bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
@@ -395,7 +494,7 @@ export function ProjectsSection({
             <div
               role="tablist"
               aria-label="Filter projects by category"
-              className="flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] p-1"
+              className="flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-[var(--line)] bg-[var(--bg2)] p-1 sm:rounded-full"
             >
               {filterKeys.map((key) => (
                 <button
@@ -533,8 +632,8 @@ export function ProjectsSection({
                   </span>
                 </div>
 
-                <div className="relative z-10 flex flex-1 flex-col justify-between p-5 print:p-3">
-                  <div>
+                <div className="relative z-10 flex min-w-0 flex-1 flex-col justify-between p-5 [overflow-wrap:anywhere] print:p-3">
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-[var(--mute)] print:text-[10px]">
                       <EditableText
                         value={project.year}
@@ -652,9 +751,9 @@ export function ProjectsSection({
           aria-labelledby="project-modal-title"
           className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
+          <div className="max-h-[92vh] w-full max-w-[min(36rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-5 shadow-2xl sm:p-6 md:p-8">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3
                   id="project-modal-title"
                   className="font-display text-xl font-bold text-[var(--ink)]"
@@ -668,16 +767,20 @@ export function ProjectsSection({
                       : 'Tambah Proyek Baru'}
                 </h3>
                 <p className="mt-1 text-xs text-[var(--mute)]">
-                  {locale === 'en'
-                    ? 'Enter project name, upload photo, and specify the year. Automatically saved to Firestore.'
-                    : 'Isi nama proyek, unggah foto, dan tahun. Otomatis tersimpan ke Cloud Firestore.'}
+                  {editingId
+                    ? locale === 'en'
+                      ? 'Every text and photo change saves automatically to Firestore.'
+                      : 'Setiap perubahan teks maupun ganti foto tersimpan otomatis ke Cloud Firestore.'
+                    : locale === 'en'
+                      ? 'Enter project name, upload photo, and specify the year.'
+                      : 'Isi nama proyek, unggah foto, dan tahun lalu simpan ke Firestore.'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
                 aria-label="Close modal"
-                className="rounded-lg p-2 text-[var(--mute)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
+                className="shrink-0 rounded-lg p-2 text-[var(--mute)] transition-colors hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -874,41 +977,78 @@ export function ProjectsSection({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center justify-end gap-2.5 border-t border-[var(--line)] pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
-                >
-                  {locale === 'en' ? 'Cancel' : 'Batal'}
-                </button>
-                {!editingId && (
-                  <button
-                    type="button"
-                    disabled={isSaving || isProcessingImage}
-                    onClick={() => void persistProject(true)}
-                    className="rounded-full border border-[var(--brass)]/50 bg-[var(--brass)]/12 px-4 py-2 text-sm font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/20 disabled:opacity-50 cursor-pointer"
-                  >
-                    {locale === 'en' ? 'Save & Add Another' : 'Simpan & Tambah Lagi'}
-                  </button>
+              <div className="flex flex-wrap items-center justify-between gap-2.5 border-t border-[var(--line)] pt-4">
+                {editingId ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2 text-xs">
+                      {isProcessingImage || autoSaveState === 'saving' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Auto-saving...' : 'Menyimpan otomatis...'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'saved' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {locale === 'en'
+                              ? 'Saved automatically to Firestore'
+                              : 'Tersimpan otomatis secara global'}
+                          </span>
+                        </span>
+                      ) : autoSaveState === 'invalid' ? (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en'
+                            ? 'Enter valid Project Name & Year (letters/digits/-) to auto-save'
+                            : 'Isi Nama Proyek & Tahun valid (huruf/angka/-) untuk auto-save'}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Done' : 'Selesai'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="ml-auto flex flex-wrap items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Cancel' : 'Batal'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSaving || isProcessingImage}
+                      onClick={() => void persistProject(true)}
+                      className="rounded-full border border-[var(--brass)]/50 bg-[var(--brass)]/12 px-4 py-2 text-sm font-semibold text-[var(--brass)] transition-colors hover:bg-[var(--brass)]/20 disabled:opacity-50 cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Save & Add Another' : 'Simpan & Tambah Lagi'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving || isProcessingImage}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSaving
+                        ? locale === 'en'
+                          ? 'Saving...'
+                          : 'Menyimpan...'
+                        : locale === 'en'
+                          ? 'Save Project'
+                          : 'Simpan Proyek'}
+                    </button>
+                  </div>
                 )}
-                <button
-                  type="submit"
-                  disabled={isSaving || isProcessingImage}
-                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSaving
-                    ? locale === 'en'
-                      ? 'Saving...'
-                      : 'Menyimpan...'
-                    : editingId
-                      ? locale === 'en'
-                        ? 'Save Changes'
-                        : 'Simpan Perubahan'
-                      : locale === 'en'
-                        ? 'Save Project'
-                        : 'Simpan Proyek'}
-                </button>
               </div>
             </form>
           </div>
@@ -960,7 +1100,7 @@ export function ProjectsSection({
             </>
           )}
 
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-[22px] border border-white/15 bg-[#101a38]">
+          <div className="flex max-h-[90vh] w-full max-w-[min(56rem,calc(100vw-2rem))] flex-col overflow-hidden overscroll-contain rounded-[22px] border border-white/15 bg-[#101a38]">
             <div className="flex max-h-[65vh] items-center justify-center bg-[#060a18]">
               <img
                 src={sanitizeProjectImageSrc(activeLightboxItem.imageDataUrl)}
@@ -969,8 +1109,8 @@ export function ProjectsSection({
                 className="max-h-[65vh] w-auto max-w-full object-contain"
               />
             </div>
-            <div className="flex flex-col gap-3 p-6 text-[#eaf0ff] sm:flex-row sm:items-start sm:justify-between">
-              <div>
+            <div className="flex flex-col gap-3 p-5 text-[#eaf0ff] sm:flex-row sm:items-start sm:justify-between sm:p-6">
+              <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                 <p className="text-xs font-medium text-[#e0b873]">
                   <span className="font-mono tabular-nums">{activeLightboxItem.year}</span>
                   {activeLightboxItem.property && (

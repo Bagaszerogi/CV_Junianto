@@ -514,13 +514,13 @@ export function AdminAuthModal({
       aria-labelledby="global-auth-title"
       className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-7">
+      <div className="max-h-[92vh] w-full max-w-[min(32rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-5 text-[var(--ink)] shadow-2xl sm:p-6 md:p-7">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--brass)_16%,transparent)] text-[var(--brass)]">
               <ShieldCheck className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h3
                 id="global-auth-title"
                 className="font-display text-lg font-bold text-[var(--ink)]"
@@ -539,13 +539,13 @@ export function AdminAuthModal({
             type="button"
             onClick={onClose}
             aria-label="Close login dialog"
-            className="rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
+            className="shrink-0 rounded-full p-1.5 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="mt-5 flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1">
+        <div className="mt-5 flex flex-wrap items-center gap-1 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-1 sm:rounded-full">
           <button
             type="button"
             onClick={() => {
@@ -553,7 +553,7 @@ export function AdminAuthModal({
               setAuthError(null);
               setAuthInfo(null);
             }}
-            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`min-w-[100px] flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
               authMethod === 'google'
                 ? 'bg-[var(--brass)] text-[#1a1405]'
                 : 'text-[var(--mute)] hover:text-[var(--ink)]'
@@ -569,7 +569,7 @@ export function AdminAuthModal({
               setAuthInfo(null);
               setUnauthorizedHost(null);
             }}
-            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`min-w-[110px] flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
               authMethod === 'email'
                 ? 'bg-[var(--brass)] text-[#1a1405]'
                 : 'text-[var(--mute)] hover:text-[var(--ink)]'
@@ -585,7 +585,7 @@ export function AdminAuthModal({
               setAuthInfo(null);
               void runDiagnostics();
             }}
-            className={`flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer ${
+            className={`min-w-[110px] flex-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors whitespace-nowrap cursor-pointer ${
               authMethod === 'diagnostics'
                 ? 'bg-[var(--brass)] text-[#1a1405]'
                 : 'text-[var(--mute)] hover:text-[var(--ink)]'
@@ -723,11 +723,11 @@ export function AdminAuthModal({
                       <span className="font-medium text-[var(--ink)]">Database ID:</span>{' '}
                       <span className="font-mono">{auditReport.databaseId}</span>
                     </div>
-                    <div>
+                    <div className="break-all">
                       <span className="font-medium text-[var(--ink)]">Host aktif:</span>{' '}
                       <span className="font-mono">{auditReport.hostname}</span>
                     </div>
-                    <div>
+                    <div className="[overflow-wrap:anywhere]">
                       <span className="font-medium text-[var(--ink)]">Auth User:</span>{' '}
                       {auditReport.authState.signedIn ? (
                         <span className="font-mono">
@@ -850,7 +850,7 @@ export function AdminAuthModal({
                       key={item.key}
                       className="flex items-center justify-between gap-3 px-3.5 py-2 text-xs"
                     >
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="font-medium text-[var(--ink)]">
                           {item.label}
                         </p>
@@ -858,7 +858,7 @@ export function AdminAuthModal({
                           {item.path}
                         </p>
                         {item.error && (
-                          <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">
+                          <p className="mt-0.5 [overflow-wrap:anywhere] text-[10px] text-red-600 dark:text-red-400">
                             {item.error}
                           </p>
                         )}

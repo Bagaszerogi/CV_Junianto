@@ -1,5 +1,5 @@
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
-import { Trash2, Upload, X } from 'lucide-react';
+import { ChangeEvent, useEffect, useRef, useState } from 'react';
+import { CheckCircle2, Loader2, Trash2, Upload, X } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import {
   compressPortraitImage,
@@ -7,7 +7,7 @@ import {
   saveProfileToFirestore,
 } from '../utils/cvFirestoreApi';
 import { formatReadableFirestoreError } from '../firebase';
-import { sanitizePortraitSrc } from '../utils/safeUrls';
+import { isValidEmailAddress, sanitizePortraitSrc } from '../utils/safeUrls';
 
 export type ProfileEditTab = 'identity' | 'contact' | 'metrics' | 'education';
 
@@ -16,7 +16,63 @@ interface ProfileEditModalProps {
   initialTab?: ProfileEditTab;
   locale: Locale;
   profile: CvProfileData;
+  onSaveProfile?: (patch: Partial<CvProfileData>) => Promise<void>;
   onClose: () => void;
+}
+
+type ModalAutoSaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'incomplete' | 'error';
+
+function validateProfileDraft(d: CvProfileData): boolean {
+  if (
+    !d.name.trim() ||
+    !d.brandShort.trim() ||
+    !d.titleEn.trim() ||
+    !d.currentCompany.trim() ||
+    !d.currentRole.trim() ||
+    !d.summaryEn.trim() ||
+    !d.phoneDisplay.trim() ||
+    !d.email.trim() ||
+    !d.address.trim()
+  ) {
+    return false;
+  }
+  if (!isValidEmailAddress(d.email)) {
+    return false;
+  }
+  if (!d.metrics.length || d.metrics.some((m) => !m.value.trim() || !m.label.trim())) {
+    return false;
+  }
+  if (
+    !d.education.institution.trim() ||
+    !d.education.majorEn.trim() ||
+    !d.education.period.trim() ||
+    !d.education.gpaEn.trim()
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function serializeProfileFields(d: CvProfileData): string {
+  return JSON.stringify({
+    name: d.name,
+    brandShort: d.brandShort,
+    titleEn: d.titleEn,
+    titleId: d.titleId,
+    kickerEn: d.kickerEn,
+    kickerId: d.kickerId,
+    currentCompany: d.currentCompany,
+    currentRole: d.currentRole,
+    summaryEn: d.summaryEn,
+    summaryId: d.summaryId,
+    phoneDisplay: d.phoneDisplay,
+    whatsappHref: d.whatsappHref,
+    email: d.email,
+    address: d.address,
+    portraitDataUrl: d.portraitDataUrl,
+    metrics: d.metrics,
+    education: d.education,
+  });
 }
 
 export function ProfileEditModal({
@@ -24,22 +80,76 @@ export function ProfileEditModal({
   initialTab = 'identity',
   locale,
   profile,
+  onSaveProfile,
   onClose,
 }: ProfileEditModalProps) {
   const [activeTab, setActiveTab] = useState<ProfileEditTab>(initialTab);
   const [draft, setDraft] = useState<CvProfileData>(profile);
   const [isProcessingPhoto, setIsProcessingPhoto] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [saveState, setSaveState] = useState<ModalAutoSaveState>('idle');
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wasOpenRef = useRef(false);
+  const lastSavedDigestRef = useRef('');
+  const latestProfileRef = useRef(profile);
+  const onSaveProfileRef = useRef(onSaveProfile);
 
   useEffect(() => {
-    if (isOpen) {
+    latestProfileRef.current = profile;
+  }, [profile]);
+
+  useEffect(() => {
+    onSaveProfileRef.current = onSaveProfile;
+  }, [onSaveProfile]);
+
+  // Only hydrate draft when modal opens so background Firestore snapshots never overwrite typing
+  useEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
       setDraft(profile);
       setActiveTab(initialTab);
       setError(null);
+      setSaveState('idle');
+      lastSavedDigestRef.current = serializeProfileFields(profile);
     }
-  }, [isOpen, initialTab, profile]);
+    wasOpenRef.current = isOpen;
+  }, [initialTab, isOpen, profile]);
+
+  const persistProfileNow = async (nextDraft: CvProfileData) => {
+    setError(null);
+    setSaveState('saving');
+    try {
+      if (onSaveProfileRef.current) {
+        const { fromFirestore: _ignored, ...patch } = nextDraft;
+        await onSaveProfileRef.current(patch);
+      } else {
+        await saveProfileToFirestore(nextDraft, Boolean(latestProfileRef.current.fromFirestore));
+      }
+      lastSavedDigestRef.current = serializeProfileFields(nextDraft);
+      setSaveState('saved');
+    } catch (err) {
+      setError(formatReadableFirestoreError(err));
+      setSaveState('error');
+    }
+  };
+
+  // Debounced live auto-save on any valid draft change
+  useEffect(() => {
+    if (!isOpen) return;
+    const digest = serializeProfileFields(draft);
+    if (digest === lastSavedDigestRef.current) return;
+
+    if (!validateProfileDraft(draft)) {
+      setSaveState('incomplete');
+      return;
+    }
+
+    setSaveState('pending');
+    const timer = window.setTimeout(() => {
+      void persistProfileNow(draft);
+    }, 480);
+
+    return () => window.clearTimeout(timer);
+  }, [draft, isOpen]);
 
   if (!isOpen) return null;
 
@@ -52,31 +162,22 @@ export function ProfileEditModal({
     setIsProcessingPhoto(true);
     try {
       const compressed = await compressPortraitImage(file);
-      setDraft((prev) => ({ ...prev, portraitDataUrl: compressed }));
+      const nextDraft = { ...draft, portraitDataUrl: compressed };
+      setDraft(nextDraft);
+      await persistProfileNow(nextDraft);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to process photo.');
+      setError(formatReadableFirestoreError(err));
+      setSaveState('error');
     } finally {
       setIsProcessingPhoto(false);
     }
   };
 
-  const handleRemoveDraftPhoto = () => {
+  const handleRemoveDraftPhoto = async () => {
     setError(null);
-    setDraft((prev) => ({ ...prev, portraitDataUrl: '' }));
-  };
-
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsSaving(true);
-    try {
-      await saveProfileToFirestore(draft, Boolean(profile.fromFirestore));
-      onClose();
-    } catch (err) {
-      setError(formatReadableFirestoreError(err));
-    } finally {
-      setIsSaving(false);
-    }
+    const nextDraft = { ...draft, portraitDataUrl: '' };
+    setDraft(nextDraft);
+    await persistProfileNow(nextDraft);
   };
 
   const previewPortrait = sanitizePortraitSrc(draft.portraitDataUrl, '');
@@ -95,7 +196,7 @@ export function ProfileEditModal({
   ];
 
   const inputClass =
-    'mt-1.5 w-full rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none';
+    'mt-1.5 w-full min-w-0 rounded-xl border border-[var(--line)] bg-[var(--bg)] px-3.5 py-2 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none';
 
   return (
     <div
@@ -104,9 +205,9 @@ export function ProfileEditModal({
       aria-labelledby="profile-edit-title"
       className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#0a1024]/70 p-4 backdrop-blur-xs"
     >
-      <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 text-[var(--ink)] shadow-2xl md:p-8">
+      <div className="max-h-[92vh] w-full max-w-[min(42rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-5 text-[var(--ink)] shadow-2xl sm:p-6 md:p-8">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0 flex-1">
             <h3
               id="profile-edit-title"
               className="font-display text-xl font-bold text-[var(--ink)]"
@@ -117,22 +218,22 @@ export function ProfileEditModal({
             </h3>
             <p className="mt-1 text-xs text-[var(--mute)]">
               {locale === 'en'
-                ? 'Changes are saved to Cloud Firestore and update the CV & PDF export immediately.'
-                : 'Perubahan tersimpan ke Cloud Firestore dan langsung memperbarui CV serta cetak PDF.'}
+                ? 'Every edit & photo change auto-saves to Cloud Firestore immediately.'
+                : 'Setiap perubahan teks maupun foto otomatis tersimpan ke Cloud Firestore dan langsung update global.'}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close modal"
-            className="rounded-full p-2 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
+            className="shrink-0 rounded-full p-2 text-[var(--mute)] hover:bg-[var(--card)] hover:text-[var(--ink)] cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Section Tabs */}
-        <div className="mt-5 flex flex-wrap items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--card)] p-1">
+        <div className="mt-5 flex flex-wrap items-center gap-1 rounded-2xl border border-[var(--line)] bg-[var(--card)] p-1 sm:rounded-full">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -149,11 +250,11 @@ export function ProfileEditModal({
           ))}
         </div>
 
-        <form onSubmit={handleSave} className="mt-6 space-y-4">
+        <div className="mt-6 space-y-4">
           {error && (
             <div
               role="alert"
-              className="rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium text-red-700 dark:text-red-200"
+              className="rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-xs font-medium break-words text-red-700 dark:text-red-200"
             >
               {error}
             </div>
@@ -178,21 +279,23 @@ export function ProfileEditModal({
                     )}
                   </div>
                 </div>
-                <div className="flex-1">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-[var(--ink)]">
-                    {locale === 'en' ? 'Profile Portrait Photo (PNG / JPG / WebP)' : 'Foto Profil Utama (PNG Transparan / JPG / WebP)'}
+                    {locale === 'en'
+                      ? 'Profile Portrait Photo (PNG / JPG / WebP)'
+                      : 'Foto Profil Utama (PNG Transparan / JPG / WebP)'}
                   </p>
                   <p className="mt-0.5 text-xs text-[var(--mute)]">
                     {locale === 'en'
-                      ? 'Framed prominently on the right side in a 4:5 brass arch. Transparent PNG cutouts preserve their alpha background.'
-                      : 'Ditampilkan besar di sisi kanan dalam bingkai melengkung emas 4:5. Upload PNG transparan tetap menjaga latar bening.'}
+                      ? 'Framed prominently on the right side in a 4:5 brass arch. Uploads save automatically right away.'
+                      : 'Ditampilkan besar di sisi kanan dalam bingkai melengkung emas 4:5. Langsung tersimpan otomatis saat diunggah.'}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
-                      disabled={isProcessingPhoto}
+                      disabled={isProcessingPhoto || saveState === 'saving'}
                       onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-4 py-1.5 text-xs font-semibold text-[#1a1405] hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
                     >
                       <Upload className="h-3.5 w-3.5" aria-hidden="true" />
                       <span>
@@ -208,9 +311,9 @@ export function ProfileEditModal({
                     {Boolean(previewPortrait) && (
                       <button
                         type="button"
-                        disabled={isProcessingPhoto}
-                        onClick={handleRemoveDraftPhoto}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-500/20 dark:text-red-300 cursor-pointer"
+                        disabled={isProcessingPhoto || saveState === 'saving'}
+                        onClick={() => void handleRemoveDraftPhoto()}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-500/20 disabled:opacity-50 dark:text-red-300 cursor-pointer"
                       >
                         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                         <span>{locale === 'en' ? 'Remove Photo' : 'Hapus Foto'}</span>
@@ -228,28 +331,26 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-name" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Full Name *' : 'Nama Lengkap *'}
                   </label>
                   <input
                     id="prof-name"
                     type="text"
-                    required
                     maxLength={120}
                     value={draft.name}
                     onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-brand" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Header Brand Name *' : 'Nama di Pojok Kiri Atas *'}
                   </label>
                   <input
                     id="prof-brand"
                     type="text"
-                    required
                     maxLength={60}
                     value={draft.brandShort}
                     onChange={(e) => setDraft({ ...draft, brandShort: e.target.value })}
@@ -259,28 +360,26 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-title-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Headline Title (EN) *' : 'Judul Profesi (EN) *'}
                   </label>
                   <input
                     id="prof-title-en"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.titleEn}
                     onChange={(e) => setDraft({ ...draft, titleEn: e.target.value })}
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-title-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Headline Title (ID) *' : 'Judul Profesi (ID) *'}
                   </label>
                   <input
                     id="prof-title-id"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.titleId}
                     onChange={(e) => setDraft({ ...draft, titleId: e.target.value })}
@@ -290,7 +389,7 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-kicker-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Sub-Kicker (EN)' : 'Keterangan Atas (EN)'}
                   </label>
@@ -303,7 +402,7 @@ export function ProfileEditModal({
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-kicker-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Sub-Kicker (ID)' : 'Keterangan Atas (ID)'}
                   </label>
@@ -319,28 +418,26 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-cur-comp" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Current Company *' : 'Tempat Kerja Saat Ini *'}
                   </label>
                   <input
                     id="prof-cur-comp"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.currentCompany}
                     onChange={(e) => setDraft({ ...draft, currentCompany: e.target.value })}
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-cur-role" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Current Position *' : 'Jabatan Saat Ini *'}
                   </label>
                   <input
                     id="prof-cur-role"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.currentRole}
                     onChange={(e) => setDraft({ ...draft, currentRole: e.target.value })}
@@ -354,28 +451,26 @@ export function ProfileEditModal({
           {activeTab === 'contact' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-phone" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Phone Number *' : 'Nomor Telepon *'}
                   </label>
                   <input
                     id="prof-phone"
                     type="text"
-                    required
                     maxLength={40}
                     value={draft.phoneDisplay}
                     onChange={(e) => setDraft({ ...draft, phoneDisplay: e.target.value })}
                     className={`${inputClass} font-mono`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="prof-email" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Email Address *' : 'Alamat Email *'}
                   </label>
                   <input
                     id="prof-email"
                     type="email"
-                    required
                     maxLength={140}
                     value={draft.email}
                     onChange={(e) => setDraft({ ...draft, email: e.target.value })}
@@ -405,7 +500,6 @@ export function ProfileEditModal({
                 <input
                   id="prof-address"
                   type="text"
-                  required
                   maxLength={240}
                   value={draft.address}
                   onChange={(e) => setDraft({ ...draft, address: e.target.value })}
@@ -420,7 +514,6 @@ export function ProfileEditModal({
                 <textarea
                   id="prof-summary-en"
                   rows={3}
-                  required
                   maxLength={1500}
                   value={draft.summaryEn}
                   onChange={(e) => setDraft({ ...draft, summaryEn: e.target.value })}
@@ -435,7 +528,6 @@ export function ProfileEditModal({
                 <textarea
                   id="prof-summary-id"
                   rows={3}
-                  required
                   maxLength={1500}
                   value={draft.summaryId}
                   onChange={(e) => setDraft({ ...draft, summaryId: e.target.value })}
@@ -452,13 +544,12 @@ export function ProfileEditModal({
                   key={idx}
                   className="grid grid-cols-1 gap-3 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:grid-cols-3"
                 >
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-[var(--mute)]">
                       {locale === 'en' ? `Metric ${idx + 1} Value` : `Nilai Metrik ${idx + 1}`}
                     </label>
                     <input
                       type="text"
-                      required
                       maxLength={40}
                       value={locale === 'en' ? metric.value : metric.valueId}
                       onChange={(e) => {
@@ -472,13 +563,12 @@ export function ProfileEditModal({
                       className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-xs font-semibold text-[var(--mute)]">
                       {locale === 'en' ? 'Label (EN / ID)' : 'Judul Metrik'}
                     </label>
                     <input
                       type="text"
-                      required
                       maxLength={80}
                       value={locale === 'en' ? metric.label : metric.labelId}
                       onChange={(e) => {
@@ -492,7 +582,7 @@ export function ProfileEditModal({
                       className="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-sm text-[var(--ink)] focus:border-[var(--brass)] focus:outline-none"
                     />
                   </div>
-                  <div className="flex flex-col justify-between gap-1">
+                  <div className="flex min-w-0 flex-col justify-between gap-1">
                     <div>
                       <label className="block text-xs font-semibold text-[var(--mute)]">
                         {locale === 'en' ? 'Sub-detail' : 'Keterangan'}
@@ -563,7 +653,6 @@ export function ProfileEditModal({
                 <input
                   id="edu-inst"
                   type="text"
-                  required
                   maxLength={160}
                   value={draft.education.institution}
                   onChange={(e) =>
@@ -577,14 +666,13 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="edu-major-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Major (EN) *' : 'Jurusan (EN) *'}
                   </label>
                   <input
                     id="edu-major-en"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.education.majorEn}
                     onChange={(e) =>
@@ -596,14 +684,13 @@ export function ProfileEditModal({
                     className={inputClass}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="edu-major-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Major (ID) *' : 'Jurusan (ID) *'}
                   </label>
                   <input
                     id="edu-major-id"
                     type="text"
-                    required
                     maxLength={140}
                     value={draft.education.majorId}
                     onChange={(e) =>
@@ -618,14 +705,13 @@ export function ProfileEditModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="edu-period" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'Years *' : 'Tahun *'}
                   </label>
                   <input
                     id="edu-period"
                     type="text"
-                    required
                     maxLength={40}
                     value={draft.education.period}
                     onChange={(e) =>
@@ -637,14 +723,13 @@ export function ProfileEditModal({
                     className={`${inputClass} font-mono`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="edu-gpa-en" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'GPA (EN) *' : 'IPK (EN) *'}
                   </label>
                   <input
                     id="edu-gpa-en"
                     type="text"
-                    required
                     maxLength={40}
                     value={draft.education.gpaEn}
                     onChange={(e) =>
@@ -656,14 +741,13 @@ export function ProfileEditModal({
                     className={`${inputClass} font-mono`}
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label htmlFor="edu-gpa-id" className="block text-xs font-semibold text-[var(--mute)]">
                     {locale === 'en' ? 'GPA (ID) *' : 'IPK (ID) *'}
                   </label>
                   <input
                     id="edu-gpa-id"
                     type="text"
-                    required
                     maxLength={40}
                     value={draft.education.gpaId}
                     onChange={(e) =>
@@ -717,29 +801,50 @@ export function ProfileEditModal({
             </div>
           )}
 
-          <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+            <div className="min-w-0 flex-1 text-xs">
+              {saveState === 'saving' && (
+                <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  <span>{locale === 'en' ? 'Auto-saving to cloud...' : 'Menyimpan otomatis...'}</span>
+                </span>
+              )}
+              {saveState === 'pending' && (
+                <span className="font-medium text-[var(--brass)]">
+                  {locale === 'en' ? 'Pending auto-save...' : 'Menyiapkan simpan otomatis...'}
+                </span>
+              )}
+              {saveState === 'saved' && (
+                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span>
+                    {locale === 'en' ? 'Auto-saved globally' : 'Tersimpan otomatis secara global'}
+                  </span>
+                </span>
+              )}
+              {saveState === 'incomplete' && (
+                <span className="font-medium text-amber-600 dark:text-amber-300">
+                  {locale === 'en'
+                    ? 'Fill required fields (*) and valid email to auto-save.'
+                    : 'Lengkapi kolom wajib (*) & email valid untuk auto-save.'}
+                </span>
+              )}
+              {saveState === 'idle' && (
+                <span className="text-[var(--mute)]">
+                  {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                </span>
+              )}
+            </div>
+
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full border border-[var(--line)] bg-[var(--bg)] px-4 py-2 text-sm font-semibold text-[var(--ink)] hover:border-[var(--brass)] cursor-pointer"
+              className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] cursor-pointer"
             >
-              {locale === 'en' ? 'Cancel' : 'Batal'}
-            </button>
-            <button
-              type="submit"
-              disabled={isSaving || isProcessingPhoto}
-              className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-colors hover:bg-[var(--ink)] hover:text-[var(--bg)] disabled:opacity-50 cursor-pointer"
-            >
-              {isSaving
-                ? locale === 'en'
-                  ? 'Saving...'
-                  : 'Menyimpan...'
-                : locale === 'en'
-                  ? 'Save All Changes'
-                  : 'Simpan Perubahan'}
+              {locale === 'en' ? 'Done' : 'Tutup'}
             </button>
           </div>
-        </form>
+        </div>
       </div>
     </div>
   );

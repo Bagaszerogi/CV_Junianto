@@ -58,18 +58,19 @@ export function Navbar({
 
   return (
     <header className="no-print sticky top-0 z-40 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--bg)_72%,transparent)] backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between gap-6 px-[clamp(20px,5vw,48px)]">
+      <div className="mx-auto flex h-16 max-w-[1120px] items-center justify-between gap-3 px-[clamp(16px,4vw,48px)] sm:gap-5">
         {/* Zone 1: Brass/Navy Brand Monogram + Short Name */}
         <a
           href="#profile"
-          className="inline-flex items-center gap-2.5 font-display text-lg font-bold tracking-tight text-[var(--ink)] whitespace-nowrap shrink-0"
+          className="inline-flex min-w-0 max-w-[175px] items-center gap-2 font-display text-base font-bold tracking-tight text-[var(--ink)] sm:max-w-[230px] sm:gap-2.5 sm:text-lg"
         >
           <BrandLogo className="h-8 w-8 shrink-0" />
-          <span className="inline-flex items-baseline">
+          <span className="inline-flex min-w-0 items-baseline truncate">
             <EditableText
               value={brandShort}
               canEdit={isAdminUser}
               maxLength={60}
+              className="truncate"
               onSave={onSaveBrandShort}
             />
             <span className="not-italic text-[var(--brass)]" aria-hidden="true">
@@ -81,7 +82,7 @@ export function Navbar({
         {/* Zone 2: 5 concise single-line navigation links */}
         <nav
           aria-label="Primary navigation"
-          className="hidden md:flex items-center gap-7 text-sm font-medium"
+          className="hidden items-center gap-6 text-sm font-medium lg:flex xl:gap-7"
         >
           {navItems.map((item) => (
             <a
@@ -100,12 +101,12 @@ export function Navbar({
         </nav>
 
         {/* Zone 3: Single Primary Top-Right Action (Print PDF or Admin Menu) */}
-        <div className="flex items-center gap-2.5 shrink-0" ref={menuRef}>
+        <div className="flex items-center gap-2 shrink-0 sm:gap-2.5" ref={menuRef}>
           {!firebaseUser ? (
             <button
               type="button"
               onClick={onPrint}
-              className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] transition-colors duration-200 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-3.5 py-2 text-xs font-semibold text-[#1a1405] transition-colors duration-200 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 sm:px-4 cursor-pointer"
             >
               <Printer className="h-3.5 w-3.5" aria-hidden="true" />
               <span>{locale === 'en' ? 'Print / PDF' : 'Cetak PDF'}</span>
@@ -116,7 +117,7 @@ export function Navbar({
                 type="button"
                 aria-expanded={menuOpen}
                 onClick={() => setMenuOpen((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-4 py-2 text-xs font-semibold text-[#1a1405] transition-colors duration-200 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brass)] px-3.5 py-2 text-xs font-semibold text-[#1a1405] transition-colors duration-200 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0 sm:gap-2 sm:px-4 cursor-pointer"
               >
                 <span>
                   {isAdminUser
@@ -131,7 +132,7 @@ export function Navbar({
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--bg2)] py-1.5 shadow-xl">
+                <div className="absolute right-0 mt-2 w-60 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--bg2)] py-1.5 shadow-xl">
                   <div className="border-b border-[var(--line)] px-4 py-2.5">
                     <p className="truncate text-xs font-semibold text-[var(--ink)]">
                       {firebaseUser.email}
@@ -157,7 +158,7 @@ export function Navbar({
                         }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-[var(--brass)] hover:bg-[var(--card)] cursor-pointer"
                       >
-                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+                        <Link2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         <span>
                           {locale === 'en' ? 'Manage Invite Links' : 'Kelola Link Undangan'}
                         </span>
@@ -171,7 +172,7 @@ export function Navbar({
                         }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-[var(--ink)] hover:bg-[var(--card)] cursor-pointer"
                       >
-                        <Pencil className="h-3.5 w-3.5 text-[var(--mute)]" aria-hidden="true" />
+                        <Pencil className="h-3.5 w-3.5 shrink-0 text-[var(--mute)]" aria-hidden="true" />
                         <span>
                           {locale === 'en'
                             ? 'Edit Profile, Photo & Contact'
@@ -189,7 +190,7 @@ export function Navbar({
                     }}
                     className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs font-medium text-[var(--ink)] hover:bg-[var(--card)] cursor-pointer"
                   >
-                    <Printer className="h-3.5 w-3.5 text-[var(--mute)]" aria-hidden="true" />
+                    <Printer className="h-3.5 w-3.5 shrink-0 text-[var(--mute)]" aria-hidden="true" />
                     <span>{siteCopy.downloadPdf}</span>
                   </button>
 
@@ -201,7 +202,7 @@ export function Navbar({
                     }}
                     className="flex w-full items-center gap-2.5 border-t border-[var(--line)] px-4 py-2.5 text-left text-xs font-medium text-red-600 hover:bg-red-500/10 dark:text-red-400 cursor-pointer"
                   >
-                    <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+                    <LogOut className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     <span>{locale === 'en' ? 'Sign Out' : 'Keluar'}</span>
                   </button>
                 </div>
@@ -214,18 +215,18 @@ export function Navbar({
             onClick={() => setMobileOpen((prev) => !prev)}
             aria-expanded={mobileOpen}
             aria-label={mobileOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--line)] text-[var(--ink)] transition-colors hover:border-[var(--brass)] md:hidden cursor-pointer"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--line)] text-[var(--ink)] transition-colors hover:border-[var(--brass)] lg:hidden cursor-pointer"
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile navigation drawer */}
+      {/* Mobile / Tablet navigation drawer */}
       {mobileOpen && (
         <nav
           aria-label="Mobile navigation"
-          className="border-t border-[var(--line)] bg-[var(--bg2)] px-6 py-4 md:hidden"
+          className="border-t border-[var(--line)] bg-[var(--bg2)] px-6 py-4 lg:hidden"
         >
           <div className="flex flex-col gap-2">
             {navItems.map((item) => (

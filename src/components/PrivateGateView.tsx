@@ -47,10 +47,10 @@ export function PrivateGateView({
   };
 
   return (
-    <div className="flex min-h-screen flex-col justify-between bg-[var(--bg)] px-6 py-8 text-[var(--ink)]">
+    <div className="flex min-h-screen flex-col justify-between overflow-x-clip bg-[var(--bg)] px-4 py-6 text-[var(--ink)] sm:px-6 sm:py-8">
       {/* Minimal Top Bar */}
-      <header className="mx-auto flex w-full max-w-4xl items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
+      <header className="mx-auto flex w-full max-w-4xl flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
             onClick={handleEmblemTap}
@@ -107,8 +107,8 @@ export function PrivateGateView({
       </header>
 
       {/* Main Architectural Invitation Card */}
-      <main className="mx-auto my-auto flex w-full max-w-xl flex-col py-12">
-        <div className="rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-7 shadow-sm sm:p-10">
+      <main className="mx-auto my-auto flex w-full max-w-xl flex-col py-10 sm:py-12">
+        <div className="w-full min-w-0 rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 shadow-sm sm:p-10">
           {status === 'checking' ? (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-3">

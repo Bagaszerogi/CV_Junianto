@@ -669,43 +669,41 @@ export function compressImageFile(file: File, maxDimension = 1080): Promise<stri
       const img = new Image();
       img.onerror = () => reject(new Error('Invalid or corrupted image file.'));
       img.onload = () => {
-        let { width, height } = img;
-        if (width > maxDimension || height > maxDimension) {
-          if (width >= height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
-          } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
+        const dimensionSteps = [maxDimension, 820, 640];
+        for (const dim of dimensionSteps) {
+          let { width, height } = img;
+          if (width > dim || height > dim) {
+            if (width >= height) {
+              height = Math.round((height * dim) / width);
+              width = dim;
+            } else {
+              width = Math.round((width * dim) / height);
+              height = dim;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
+
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas context unavailable.'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+          for (let quality = 0.82; quality >= 0.4; quality -= 0.1) {
+            const dataUrl = canvas.toDataURL('image/jpeg', Number(quality.toFixed(2)));
+            if (dataUrl.startsWith('data:image/jpeg;') && dataUrl.length <= 520_000) {
+              resolve(dataUrl);
+              return;
+            }
           }
         }
 
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          reject(new Error('Canvas context unavailable.'));
-          return;
-        }
-
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Step down JPEG quality if needed to stay safely below Firestore's 1MB doc limit
-        let quality = 0.78;
-        let dataUrl = canvas.toDataURL('image/jpeg', quality);
-        while (dataUrl.length > 700_000 && quality > 0.35) {
-          quality -= 0.1;
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
-        }
-
-        if (dataUrl.length > MAX_IMAGE_DATA_URL_LEN) {
-          reject(new Error('Compressed image still exceeds 750 KB limit. Please use a smaller photo.'));
-          return;
-        }
-
-        resolve(dataUrl);
+        reject(new Error('Compressed image still exceeds size limit. Please use a smaller photo.'));
       };
       img.src = String(reader.result);
     };

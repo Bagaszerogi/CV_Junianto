@@ -89,12 +89,12 @@ export function ContactSection({
       <section
         id="contact"
         data-animate="section"
-        className="no-print bg-[var(--bg)] py-16 md:py-24"
+        className="no-print overflow-x-clip bg-[var(--bg)] py-16 md:py-24"
       >
         <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)]">
           {/* Centered Editorial Call-To-Action Header */}
           <div className="mx-auto max-w-2xl text-center">
-            <p className="inline-flex items-center justify-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase">
+            <p className="inline-flex max-w-full flex-wrap items-center justify-center gap-3 text-xs font-semibold tracking-wider text-[var(--brass)] uppercase">
               <span className="inline-block h-px w-6 bg-[var(--brass)]" aria-hidden="true" />
               <EditableText
                 value={siteCopy.contactKicker}
@@ -127,16 +127,16 @@ export function ContactSection({
                 href={buildWhatsAppUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-full bg-[var(--brass)] px-6 py-3 text-sm font-semibold text-[#1a1405] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--ink)] hover:text-[var(--bg)] whitespace-nowrap shrink-0"
+                className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-[var(--brass)] px-5 py-3 text-center text-sm font-semibold text-[#1a1405] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[var(--ink)] hover:text-[var(--bg)] sm:px-6"
               >
-                <span>WhatsApp {profile.phoneDisplay}</span>
-                <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                <span className="[overflow-wrap:anywhere]">WhatsApp {profile.phoneDisplay}</span>
+                <ArrowUpRight className="h-4 w-4 shrink-0" aria-hidden="true" />
               </a>
               <a
                 href={buildMailtoUrl()}
-                className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] px-6 py-3 text-sm font-semibold text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] whitespace-nowrap shrink-0"
+                className="inline-flex max-w-full items-center justify-center gap-2 rounded-full border border-[var(--line)] bg-[var(--card)] px-5 py-3 text-center text-sm font-semibold text-[var(--ink)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--brass)] sm:px-6"
               >
-                <Mail className="h-4 w-4 text-[var(--brass)]" aria-hidden="true" />
+                <Mail className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                 <span>{locale === 'en' ? 'Send Email' : 'Kirim Email'}</span>
               </a>
             </div>
@@ -144,19 +144,19 @@ export function ContactSection({
 
           <div className="mt-14 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-start">
             {/* Left Quick-Copy Contact Card */}
-            <div className="lg:col-span-5">
-              <div className="divide-y divide-[var(--line)] rounded-[22px] border border-[var(--line)] bg-[var(--card)] px-6">
+            <div className="min-w-0 lg:col-span-5">
+              <div className="divide-y divide-[var(--line)] rounded-[22px] border border-[var(--line)] bg-[var(--card)] px-5 sm:px-6">
                 <div className="flex items-center justify-between gap-3 py-4 text-sm">
                   <a
                     href={`mailto:${sanitizeEmailForHref(profile.email)}`}
-                    className="flex min-w-0 items-center gap-3 text-[var(--ink)] transition-colors hover:text-[var(--brass)]"
+                    className="flex min-w-0 flex-1 items-center gap-3 text-[var(--ink)] transition-colors hover:text-[var(--brass)]"
                   >
                     <Mail className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                     <EditableText
                       value={profile.email}
                       canEdit={isAdminUser}
                       maxLength={140}
-                      className="truncate font-medium"
+                      className="min-w-0 flex-1 break-all font-medium"
                       onSave={(val) => onSaveProfilePatch({ email: val })}
                     />
                   </a>
@@ -184,13 +184,14 @@ export function ContactSection({
                 <div className="flex items-center justify-between gap-3 py-4 text-sm">
                   <a
                     href={phoneHref}
-                    className="flex items-center gap-3 font-mono text-[var(--ink)] transition-colors hover:text-[var(--brass)] tabular-nums"
+                    className="flex min-w-0 flex-1 items-center gap-3 font-mono text-[var(--ink)] transition-colors hover:text-[var(--brass)] tabular-nums"
                   >
                     <Phone className="h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
                     <EditableText
                       value={profile.phoneDisplay}
                       canEdit={isAdminUser}
                       maxLength={40}
+                      className="min-w-0 [overflow-wrap:anywhere]"
                       onSave={(val) => onSaveProfilePatch({ phoneDisplay: val })}
                     />
                   </a>
@@ -215,20 +216,22 @@ export function ContactSection({
                   </button>
                 </div>
 
-                <div className="flex items-start gap-3 py-4 text-sm text-[var(--mute)]">
+                <div className="flex min-w-0 items-start gap-3 py-4 text-sm text-[var(--mute)]">
                   <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brass)]" aria-hidden="true" />
-                  <EditableText
-                    value={profile.address}
-                    canEdit={isAdminUser}
-                    maxLength={240}
-                    onSave={(val) => onSaveProfilePatch({ address: val })}
-                  />
+                  <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
+                    <EditableText
+                      value={profile.address}
+                      canEdit={isAdminUser}
+                      maxLength={240}
+                      onSave={(val) => onSaveProfilePatch({ address: val })}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Right Interactive Message Composer */}
-            <div className="lg:col-span-7">
+            <div className="min-w-0 lg:col-span-7">
               <div className="rounded-[22px] border border-[var(--line)] bg-[var(--bg2)] p-6 md:p-8">
                 <h3 className="font-display text-lg font-bold text-[var(--ink)]">
                   <EditableText
@@ -329,11 +332,11 @@ export function ContactSection({
         </div>
       </section>
 
-      <footer className="no-print border-t border-[var(--line)] bg-[var(--bg)] py-10">
+      <footer className="no-print overflow-x-clip border-t border-[var(--line)] bg-[var(--bg)] py-10">
         <div className="mx-auto flex max-w-[1120px] flex-col gap-6 px-[clamp(20px,5vw,48px)] md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
+          <div className="flex min-w-0 items-start gap-3">
             <BrandLogo className="mt-0.5 h-9 w-9 shrink-0" />
-            <div>
+            <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
               <p className="font-display text-sm font-bold text-[var(--ink)]">
                 © 2026{' '}
                 <EditableText

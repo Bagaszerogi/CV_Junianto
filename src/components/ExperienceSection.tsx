@@ -1,11 +1,13 @@
-import { FormEvent, MouseEvent, useEffect, useRef, useState } from 'react';
+import { FormEvent, MouseEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   Briefcase,
   Building2,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Loader2,
   Pencil,
   Pin,
   Plus,
@@ -87,6 +89,9 @@ export function ExperienceSection({
   const [sortOrder, setSortOrder] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [companyAutoSaveState, setCompanyAutoSaveState] = useState<
+    'idle' | 'saving' | 'saved' | 'invalid'
+  >('idle');
 
   // Career Stage (Promotion / Progression) modal state
   const [stageModalTarget, setStageModalTarget] = useState<{
@@ -105,6 +110,9 @@ export function ExperienceSection({
   const [markPrevCompleted, setMarkPrevCompleted] = useState(true);
   const [stageError, setStageError] = useState<string | null>(null);
   const [isSavingStage, setIsSavingStage] = useState(false);
+  const [stageAutoSaveState, setStageAutoSaveState] = useState<
+    'idle' | 'saving' | 'saved' | 'invalid'
+  >('idle');
 
   // Inline quick "+ Tambah Keterangan Kerja" composer keyed by `${exp.id}:${stage.id}`
   const [addingBulletKey, setAddingBulletKey] = useState<string | null>(null);
@@ -112,6 +120,16 @@ export function ExperienceSection({
   const [isSavingBullet, setIsSavingBullet] = useState(false);
 
   const tlRef = useRef<HTMLDivElement>(null);
+  const expQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const editingItemRef = useRef<FirestoreExperienceItem | null>(null);
+  const lastCompanyDigestRef = useRef('');
+  const companyTimerRef = useRef<number | null>(null);
+  const stageTargetRef = useRef<{
+    exp: FirestoreExperienceItem;
+    editingStage?: CareerStage;
+  } | null>(null);
+  const lastStageDigestRef = useRef('');
+  const stageTimerRef = useRef<number | null>(null);
   const t = UI_COPY[locale].sections;
 
   const handleCardMouseMove = (e: MouseEvent<HTMLElement>) => {
@@ -173,24 +191,35 @@ export function ExperienceSection({
 
   const extractError = (err: unknown): string => formatReadableFirestoreError(err);
 
-  const persistStages = async (exp: FirestoreExperienceItem, nextStages: CareerStage[]) => {
-    const primary = nextStages[0];
-    const hasActive = nextStages.some((s) => s.status === 'active');
-    await saveExperienceToFirestore(
-      {
-        ...exp,
-        role: primary.role,
-        roleId: primary.roleId,
-        status: hasActive ? 'active' : 'completed',
-        period: primary.period,
-        periodId: primary.periodId,
-        bullets: primary.bullets,
-        bulletsId: primary.bulletsId,
-        careerStages: nextStages,
-      },
-      exp.fromFirestore
-    );
-  };
+  const enqueueExpWrite = useCallback((fn: () => Promise<void>): Promise<void> => {
+    const run = expQueueRef.current.catch(() => undefined).then(fn);
+    expQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
+
+  const persistStages = useCallback(
+    async (exp: FirestoreExperienceItem, nextStages: CareerStage[]) => {
+      const primary = nextStages[0];
+      const hasActive = nextStages.some((s) => s.status === 'active');
+      await enqueueExpWrite(() =>
+        saveExperienceToFirestore(
+          {
+            ...exp,
+            role: primary.role,
+            roleId: primary.roleId,
+            status: hasActive ? 'active' : 'completed',
+            period: primary.period,
+            periodId: primary.periodId,
+            bullets: primary.bullets,
+            bulletsId: primary.bulletsId,
+            careerStages: nextStages,
+          },
+          exp.fromFirestore
+        )
+      );
+    },
+    [enqueueExpWrite]
+  );
 
   const showFeedback = (msg: string) => {
     setStatusFeedback(msg);
@@ -199,7 +228,109 @@ export function ExperienceSection({
     }, 3500);
   };
 
+  const buildCompanyPayload = useCallback(
+    (targetItem: FirestoreExperienceItem | null) => {
+      const bullets = bulletsText
+        .split('\n')
+        .map((line) => line.trim().slice(0, 500))
+        .filter(Boolean)
+        .slice(0, 15);
+      const bulletsId = bulletsIdText
+        .split('\n')
+        .map((line) => line.trim().slice(0, 500))
+        .filter(Boolean)
+        .slice(0, 15);
+      const systems = systemsText
+        .split(',')
+        .map((s) => s.trim().slice(0, 80))
+        .filter(Boolean)
+        .slice(0, 25);
+
+      const cleanCompany = company.trim().slice(0, 140);
+      const cleanRole = role.trim().slice(0, 140);
+      const cleanRoleId = (roleId || role).trim().slice(0, 140);
+      const cleanPeriod = period.trim().slice(0, 60);
+      const cleanPeriodId = (periodId || period).trim().slice(0, 60);
+      const cleanScale = scaleContext.trim().slice(0, 200);
+      const cleanScaleId = (scaleContextId || scaleContext).trim().slice(0, 200);
+      const clampedOrder = Math.min(1000, Math.max(0, Math.round(Number(sortOrder) || 0)));
+
+      const isValid =
+        cleanCompany.length > 0 &&
+        cleanRole.length > 0 &&
+        cleanPeriod.length > 0 &&
+        bullets.length > 0;
+
+      const existingStages = targetItem ? normalizeExperienceStages(targetItem) : [];
+      const firstStage: CareerStage = {
+        id: existingStages[0]?.id ?? `stage_${Date.now().toString(36)}`,
+        role: cleanRole,
+        roleId: cleanRoleId,
+        status,
+        employmentType,
+        period: cleanPeriod,
+        periodId: cleanPeriodId,
+        bullets,
+        bulletsId: bulletsId.length > 0 ? bulletsId : bullets,
+      };
+      const nextStages =
+        existingStages.length > 1 ? [firstStage, ...existingStages.slice(1)] : [firstStage];
+
+      const derivedStatus: ExperienceStatus = nextStages.some((s) => s.status === 'active')
+        ? 'active'
+        : 'completed';
+
+      const payload = {
+        company: cleanCompany,
+        role: firstStage.role,
+        roleId: firstStage.roleId,
+        status: derivedStatus,
+        category,
+        period: firstStage.period,
+        periodId: firstStage.periodId,
+        scaleContext: cleanScale,
+        scaleContextId: cleanScaleId,
+        bullets: firstStage.bullets,
+        bulletsId: firstStage.bulletsId,
+        systems,
+        sortOrder: clampedOrder,
+        careerStages: nextStages,
+      };
+      const digest = JSON.stringify({
+        company: payload.company,
+        firstStage,
+        category: payload.category,
+        scaleContext: payload.scaleContext,
+        scaleContextId: payload.scaleContextId,
+        systems: payload.systems,
+        sortOrder: payload.sortOrder,
+        syncHeroProfile,
+      });
+
+      return { isValid, payload, firstStage, digest };
+    },
+    [
+      bulletsIdText,
+      bulletsText,
+      category,
+      company,
+      employmentType,
+      period,
+      periodId,
+      role,
+      roleId,
+      scaleContext,
+      scaleContextId,
+      sortOrder,
+      status,
+      syncHeroProfile,
+      systemsText,
+    ]
+  );
+
   const openAddModal = () => {
+    editingItemRef.current = null;
+    lastCompanyDigestRef.current = '';
     setEditingItem(null);
     setCompany('');
     setRole('');
@@ -217,12 +348,39 @@ export function ExperienceSection({
     setSystemsText('');
     setSortOrder(experiences.length);
     setFormError(null);
+    setCompanyAutoSaveState('idle');
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: FirestoreExperienceItem) => {
     const stages = normalizeExperienceStages(item);
     const primary = stages[0];
+    editingItemRef.current = item;
+    const initialDigest = JSON.stringify({
+      company: item.company.trim().slice(0, 140),
+      firstStage: {
+        id: primary.id,
+        role: primary.role.trim().slice(0, 140),
+        roleId: (primary.roleId || primary.role).trim().slice(0, 140),
+        status: primary.status,
+        employmentType: primary.employmentType ?? 'full-time',
+        period: primary.period.trim().slice(0, 60),
+        periodId: (primary.periodId || primary.period).trim().slice(0, 60),
+        bullets: primary.bullets.map((l) => l.trim().slice(0, 500)).filter(Boolean).slice(0, 15),
+        bulletsId: (primary.bulletsId.length > 0 ? primary.bulletsId : primary.bullets)
+          .map((l) => l.trim().slice(0, 500))
+          .filter(Boolean)
+          .slice(0, 15),
+      },
+      category: item.category,
+      scaleContext: item.scaleContext.trim().slice(0, 200),
+      scaleContextId: (item.scaleContextId || item.scaleContext).trim().slice(0, 200),
+      systems: item.systems.map((s) => s.trim().slice(0, 80)).filter(Boolean).slice(0, 25),
+      sortOrder: Math.min(1000, Math.max(0, Math.round(Number(item.sortOrder) || 0))),
+      syncHeroProfile: primary.status === 'active',
+    });
+    lastCompanyDigestRef.current = initialDigest;
+
     setEditingItem(item);
     setCompany(item.company);
     setRole(primary.role);
@@ -240,10 +398,82 @@ export function ExperienceSection({
     setSystemsText(item.systems.join(', '));
     setSortOrder(item.sortOrder);
     setFormError(null);
+    setCompanyAutoSaveState('idle');
     setIsModalOpen(true);
   };
 
+  const persistExistingCompany = useCallback(async () => {
+    const current = editingItemRef.current;
+    if (!current) return;
+    const { isValid, payload, firstStage, digest } = buildCompanyPayload(current);
+    if (!isValid) {
+      setCompanyAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastCompanyDigestRef.current) return;
+
+    setCompanyAutoSaveState('saving');
+    setFormError(null);
+    try {
+      await enqueueExpWrite(() =>
+        saveExperienceToFirestore({ id: current.id, ...payload }, current.fromFirestore)
+      );
+      if (status === 'active' && syncHeroProfile && onSyncCurrentRoleToProfile) {
+        await onSyncCurrentRoleToProfile({
+          company: payload.company,
+          role: locale === 'en' ? firstStage.role : firstStage.roleId,
+          scaleContext: locale === 'en' ? payload.scaleContext : payload.scaleContextId,
+        });
+      }
+      lastCompanyDigestRef.current = digest;
+      const updatedItem: FirestoreExperienceItem = {
+        ...current,
+        ...payload,
+        fromFirestore: true,
+      };
+      editingItemRef.current = updatedItem;
+      setEditingItem(updatedItem);
+      setCompanyAutoSaveState('saved');
+    } catch (err) {
+      setFormError(extractError(err));
+      setCompanyAutoSaveState('idle');
+    }
+  }, [buildCompanyPayload, enqueueExpWrite, locale, onSyncCurrentRoleToProfile, status, syncHeroProfile]);
+
+  useEffect(() => {
+    if (!isModalOpen || !editingItemRef.current) return;
+    const { isValid, digest } = buildCompanyPayload(editingItemRef.current);
+    if (!isValid) {
+      setCompanyAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastCompanyDigestRef.current) return;
+
+    if (companyTimerRef.current !== null) {
+      window.clearTimeout(companyTimerRef.current);
+    }
+    companyTimerRef.current = window.setTimeout(() => {
+      companyTimerRef.current = null;
+      void persistExistingCompany();
+    }, 480);
+
+    return () => {
+      if (companyTimerRef.current !== null) {
+        window.clearTimeout(companyTimerRef.current);
+        companyTimerRef.current = null;
+      }
+    };
+  }, [buildCompanyPayload, isModalOpen, persistExistingCompany]);
+
   const closeModal = () => {
+    if (companyTimerRef.current !== null) {
+      window.clearTimeout(companyTimerRef.current);
+      companyTimerRef.current = null;
+    }
+    if (editingItemRef.current) {
+      void persistExistingCompany();
+    }
+    editingItemRef.current = null;
     setIsModalOpen(false);
     setEditingItem(null);
     setFormError(null);
@@ -251,22 +481,15 @@ export function ExperienceSection({
 
   const handleSaveExperience = async (e: FormEvent) => {
     e.preventDefault();
+    if (editingItemRef.current) {
+      await persistExistingCompany();
+      return;
+    }
     setFormError(null);
 
-    const bullets = bulletsText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const bulletsId = bulletsIdText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const systems = systemsText
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const { isValid, payload, firstStage } = buildCompanyPayload(null);
 
-    if (!company.trim() || !role.trim() || !period.trim() || bullets.length === 0) {
+    if (!isValid) {
       setFormError(
         locale === 'en'
           ? 'Company, Role, Period, and at least one detail bullet are required.'
@@ -277,50 +500,7 @@ export function ExperienceSection({
 
     setIsSaving(true);
     try {
-      const existingStages = editingItem ? normalizeExperienceStages(editingItem) : [];
-      const firstStage: CareerStage = {
-        id: existingStages[0]?.id ?? `stage_${Date.now().toString(36)}`,
-        role: role.trim(),
-        roleId: (roleId || role).trim(),
-        status,
-        employmentType,
-        period: period.trim(),
-        periodId: (periodId || period).trim(),
-        bullets,
-        bulletsId: bulletsId.length > 0 ? bulletsId : bullets,
-      };
-      const nextStages =
-        existingStages.length > 1 ? [firstStage, ...existingStages.slice(1)] : [firstStage];
-
-      const derivedStatus: ExperienceStatus = nextStages.some((s) => s.status === 'active')
-        ? 'active'
-        : 'completed';
-
-      const payload = {
-        company: company.trim(),
-        role: firstStage.role,
-        roleId: firstStage.roleId,
-        status: derivedStatus,
-        category,
-        period: firstStage.period,
-        periodId: firstStage.periodId,
-        scaleContext: scaleContext.trim(),
-        scaleContextId: (scaleContextId || scaleContext).trim(),
-        bullets: firstStage.bullets,
-        bulletsId: firstStage.bulletsId,
-        systems,
-        sortOrder: Number(sortOrder) || 0,
-        careerStages: nextStages,
-      };
-
-      if (editingItem) {
-        await saveExperienceToFirestore(
-          { id: editingItem.id, ...payload },
-          editingItem.fromFirestore
-        );
-      } else {
-        await createExperienceInFirestore(payload);
-      }
+      await enqueueExpWrite(() => createExperienceInFirestore(payload));
 
       if (status === 'active' && syncHeroProfile && onSyncCurrentRoleToProfile) {
         await onSyncCurrentRoleToProfile({
@@ -338,9 +518,58 @@ export function ExperienceSection({
     }
   };
 
+  const buildStagePayload = useCallback(
+    (editingStage?: CareerStage) => {
+      const bullets = stageBulletsText
+        .split('\n')
+        .map((line) => line.trim().slice(0, 500))
+        .filter(Boolean)
+        .slice(0, 15);
+      const bulletsId = stageBulletsIdText
+        .split('\n')
+        .map((line) => line.trim().slice(0, 500))
+        .filter(Boolean)
+        .slice(0, 15);
+
+      const cleanRole = stageRole.trim().slice(0, 140);
+      const cleanRoleId = (stageRoleId || stageRole).trim().slice(0, 140);
+      const cleanPeriod = stagePeriod.trim().slice(0, 60);
+      const cleanPeriodId = (stagePeriodId || stagePeriod).trim().slice(0, 60);
+      const isValid = cleanRole.length > 0 && cleanPeriod.length > 0 && bullets.length > 0;
+
+      const stageObj: CareerStage = {
+        id: editingStage?.id ?? `stage_${Date.now().toString(36)}`,
+        role: cleanRole,
+        roleId: cleanRoleId,
+        status: stageStatus,
+        employmentType: stageEmploymentType,
+        period: cleanPeriod,
+        periodId: cleanPeriodId,
+        bullets,
+        bulletsId: bulletsId.length > 0 ? bulletsId : bullets,
+      };
+      const digest = JSON.stringify({ stageObj, stageSyncHeroProfile });
+      return { isValid, stageObj, digest };
+    },
+    [
+      stageBulletsIdText,
+      stageBulletsText,
+      stageEmploymentType,
+      stagePeriod,
+      stagePeriodId,
+      stageRole,
+      stageRoleId,
+      stageStatus,
+      stageSyncHeroProfile,
+    ]
+  );
+
   // Career progression modal handlers
   const openAddStageModal = (exp: FirestoreExperienceItem) => {
-    setStageModalTarget({ exp });
+    const target = { exp };
+    stageTargetRef.current = target;
+    lastStageDigestRef.current = '';
+    setStageModalTarget(target);
     setStageRole('');
     setStageRoleId('');
     setStagePeriod('');
@@ -352,10 +581,32 @@ export function ExperienceSection({
     setStageBulletsIdText('');
     setMarkPrevCompleted(true);
     setStageError(null);
+    setStageAutoSaveState('idle');
   };
 
   const openEditStageModal = (exp: FirestoreExperienceItem, stage: CareerStage) => {
-    setStageModalTarget({ exp, editingStage: stage });
+    const target = { exp, editingStage: stage };
+    stageTargetRef.current = target;
+    const initialDigest = JSON.stringify({
+      stageObj: {
+        id: stage.id,
+        role: stage.role.trim().slice(0, 140),
+        roleId: (stage.roleId || stage.role).trim().slice(0, 140),
+        status: stage.status,
+        employmentType: stage.employmentType ?? 'full-time',
+        period: stage.period.trim().slice(0, 60),
+        periodId: (stage.periodId || stage.period).trim().slice(0, 60),
+        bullets: stage.bullets.map((l) => l.trim().slice(0, 500)).filter(Boolean).slice(0, 15),
+        bulletsId: (stage.bulletsId.length > 0 ? stage.bulletsId : stage.bullets)
+          .map((l) => l.trim().slice(0, 500))
+          .filter(Boolean)
+          .slice(0, 15),
+      },
+      stageSyncHeroProfile: stage.status === 'active',
+    });
+    lastStageDigestRef.current = initialDigest;
+
+    setStageModalTarget(target);
     setStageRole(stage.role);
     setStageRoleId(stage.roleId);
     setStagePeriod(stage.period);
@@ -367,23 +618,115 @@ export function ExperienceSection({
     setStageBulletsIdText(stage.bulletsId.join('\n'));
     setMarkPrevCompleted(false);
     setStageError(null);
+    setStageAutoSaveState('idle');
+  };
+
+  const persistExistingStage = useCallback(async () => {
+    const target = stageTargetRef.current;
+    if (!target?.editingStage) return;
+    const { isValid, stageObj, digest } = buildStagePayload(target.editingStage);
+    if (!isValid) {
+      setStageAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastStageDigestRef.current) return;
+
+    setStageAutoSaveState('saving');
+    setStageError(null);
+    try {
+      const currentStages = normalizeExperienceStages(target.exp);
+      const nextStages = currentStages.map((s) =>
+        s.id === target.editingStage!.id ? stageObj : s
+      );
+      await persistStages(target.exp, nextStages);
+
+      if (stageStatus === 'active' && stageSyncHeroProfile && onSyncCurrentRoleToProfile) {
+        await onSyncCurrentRoleToProfile({
+          company: target.exp.company,
+          role: locale === 'en' ? stageObj.role : stageObj.roleId,
+          scaleContext:
+            locale === 'en' ? target.exp.scaleContext : target.exp.scaleContextId,
+        });
+      }
+
+      lastStageDigestRef.current = digest;
+      const primary = nextStages[0];
+      const nextTarget = {
+        exp: {
+          ...target.exp,
+          role: primary.role,
+          roleId: primary.roleId,
+          status: (nextStages.some((s) => s.status === 'active')
+            ? 'active'
+            : 'completed') as ExperienceStatus,
+          period: primary.period,
+          periodId: primary.periodId,
+          bullets: primary.bullets,
+          bulletsId: primary.bulletsId,
+          careerStages: nextStages,
+          fromFirestore: true,
+        },
+        editingStage: stageObj,
+      };
+      stageTargetRef.current = nextTarget;
+      setStageModalTarget(nextTarget);
+      setStageAutoSaveState('saved');
+    } catch (err) {
+      setStageError(extractError(err));
+      setStageAutoSaveState('idle');
+    }
+  }, [buildStagePayload, locale, onSyncCurrentRoleToProfile, persistStages, stageStatus, stageSyncHeroProfile]);
+
+  useEffect(() => {
+    if (!stageModalTarget?.editingStage || !stageTargetRef.current?.editingStage) return;
+    const { isValid, digest } = buildStagePayload(stageTargetRef.current.editingStage);
+    if (!isValid) {
+      setStageAutoSaveState('invalid');
+      return;
+    }
+    if (digest === lastStageDigestRef.current) return;
+
+    if (stageTimerRef.current !== null) {
+      window.clearTimeout(stageTimerRef.current);
+    }
+    stageTimerRef.current = window.setTimeout(() => {
+      stageTimerRef.current = null;
+      void persistExistingStage();
+    }, 480);
+
+    return () => {
+      if (stageTimerRef.current !== null) {
+        window.clearTimeout(stageTimerRef.current);
+        stageTimerRef.current = null;
+      }
+    };
+  }, [buildStagePayload, persistExistingStage, stageModalTarget?.editingStage]);
+
+  const closeStageModal = () => {
+    if (stageTimerRef.current !== null) {
+      window.clearTimeout(stageTimerRef.current);
+      stageTimerRef.current = null;
+    }
+    if (stageTargetRef.current?.editingStage) {
+      void persistExistingStage();
+    }
+    stageTargetRef.current = null;
+    setStageModalTarget(null);
+    setStageError(null);
   };
 
   const handleSaveStage = async (e: FormEvent) => {
     e.preventDefault();
     if (!stageModalTarget) return;
+    if (stageModalTarget.editingStage) {
+      await persistExistingStage();
+      return;
+    }
     setStageError(null);
 
-    const bullets = stageBulletsText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const bulletsId = stageBulletsIdText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean);
+    const { isValid, stageObj } = buildStagePayload(undefined);
 
-    if (!stageRole.trim() || !stagePeriod.trim() || bullets.length === 0) {
+    if (!isValid) {
       setStageError(
         locale === 'en'
           ? 'Role title, period, and at least one work description bullet are required.'
@@ -394,41 +737,24 @@ export function ExperienceSection({
 
     setIsSavingStage(true);
     try {
-      const { exp, editingStage } = stageModalTarget;
+      const { exp } = stageModalTarget;
       const currentStages = normalizeExperienceStages(exp);
-
-      const newOrUpdated: CareerStage = {
-        id: editingStage?.id ?? `stage_${Date.now().toString(36)}`,
-        role: stageRole.trim(),
-        roleId: (stageRoleId || stageRole).trim(),
-        status: stageStatus,
-        employmentType: stageEmploymentType,
-        period: stagePeriod.trim(),
-        periodId: (stagePeriodId || stagePeriod).trim(),
-        bullets,
-        bulletsId: bulletsId.length > 0 ? bulletsId : bullets,
-      };
-
-      let nextStages: CareerStage[];
-      if (editingStage) {
-        nextStages = currentStages.map((s) => (s.id === editingStage.id ? newOrUpdated : s));
-      } else {
-        const previousStages = markPrevCompleted
-          ? currentStages.map((s) => ({ ...s, status: 'completed' as ExperienceStatus }))
-          : currentStages;
-        nextStages = [newOrUpdated, ...previousStages].slice(0, 8);
-      }
+      const previousStages = markPrevCompleted
+        ? currentStages.map((s) => ({ ...s, status: 'completed' as ExperienceStatus }))
+        : currentStages;
+      const nextStages = [stageObj, ...previousStages].slice(0, 8);
 
       await persistStages(exp, nextStages);
 
       if (stageStatus === 'active' && stageSyncHeroProfile && onSyncCurrentRoleToProfile) {
         await onSyncCurrentRoleToProfile({
           company: exp.company,
-          role: locale === 'en' ? newOrUpdated.role : newOrUpdated.roleId,
+          role: locale === 'en' ? stageObj.role : stageObj.roleId,
           scaleContext: locale === 'en' ? exp.scaleContext : exp.scaleContextId,
         });
       }
 
+      stageTargetRef.current = null;
       setStageModalTarget(null);
     } catch (err) {
       setStageError(extractError(err));
@@ -577,11 +903,11 @@ export function ExperienceSection({
     <section
       id="experience"
       data-animate="section"
-      className="print-section border-b border-[var(--line)] bg-[var(--bg2)] py-16 print:bg-white print:py-3 md:py-24"
+      className="print-section overflow-x-clip border-b border-[var(--line)] bg-[var(--bg2)] py-16 print:bg-white print:py-3 md:py-24"
     >
       <div className="mx-auto max-w-[1120px] px-[clamp(20px,5vw,48px)] print:px-0">
         <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="inline-flex items-center gap-3 font-mono text-[11px] font-medium uppercase tracking-[0.16em] text-[var(--brass)] print:text-[10px]">
               <span className="inline-block h-px w-[22px] bg-[var(--brass)] print:hidden" aria-hidden="true" />
               <EditableText
@@ -610,7 +936,7 @@ export function ExperienceSection({
             </p>
           </div>
 
-          <div className="no-print flex flex-wrap items-center gap-3 self-start">
+          <div className="no-print flex max-w-full flex-wrap items-center gap-3 self-start">
             {isAdminUser && (
               <button
                 type="button"
@@ -626,7 +952,7 @@ export function ExperienceSection({
             <div
               role="tablist"
               aria-label="Filter work experience"
-              className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg)] p-1"
+              className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-1 sm:rounded-full"
             >
               {(['all', 'leadership', 'operations'] as const).map((key) => (
                 <button
@@ -681,19 +1007,18 @@ export function ExperienceSection({
                 return (
                   <motion.div
                     key={exp.id}
-                    layout={!prefersReducedMotion}
                     initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={prefersReducedMotion ? undefined : { opacity: 0, y: -6 }}
-                    transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                    transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
                     className="ev in print-break-inside-avoid"
                   >
                     <article
                       onMouseMove={handleCardMouseMove}
-                      className="editorial-card grid grid-cols-1 gap-6 bg-[var(--bg)]/80 p-6 print:grid-cols-12 print:gap-4 print:p-3 md:grid-cols-12 md:gap-8 md:p-8"
+                      className="editorial-card grid grid-cols-1 gap-6 bg-[var(--bg)]/80 p-5 sm:p-6 print:grid-cols-12 print:gap-4 print:p-3 md:grid-cols-12 md:gap-8 md:p-8"
                     >
                       {/* Left Column: LinkedIn-style Company Identity & Controls */}
-                      <div className="relative z-10 print:col-span-4 md:col-span-4">
+                      <div className="relative z-10 min-w-0 print:col-span-4 md:col-span-4">
                         <div className="flex items-start gap-3.5 print:gap-2.5">
                           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] bg-[var(--bg2)] text-[var(--brass)] print:h-8 print:w-8 print:rounded-lg">
                             <Building2 className="h-5 w-5 print:h-4 print:w-4" aria-hidden="true" />
@@ -836,7 +1161,7 @@ export function ExperienceSection({
                       </div>
 
                       {/* Right Column: LinkedIn-style Connected Career Progression Stages */}
-                      <div className="relative z-10 print:col-span-8 md:col-span-8">
+                      <div className="relative z-10 min-w-0 print:col-span-8 md:col-span-8">
                         <div className="relative">
                           {stages.map((stage, sIdx) => {
                             const stageBullets = locale === 'en' ? stage.bullets : stage.bulletsId;
@@ -871,7 +1196,7 @@ export function ExperienceSection({
 
                                 {/* Stage Header: Role Title + Period + Employment Type + Work Status */}
                                 <div className="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
-                                  <div>
+                                  <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                                     <h4 className="font-display text-base font-bold text-[var(--brass)] print:text-xs">
                                       <EditableText
                                         value={locale === 'en' ? stage.role : stage.roleId}
@@ -1031,9 +1356,9 @@ export function ExperienceSection({
 
                                 {/* Work Description Bullets */}
                                 <div className={isCollapsed ? 'hidden print:block' : ''}>
-                                  <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-[var(--ink)]/90 print:mt-1 print:space-y-1 print:text-[10.5px] print:leading-snug">
+                                  <ul className="mt-3 space-y-2.5 text-sm leading-relaxed text-[var(--ink)]/90 [overflow-wrap:anywhere] print:mt-1 print:space-y-1 print:text-[10.5px] print:leading-snug">
                                     {stageBullets.map((bullet, bIdx) => (
-                                      <li key={bIdx} className="group/bullet flex items-start gap-2.5 print:gap-2">
+                                      <li key={bIdx} className="group/bullet flex min-w-0 items-start gap-2.5 print:gap-2">
                                         <span
                                           aria-hidden="true"
                                           className="mt-2.5 h-px w-2.5 shrink-0 bg-[var(--brass)] print:mt-1.5 print:w-2"
@@ -1150,7 +1475,7 @@ export function ExperienceSection({
 
                         {/* Core Systems footer for the company */}
                         {(exp.systems.length > 0 || isAdminUser) && (
-                          <div className="mt-5 border-t border-[var(--line)] pt-3.5 text-xs text-[var(--mute)] print:mt-2 print:pt-1.5 print:text-[10px]">
+                          <div className="mt-5 border-t border-[var(--line)] pt-3.5 text-xs text-[var(--mute)] [overflow-wrap:anywhere] print:mt-2 print:pt-1.5 print:text-[10px]">
                             <span className="font-semibold text-[var(--ink)]">
                               {locale === 'en' ? 'Core Systems:' : 'Sistem Utama:'}
                             </span>{' '}
@@ -1166,12 +1491,14 @@ export function ExperienceSection({
                               onSave={(val) => {
                                 const parsed = val
                                   .split(/[·,]+/)
-                                  .map((s) => s.trim())
+                                  .map((s) => s.trim().slice(0, 80))
                                   .filter(Boolean)
                                   .slice(0, 25);
-                                return saveExperienceToFirestore(
-                                  { ...exp, systems: parsed },
-                                  exp.fromFirestore
+                                return enqueueExpWrite(() =>
+                                  saveExperienceToFirestore(
+                                    { ...exp, systems: parsed },
+                                    exp.fromFirestore
+                                  )
                                 );
                               }}
                             />
@@ -1195,9 +1522,9 @@ export function ExperienceSection({
           aria-labelledby="exp-modal-title"
           className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
+          <div className="max-h-[92vh] w-full max-w-[min(42rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-5 shadow-2xl sm:p-6 md:p-8">
             <div className="flex items-start justify-between gap-4">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3
                   id="exp-modal-title"
                   className="font-display text-xl font-bold text-[var(--ink)]"
@@ -1211,16 +1538,20 @@ export function ExperienceSection({
                       : 'Tambah Pengalaman Kerja'}
                 </h3>
                 <p className="mt-1 text-xs text-[var(--mute)]">
-                  {locale === 'en'
-                    ? 'Updates are saved directly to Cloud Firestore and reflected immediately.'
-                    : 'Perubahan disimpan langsung ke Cloud Firestore dan langsung tampil di CV.'}
+                  {editingItem
+                    ? locale === 'en'
+                      ? 'Every change saves automatically to Cloud Firestore.'
+                      : 'Setiap perubahan tersimpan otomatis secara global ke Cloud Firestore.'
+                    : locale === 'en'
+                      ? 'Updates are saved directly to Cloud Firestore and reflected immediately.'
+                      : 'Perubahan disimpan langsung ke Cloud Firestore dan langsung tampil di CV.'}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeModal}
                 aria-label="Close modal"
-                className="rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
+                className="shrink-0 rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1473,27 +1804,70 @@ export function ExperienceSection({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
-                <button
-                  type="button"
-                  onClick={closeModal}
-                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
-                >
-                  {locale === 'en' ? 'Cancel' : 'Batal'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSaving
-                    ? locale === 'en'
-                      ? 'Saving...'
-                      : 'Menyimpan...'
-                    : locale === 'en'
-                      ? 'Save to Firestore'
-                      : 'Simpan ke Firestore'}
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                {editingItem ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2 text-xs">
+                      {companyAutoSaveState === 'saving' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Auto-saving...' : 'Menyimpan otomatis...'}
+                          </span>
+                        </span>
+                      ) : companyAutoSaveState === 'saved' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {locale === 'en'
+                              ? 'Saved automatically to Firestore'
+                              : 'Tersimpan otomatis secara global'}
+                          </span>
+                        </span>
+                      ) : companyAutoSaveState === 'invalid' ? (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en'
+                            ? 'Complete required (*) fields to auto-save'
+                            : 'Lengkapi kolom wajib (*) untuk auto-save'}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Done' : 'Selesai'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Cancel' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSaving}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSaving
+                        ? locale === 'en'
+                          ? 'Saving...'
+                          : 'Menyimpan...'
+                        : locale === 'en'
+                          ? 'Save to Firestore'
+                          : 'Simpan ke Firestore'}
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           </div>
@@ -1508,13 +1882,13 @@ export function ExperienceSection({
           aria-labelledby="stage-modal-title"
           className="no-print fixed inset-0 z-50 flex items-center justify-center bg-[#060a18]/75 p-4 backdrop-blur-sm"
         >
-          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-6 shadow-2xl md:p-8">
+          <div className="max-h-[92vh] w-full max-w-[min(36rem,calc(100vw-2rem))] overflow-y-auto overscroll-contain rounded-[22px] border border-[var(--line)] bg-[var(--bg)] p-5 shadow-2xl sm:p-6 md:p-8">
             <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
+              <div className="flex min-w-0 flex-1 items-start gap-3">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--brass)]/15 text-[var(--brass)]">
                   <Briefcase className="h-4 w-4" aria-hidden="true" />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <h3
                     id="stage-modal-title"
                     className="font-display text-lg font-bold text-[var(--ink)]"
@@ -1530,8 +1904,8 @@ export function ExperienceSection({
                   <p className="mt-1 text-xs text-[var(--mute)]">
                     {stageModalTarget.editingStage
                       ? locale === 'en'
-                        ? 'Update role title, period, or responsibilities within this company timeline.'
-                        : 'Perbarui jabatan, periode, atau keterangan kerja pada riwayat perusahaan ini.'
+                        ? 'Changes save automatically to Cloud Firestore.'
+                        : 'Setiap perubahan jenjang karir langsung tersimpan otomatis secara global.'
                       : locale === 'en'
                         ? 'Appears directly above your previous role in a connected timeline for the same company.'
                         : 'Akan tampil bersambung tepat di atas jabatan sebelumnya dalam timeline perusahaan yang sama.'}
@@ -1540,9 +1914,9 @@ export function ExperienceSection({
               </div>
               <button
                 type="button"
-                onClick={() => setStageModalTarget(null)}
+                onClick={closeStageModal}
                 aria-label="Close stage modal"
-                className="rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
+                className="shrink-0 rounded-lg p-2 text-[var(--mute)] hover:bg-[var(--bg2)] hover:text-[var(--ink)] cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -1726,27 +2100,70 @@ export function ExperienceSection({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-[var(--line)] pt-4">
-                <button
-                  type="button"
-                  onClick={() => setStageModalTarget(null)}
-                  className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
-                >
-                  {locale === 'en' ? 'Cancel' : 'Batal'}
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingStage}
-                  className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSavingStage
-                    ? locale === 'en'
-                      ? 'Saving...'
-                      : 'Menyimpan...'
-                    : locale === 'en'
-                      ? 'Save Career Stage'
-                      : 'Simpan Jenjang Karir'}
-                </button>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--line)] pt-4">
+                {stageModalTarget.editingStage ? (
+                  <>
+                    <div className="flex min-w-0 items-center gap-2 text-xs">
+                      {stageAutoSaveState === 'saving' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--brass)]">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                          <span>
+                            {locale === 'en' ? 'Auto-saving...' : 'Menyimpan otomatis...'}
+                          </span>
+                        </span>
+                      ) : stageAutoSaveState === 'saved' ? (
+                        <span className="inline-flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span>
+                            {locale === 'en'
+                              ? 'Saved automatically to Firestore'
+                              : 'Tersimpan otomatis secara global'}
+                          </span>
+                        </span>
+                      ) : stageAutoSaveState === 'invalid' ? (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en'
+                            ? 'Complete required (*) fields to auto-save'
+                            : 'Lengkapi kolom wajib (*) untuk auto-save'}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--mute)]">
+                          {locale === 'en' ? 'Auto-save ready' : 'Auto-save aktif'}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={closeStageModal}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Done' : 'Selesai'}
+                    </button>
+                  </>
+                ) : (
+                  <div className="ml-auto flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={closeStageModal}
+                      className="rounded-full border border-[var(--line)] bg-[var(--bg2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] cursor-pointer"
+                    >
+                      {locale === 'en' ? 'Cancel' : 'Batal'}
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSavingStage}
+                      className="rounded-full bg-[var(--brass)] px-5 py-2 text-sm font-semibold text-[#1a1405] transition-transform duration-200 hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      {isSavingStage
+                        ? locale === 'en'
+                          ? 'Saving...'
+                          : 'Menyimpan...'
+                        : locale === 'en'
+                          ? 'Save Career Stage'
+                          : 'Simpan Jenjang Karir'}
+                    </button>
+                  </div>
+                )}
               </div>
             </form>
           </div>

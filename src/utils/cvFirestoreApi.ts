@@ -828,28 +828,30 @@ export function compressPortraitImage(file: File, maxHeight = 800): Promise<stri
             [480, 600],
             [384, 480],
             [320, 400],
+            [280, 350],
+            [240, 300],
           ];
 
           for (const [w, h] of sizes) {
             const canvas = renderPortraitCanvas(img, w, h, preserveAlpha);
             if (preserveAlpha) {
               // WebP supports full RGBA alpha transparency at ~5x smaller size than PNG
-              for (let q = 0.9; q >= 0.45; q -= 0.1) {
+              for (let q = 0.88; q >= 0.4; q -= 0.1) {
                 const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
-                if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= 720_000) {
+                if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= 420_000) {
                   resolve(webpUrl);
                   return;
                 }
               }
               const pngUrl = canvas.toDataURL('image/png');
-              if (pngUrl.length <= 720_000) {
+              if (pngUrl.startsWith('data:image/png;') && pngUrl.length <= 520_000) {
                 resolve(pngUrl);
                 return;
               }
             } else {
               for (let q = 0.86; q >= 0.4; q -= 0.1) {
                 const jpgUrl = canvas.toDataURL('image/jpeg', Number(q.toFixed(2)));
-                if (jpgUrl.length <= 720_000) {
+                if (jpgUrl.startsWith('data:image/jpeg;') && jpgUrl.length <= 420_000) {
                   resolve(jpgUrl);
                   return;
                 }

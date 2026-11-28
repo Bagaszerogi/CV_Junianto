@@ -18,14 +18,25 @@ export function sanitizeWhatsAppHref(url: string): string {
   return SAFE_WA_RE.test(trimmed) ? trimmed : '#';
 }
 
-export function sanitizePortraitSrc(src: string, fallback = '/assets/portrait.png'): string {
+export const DEFAULT_PORTRAIT_SRC = '/assets/aistudio/Untitled_design__1__6dcbc7fc.png';
+const LEGACY_PORTRAIT_PATHS = new Set(['/assets/portrait.png']);
+
+export function normalizePortraitValue(src: string): string {
   const trimmed = src.trim();
-  if (trimmed === '') {
+  if (LEGACY_PORTRAIT_PATHS.has(trimmed)) {
+    return DEFAULT_PORTRAIT_SRC;
+  }
+  return trimmed;
+}
+
+export function sanitizePortraitSrc(src: string, fallback = DEFAULT_PORTRAIT_SRC): string {
+  const normalized = normalizePortraitValue(src);
+  if (normalized === '') {
     return '';
   }
-  if (trimmed.length >= 5 && trimmed.length <= 750_000 && !trimmed.includes('..')) {
-    if (SAFE_ASSET_RE.test(trimmed) || SAFE_DATA_IMG_RE.test(trimmed)) {
-      return trimmed;
+  if (normalized.length >= 5 && normalized.length <= 920_000 && !normalized.includes('..')) {
+    if (SAFE_ASSET_RE.test(normalized) || SAFE_DATA_IMG_RE.test(normalized)) {
+      return normalized;
     }
   }
   return fallback;

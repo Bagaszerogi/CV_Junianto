@@ -74,7 +74,7 @@ export const CV_PROFILE = {
     email: 'bagaszerogi@gmail.com',
     address: 'Sleman, Yogyakarta / Jakarta, Indonesia',
   },
-  portraitSrc: '/assets/portrait.png',
+  portraitSrc: '/assets/aistudio/Untitled_design__1__6dcbc7fc.png',
 };
 
 export const KEY_METRICS = [

@@ -70,7 +70,7 @@ service cloud.firestore {
       return val is string && (
         val == "" ||
         (val.size() >= 8 && val.size() <= 200 && val[0:8] == '/assets/' && !val.matches('.*\\.\\..*') && val.matches('^/assets/[a-zA-Z0-9_./-]+$')) ||
-        (val.size() >= 30 && val.size() <= 750000 && val[0:30].matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'))
+        (val.size() >= 30 && val.size() <= 920000 && val[0:30].matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'))
       );
     }
 

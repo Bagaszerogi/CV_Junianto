@@ -22,7 +22,7 @@
         "portraitDataUrl": {
           "type": "string",
           "minLength": 0,
-          "maxLength": 750000,
+          "maxLength": 920000,
           "pattern": "^($|/assets/[a-zA-Z0-9_./-]+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$"
         },
         "metrics": { "type": "array" },

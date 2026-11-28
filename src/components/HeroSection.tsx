@@ -9,6 +9,7 @@ import {
   Pencil,
   Phone,
   Printer,
+  RotateCcw,
   Trash2,
 } from 'lucide-react';
 import { Locale } from '../data/cvData';
@@ -18,7 +19,12 @@ import {
   MetricItem,
   SiteCopyLocale,
 } from '../utils/cvFirestoreApi';
-import { sanitizeEmailForHref, sanitizePortraitSrc, sanitizeWhatsAppHref } from '../utils/safeUrls';
+import {
+  DEFAULT_PORTRAIT_SRC,
+  sanitizeEmailForHref,
+  sanitizePortraitSrc,
+  sanitizeWhatsAppHref,
+} from '../utils/safeUrls';
 import { formatReadableFirestoreError } from '../firebase';
 import { EditableText } from './EditableText';
 import { NetworkMeshCanvas } from './NetworkMeshCanvas';
@@ -94,17 +100,19 @@ export function HeroSection({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoSavedMsg, setPhotoSavedMsg] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const frameRef = useRef<HTMLDivElement>(null);
+  const backArchRef = useRef<HTMLDivElement>(null);
+  const cutoutLayerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setImgError(false);
     setPhotoError(null);
   }, [profile.portraitDataUrl, isAdminUser]);
 
-  // Subtle ambient float + pointer parallax on the arched portrait frame (clamped to avoid horizontal over-frame)
+  // Multi-plane 3D parallax + ambient float between recessed arch backdrop and over-frame foreground cutout
   useEffect(() => {
-    const el = frameRef.current;
-    if (!el || typeof window === 'undefined') return;
+    const backEl = backArchRef.current;
+    const cutoutEl = cutoutLayerRef.current;
+    if ((!backEl && !cutoutEl) || typeof window === 'undefined') return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
     let rafId = 0;
@@ -119,13 +127,21 @@ export function HeroSection({
     };
 
     const tick = (t: number) => {
-      const allowX = window.innerWidth >= 768;
+      const allow3d = window.innerWidth >= 768;
       const px = mx / Math.max(1, window.innerWidth) - 0.5;
       const py = my / Math.max(1, window.innerHeight) - 0.5;
-      ox += ((allowX ? px * -8 : 0) - ox) * 0.06;
-      oy += (py * -6 - oy) * 0.06;
-      const floatY = Math.sin(t * 0.0012) * 3.5;
-      el.style.transform = `translate3d(${ox.toFixed(1)}px, ${(oy + floatY).toFixed(1)}px, 0)`;
+      ox += ((allow3d ? px : 0) - ox) * 0.06;
+      oy += ((allow3d ? py : 0) - oy) * 0.06;
+      const floatY = Math.sin(t * 0.00125) * 3;
+      const rotY = (ox * 7).toFixed(2);
+      const rotX = (-oy * 6).toFixed(2);
+
+      if (backEl) {
+        backEl.style.transform = `perspective(1100px) rotateX(${rotX}deg) rotateY(${rotY}deg) translate3d(${(-ox * 5).toFixed(1)}px, ${(-oy * 4 + floatY * 0.55).toFixed(1)}px, 0)`;
+      }
+      if (cutoutEl) {
+        cutoutEl.style.transform = `perspective(1100px) rotateX(${rotX}deg) rotateY(${rotY}deg) translate3d(${(-ox * 11).toFixed(1)}px, ${(-oy * 8 + floatY).toFixed(1)}px, 24px)`;
+      }
       rafId = window.requestAnimationFrame(tick);
     };
 
@@ -135,9 +151,10 @@ export function HeroSection({
     return () => {
       window.cancelAnimationFrame(rafId);
       window.removeEventListener('pointermove', onPointerMove);
-      if (el) el.style.transform = '';
+      if (backEl) backEl.style.transform = '';
+      if (cutoutEl) cutoutEl.style.transform = '';
     };
-  }, []);
+  }, [profile.portraitDataUrl]);
 
   const handleCopy = async (text: string, field: 'email' | 'phone') => {
     try {
@@ -184,6 +201,22 @@ export function HeroSection({
     }
   };
 
+  const handleRestoreDefaultCutout = async () => {
+    if (!isAdminUser) return;
+    setPhotoError(null);
+    setPhotoSavedMsg(null);
+    setIsUploadingPhoto(true);
+    try {
+      await onSaveProfilePatch({ portraitDataUrl: DEFAULT_PORTRAIT_SRC });
+      setPhotoSavedMsg(locale === 'en' ? '3D portrait restored' : 'Foto 3D bawaan dipulihkan');
+      window.setTimeout(() => setPhotoSavedMsg(null), 3000);
+    } catch (err) {
+      setPhotoError(formatReadableFirestoreError(err));
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
+
   const handleSaveMetricField = async (
     idx: number,
     field: 'value' | 'label' | 'detail',
@@ -218,6 +251,12 @@ export function HeroSection({
 
   const safePortrait = sanitizePortraitSrc(profile.portraitDataUrl, '');
   const showPhoto = Boolean(safePortrait) && !imgError;
+  const isCutoutPortrait =
+    showPhoto &&
+    (safePortrait.toLowerCase().includes('.png') ||
+      safePortrait.startsWith('data:image/png') ||
+      safePortrait.startsWith('data:image/webp'));
+  const isCustomPortrait = Boolean(safePortrait) && safePortrait !== DEFAULT_PORTRAIT_SRC;
 
   return (
     <section
@@ -395,57 +434,131 @@ export function HeroSection({
             </div>
           </div>
 
-          {/* Right Column: Large Arched Brass Portrait Frame (PNG/Cutout Ready) + Compact Dossier */}
+          {/* Right Column: Layered 3D Over-Arch Cutout Portrait (Full-Resolution Native PNG) + Compact Dossier */}
           <div className="flex min-w-0 flex-col items-center lg:col-span-5 lg:items-end print:col-span-5 print:items-stretch">
-            {/* Large Standalone Arched Portrait */}
+            {/* Large 3D Multi-Plane Portrait Showcase */}
             <div className="flex w-full flex-col items-center lg:items-end print:hidden">
-              <div
-                ref={frameRef}
-                className="group/photo relative aspect-[4/5] w-[220px] max-w-full rounded-t-full rounded-b-[28px] border border-[var(--brass)] bg-[var(--card)] p-2.5 shadow-xl will-change-transform sm:w-[270px] lg:w-[320px]"
-              >
-                <div className="relative h-full w-full overflow-hidden rounded-t-full rounded-b-[20px] bg-gradient-to-b from-[var(--bg2)] to-[var(--bg)]">
-                  {showPhoto ? (
+              <div className="group/photo relative mt-3 aspect-[4/5] w-[244px] max-w-full select-none sm:w-[292px] lg:w-[340px]">
+                {/* Soft 3D Ambient Floor Shadow */}
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute -bottom-3 inset-x-10 h-6 rounded-full bg-[#060a18]/35 blur-xl dark:bg-black/65"
+                />
+
+                {/* Backplane 3D Recessed Studio Arch Pedestal */}
+                <div
+                  ref={backArchRef}
+                  className="absolute inset-x-2 top-[17%] bottom-0 rounded-t-full rounded-b-[28px] border border-[var(--brass)]/80 bg-[var(--card)] p-2 shadow-[0_24px_50px_-14px_rgba(10,16,36,0.48),inset_0_1px_0_rgba(255,255,255,0.22)] will-change-transform"
+                >
+                  <div className="relative h-full w-full overflow-hidden rounded-t-full rounded-b-[20px] bg-gradient-to-b from-[var(--bg2)] via-[color-mix(in_srgb,var(--card)_84%,var(--bg))] to-[var(--bg)] shadow-[inset_0_14px_38px_rgba(6,10,24,0.28)]">
+                    {/* 3D Studio Radial Backlight */}
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_26%,color-mix(in_srgb,var(--brass)_24%,transparent),transparent_68%)]"
+                    />
+                    <div
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_76%_84%,color-mix(in_srgb,var(--ice)_18%,transparent),transparent_62%)]"
+                    />
+                    {/* Fine Architectural Brass Arch Lines */}
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 320 380"
+                      fill="none"
+                      className="pointer-events-none absolute inset-0 h-full w-full opacity-35"
+                    >
+                      <path
+                        d="M36 380V176C36 107.5 91.5 52 160 52C228.5 52 284 107.5 284 176V380"
+                        stroke="var(--brass)"
+                        strokeOpacity="0.45"
+                        strokeWidth="1"
+                      />
+                      <circle
+                        cx="160"
+                        cy="176"
+                        r="88"
+                        stroke="var(--brass)"
+                        strokeOpacity="0.22"
+                        strokeDasharray="3 6"
+                        strokeWidth="1"
+                      />
+                    </svg>
+
+                    {/* Standard opaque photo renders cleanly inside the arch */}
+                    {showPhoto && !isCutoutPortrait && (
+                      <img
+                        src={safePortrait}
+                        alt={`${profile.name} portrait`}
+                        referrerPolicy="no-referrer"
+                        onError={() => setImgError(true)}
+                        className="relative z-10 h-full w-full object-cover object-top"
+                      />
+                    )}
+
+                    {/* Monogram fallback if photo removed */}
+                    {!showPhoto && (
+                      <div
+                        aria-hidden="true"
+                        className="relative z-10 grid h-full w-full place-items-center font-display text-6xl font-bold tracking-tight text-[var(--brass)] sm:text-7xl"
+                      >
+                        {initials || 'JB'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Foreground Plane: Full-Resolution PNG Cutout breaking OVER the top arch rim */}
+                {showPhoto && isCutoutPortrait && (
+                  <div
+                    ref={cutoutLayerRef}
+                    className="pointer-events-none absolute inset-x-0 -top-[6%] bottom-[9px] z-10 overflow-hidden rounded-b-[20px] will-change-transform"
+                  >
                     <img
                       src={safePortrait}
                       alt={`${profile.name} portrait`}
                       referrerPolicy="no-referrer"
+                      decoding="async"
                       onError={() => setImgError(true)}
-                      className="h-full w-full object-cover object-top"
+                      style={{
+                        filter:
+                          'drop-shadow(0 20px 24px rgba(6, 11, 28, 0.48)) drop-shadow(0 4px 12px rgba(201, 162, 63, 0.18))',
+                      }}
+                      className="mx-auto h-full w-full origin-bottom object-contain object-bottom transition-transform duration-500 ease-out group-hover/photo:scale-[1.03]"
                     />
-                  ) : (
-                    <div
-                      aria-hidden="true"
-                      className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-6xl font-bold tracking-tight text-[var(--brass)] sm:text-7xl"
-                    >
-                      {initials || 'JB'}
-                    </div>
-                  )}
+                  </div>
+                )}
 
-                  {isAdminUser && (
-                    <button
-                      type="button"
-                      disabled={isUploadingPhoto}
-                      onClick={() => photoInputRef.current?.click()}
-                      aria-label={locale === 'en' ? 'Upload PNG or portrait photo' : 'Upload PNG / Ganti Foto'}
-                      className="no-print absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[#0a1024]/65 text-xs font-semibold text-white opacity-0 transition-opacity group-hover/photo:opacity-100 cursor-pointer"
-                    >
-                      <Camera className="h-6 w-6 text-[var(--brass)]" aria-hidden="true" />
-                      <span>
-                        {isUploadingPhoto
-                          ? locale === 'en'
-                            ? 'Uploading...'
-                            : 'Mengunggah...'
-                          : locale === 'en'
-                            ? 'Upload PNG / Photo'
-                            : 'Upload PNG / Ganti Foto'}
-                      </span>
-                    </button>
-                  )}
-                </div>
+                {/* Bottom Metallic Glint Overlay */}
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-6 bottom-[8px] z-20 h-[1px] bg-gradient-to-r from-transparent via-[var(--brass)]/65 to-transparent"
+                />
+
+                {/* Admin Quick Hover Upload Overlay */}
+                {isAdminUser && (
+                  <button
+                    type="button"
+                    disabled={isUploadingPhoto}
+                    onClick={() => photoInputRef.current?.click()}
+                    aria-label={locale === 'en' ? 'Upload PNG or portrait photo' : 'Upload PNG / Ganti Foto'}
+                    className="no-print absolute inset-x-4 bottom-2.5 top-[20%] z-30 flex flex-col items-center justify-end gap-1.5 rounded-t-full rounded-b-[20px] bg-gradient-to-t from-[#0a1024]/85 via-[#0a1024]/35 to-transparent pb-6 text-xs font-semibold text-white opacity-0 transition-opacity group-hover/photo:opacity-100 cursor-pointer"
+                  >
+                    <Camera className="h-5 w-5 text-[var(--brass)]" aria-hidden="true" />
+                    <span>
+                      {isUploadingPhoto
+                        ? locale === 'en'
+                          ? 'Uploading...'
+                          : 'Mengunggah...'
+                        : locale === 'en'
+                          ? 'Upload PNG / Photo'
+                          : 'Upload PNG / Ganti Foto'}
+                    </span>
+                  </button>
+                )}
               </div>
 
               {isAdminUser && (
-                <div className="no-print mt-3 flex flex-wrap items-center justify-center gap-2 lg:justify-end">
+                <div className="no-print mt-4 flex flex-wrap items-center justify-center gap-2 lg:justify-end">
                   <button
                     type="button"
                     disabled={isUploadingPhoto || isRemovingPhoto}
@@ -463,6 +576,18 @@ export function HeroSection({
                           : 'Upload PNG / Ganti Foto'}
                     </span>
                   </button>
+
+                  {isCustomPortrait && (
+                    <button
+                      type="button"
+                      disabled={isUploadingPhoto || isRemovingPhoto}
+                      onClick={() => void handleRestoreDefaultCutout()}
+                      className="inline-flex items-center gap-1 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3 py-1.5 text-xs font-semibold text-[var(--ink)] transition-colors hover:border-[var(--brass)] cursor-pointer"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
+                      <span>{locale === 'en' ? 'Default 3D PNG' : 'Foto 3D Default'}</span>
+                    </button>
+                  )}
 
                   {Boolean(safePortrait) && (
                     <button
@@ -546,7 +671,9 @@ export function HeroSection({
                     <img
                       src={safePortrait}
                       alt={`${profile.name} portrait`}
-                      className="h-full w-full rounded-[10px] object-cover object-top"
+                      className={`h-full w-full rounded-[10px] ${
+                        isCutoutPortrait ? 'object-contain object-bottom' : 'object-cover object-top'
+                      }`}
                     />
                   ) : (
                     <div className="grid h-full w-full place-items-center rounded-[10px] font-display text-lg font-bold text-slate-700">

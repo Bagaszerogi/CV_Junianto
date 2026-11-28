@@ -27,7 +27,7 @@ import {
   type ReferenceItem,
   type TechCategory,
 } from '../data/cvData';
-import { isValidEmailAddress, sanitizePortraitSrc } from './safeUrls';
+import { isValidEmailAddress, normalizePortraitValue, sanitizePortraitSrc } from './safeUrls';
 import {
   readCvIndex,
   registerEntityInCvIndex,
@@ -269,7 +269,10 @@ export function subscribeProfile(
         whatsappHref: typeof d.whatsappHref === 'string' ? d.whatsappHref : DEFAULT_PROFILE_DATA.whatsappHref,
         email: typeof d.email === 'string' ? d.email : DEFAULT_PROFILE_DATA.email,
         address: typeof d.address === 'string' ? d.address : DEFAULT_PROFILE_DATA.address,
-        portraitDataUrl: typeof d.portraitDataUrl === 'string' ? d.portraitDataUrl : DEFAULT_PROFILE_DATA.portraitDataUrl,
+        portraitDataUrl:
+          typeof d.portraitDataUrl === 'string'
+            ? normalizePortraitValue(d.portraitDataUrl)
+            : DEFAULT_PROFILE_DATA.portraitDataUrl,
         metrics: rawMetrics.length > 0 ? rawMetrics : DEFAULT_PROFILE_DATA.metrics,
         education: {
           institution: typeof rawEdu.institution === 'string' ? rawEdu.institution : DEFAULT_PROFILE_DATA.education.institution,
@@ -747,128 +750,113 @@ function detectHasTransparency(img: HTMLImageElement): boolean {
   }
 }
 
-function renderPortraitCanvas(
+const MAX_PORTRAIT_DATA_URL_CHARS = 900_000;
+const SAFE_DATA_IMAGE_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function encodeCanvasBestEffort(
   img: HTMLImageElement,
   targetW: number,
   targetH: number,
-  isTransparentCutout: boolean
-): HTMLCanvasElement {
+  preserveAlpha: boolean
+): string | null {
   const canvas = document.createElement('canvas');
-  canvas.width = targetW;
-  canvas.height = targetH;
+  canvas.width = Math.max(1, targetW);
+  canvas.height = Math.max(1, targetH);
   const ctx = canvas.getContext('2d');
   if (!ctx) {
     throw new Error('Canvas context unavailable.');
   }
-  ctx.clearRect(0, 0, targetW, targetH);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
 
-  const srcRatio = img.width / Math.max(1, img.height);
-  const dstRatio = targetW / targetH; // 4:5 = 0.8
-
-  if (isTransparentCutout) {
-    // Fit entire transparent PNG cutout cleanly inside 4:5 frame anchored at bottom
-    let drawW = targetW;
-    let drawH = targetH;
-    if (srcRatio > dstRatio) {
-      drawW = targetW;
-      drawH = Math.round(targetW / srcRatio);
-    } else {
-      drawH = targetH;
-      drawW = Math.round(targetH * srcRatio);
+  if (preserveAlpha) {
+    // WebP preserves full RGBA alpha at native resolution with ~5x smaller payload than PNG
+    for (let q = 0.96; q >= 0.7; q -= 0.04) {
+      const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
+      if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+        return webpUrl;
+      }
     }
-    const dx = Math.round((targetW - drawW) / 2);
-    const dy = Math.round(targetH - drawH);
-    ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, drawW, drawH);
-    return canvas;
+    const pngUrl = canvas.toDataURL('image/png');
+    if (pngUrl.startsWith('data:image/png;') && pngUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+      return pngUrl;
+    }
+    return null;
   }
 
-  // Cover-crop standard photos cleanly to 4:5 with top portrait headroom bias
-  let sx = 0;
-  let sy = 0;
-  let sw = img.width;
-  let sh = img.height;
-
-  if (srcRatio > dstRatio) {
-    sw = Math.round(img.height * dstRatio);
-    sx = Math.max(0, Math.round((img.width - sw) / 2));
-  } else {
-    sh = Math.round(img.width / dstRatio);
-    sy = Math.max(0, Math.round((img.height - sh) * 0.14));
+  for (let q = 0.95; q >= 0.68; q -= 0.04) {
+    const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
+    if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+      return webpUrl;
+    }
   }
-
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
-  return canvas;
+  for (let q = 0.94; q >= 0.65; q -= 0.05) {
+    const jpgUrl = canvas.toDataURL('image/jpeg', Number(q.toFixed(2)));
+    if (jpgUrl.startsWith('data:image/jpeg;') && jpgUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+      return jpgUrl;
+    }
+  }
+  return null;
 }
 
-export function compressPortraitImage(file: File, maxHeight = 800): Promise<string> {
+export function compressPortraitImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
       reject(new Error('File must be an image (JPG, PNG, or WebP).'));
       return;
     }
-    if (file.size > 15 * 1024 * 1024) {
-      reject(new Error('Image size must be 15 MB or smaller.'));
+    if (file.size > 25 * 1024 * 1024) {
+      reject(new Error('Image size must be 25 MB or smaller.'));
       return;
     }
 
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read image file.'));
     reader.onload = () => {
+      const rawDataUrl = String(reader.result || '').trim();
+      // Preserve original file byte-for-byte with 100% native resolution if already within Firestore cap
+      if (SAFE_DATA_IMAGE_RE.test(rawDataUrl) && rawDataUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+        resolve(rawDataUrl);
+        return;
+      }
+
       const img = new Image();
       img.onerror = () => reject(new Error('Invalid image file.'));
       img.onload = () => {
         try {
-          const isPngOrWebp =
-            file.type === 'image/png' || file.type === 'image/webp';
+          const isPngOrWebp = file.type === 'image/png' || file.type === 'image/webp';
           const hasAlpha = isPngOrWebp && detectHasTransparency(img);
           const preserveAlpha = hasAlpha || file.type === 'image/png';
 
-          const sizes: Array<[number, number]> = [
-            [Math.round(maxHeight * 0.8), maxHeight], // 640x800
-            [480, 600],
-            [384, 480],
-            [320, 400],
-            [280, 350],
-            [240, 300],
-          ];
+          const naturalW = Math.max(1, img.width);
+          const naturalH = Math.max(1, img.height);
+          const maxSide = Math.max(naturalW, naturalH);
+          // Start at exact native pixels (only clamp extreme >2400px camera raw images first)
+          const initialRatio = maxSide > 2400 ? 2400 / maxSide : 1;
+          const scaleSteps = [1, 0.9, 0.8, 0.7, 0.58, 0.45];
 
-          for (const [w, h] of sizes) {
-            const canvas = renderPortraitCanvas(img, w, h, preserveAlpha);
-            if (preserveAlpha) {
-              // WebP supports full RGBA alpha transparency at ~5x smaller size than PNG
-              for (let q = 0.88; q >= 0.4; q -= 0.1) {
-                const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
-                if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= 420_000) {
-                  resolve(webpUrl);
-                  return;
-                }
-              }
-              const pngUrl = canvas.toDataURL('image/png');
-              if (pngUrl.startsWith('data:image/png;') && pngUrl.length <= 520_000) {
-                resolve(pngUrl);
-                return;
-              }
-            } else {
-              for (let q = 0.86; q >= 0.4; q -= 0.1) {
-                const jpgUrl = canvas.toDataURL('image/jpeg', Number(q.toFixed(2)));
-                if (jpgUrl.startsWith('data:image/jpeg;') && jpgUrl.length <= 420_000) {
-                  resolve(jpgUrl);
-                  return;
-                }
-              }
+          for (const step of scaleSteps) {
+            const targetW = Math.round(naturalW * initialRatio * step);
+            const targetH = Math.round(naturalH * initialRatio * step);
+            const encoded = encodeCanvasBestEffort(img, targetW, targetH, preserveAlpha);
+            if (encoded) {
+              resolve(encoded);
+              return;
             }
           }
 
           reject(
             new Error(
-              'Portrait image is still too large after compression. Please choose a smaller PNG/JPG file.'
+              'Portrait image exceeds the 900 KB Firestore limit even after high-quality WebP compression.'
             )
           );
         } catch (err) {
           reject(err instanceof Error ? err : new Error(String(err)));
         }
       };
-      img.src = String(reader.result);
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   });

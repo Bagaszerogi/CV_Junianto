@@ -19,7 +19,7 @@ import {
   isPermissionError,
   OperationType,
 } from '../firebase';
-import { isValidEmailAddress } from './safeUrls';
+import { isValidEmailAddress, normalizePortraitValue } from './safeUrls';
 import type {
   ExperienceItem,
   ExperienceStatus,
@@ -422,7 +422,10 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
           whatsappHref: rawProfile.whatsappHref ?? DEFAULT_PROFILE_DATA.whatsappHref,
           email: rawProfile.email ?? DEFAULT_PROFILE_DATA.email,
           address: rawProfile.address ?? DEFAULT_PROFILE_DATA.address,
-          portraitDataUrl: rawProfile.portraitDataUrl ?? DEFAULT_PROFILE_DATA.portraitDataUrl,
+          portraitDataUrl:
+            typeof rawProfile.portraitDataUrl === 'string'
+              ? normalizePortraitValue(rawProfile.portraitDataUrl)
+              : DEFAULT_PROFILE_DATA.portraitDataUrl,
           metrics: Array.isArray(rawProfile.metrics) ? rawProfile.metrics : DEFAULT_PROFILE_DATA.metrics,
           education:
             typeof rawProfile.education === 'object' && rawProfile.education !== null
@@ -1042,7 +1045,7 @@ async function parseShareBundleIntoSession(params: {
         : DEFAULT_PROFILE_DATA.address,
     portraitDataUrl:
       typeof rawProfile.portraitDataUrl === 'string'
-        ? rawProfile.portraitDataUrl
+        ? normalizePortraitValue(rawProfile.portraitDataUrl)
         : DEFAULT_PROFILE_DATA.portraitDataUrl,
     metrics:
       Array.isArray(rawProfile.metrics) && rawProfile.metrics.length > 0

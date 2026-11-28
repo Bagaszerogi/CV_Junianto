@@ -1,5 +1,5 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react';
-import { CheckCircle2, Loader2, Trash2, Upload, X } from 'lucide-react';
+import { CheckCircle2, Loader2, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import { Locale } from '../data/cvData';
 import {
   compressPortraitImage,
@@ -7,7 +7,11 @@ import {
   saveProfileToFirestore,
 } from '../utils/cvFirestoreApi';
 import { formatReadableFirestoreError } from '../firebase';
-import { isValidEmailAddress, sanitizePortraitSrc } from '../utils/safeUrls';
+import {
+  DEFAULT_PORTRAIT_SRC,
+  isValidEmailAddress,
+  sanitizePortraitSrc,
+} from '../utils/safeUrls';
 
 export type ProfileEditTab = 'identity' | 'contact' | 'metrics' | 'education';
 
@@ -180,7 +184,19 @@ export function ProfileEditModal({
     await persistProfileNow(nextDraft);
   };
 
+  const handleRestoreDefaultDraftPhoto = async () => {
+    setError(null);
+    const nextDraft = { ...draft, portraitDataUrl: DEFAULT_PORTRAIT_SRC };
+    setDraft(nextDraft);
+    await persistProfileNow(nextDraft);
+  };
+
   const previewPortrait = sanitizePortraitSrc(draft.portraitDataUrl, '');
+  const isCutoutPreview =
+    Boolean(previewPortrait) &&
+    (previewPortrait.toLowerCase().includes('.png') ||
+      previewPortrait.startsWith('data:image/png') ||
+      previewPortrait.startsWith('data:image/webp'));
   const initials = draft.name
     .split(' ')
     .filter(Boolean)
@@ -264,13 +280,15 @@ export function ProfileEditModal({
             <div className="space-y-4">
               {/* Portrait Photo Upload & Remove */}
               <div className="flex flex-col gap-4 rounded-2xl border border-[var(--line)] bg-[var(--bg)] p-4 sm:flex-row sm:items-center">
-                <div className="aspect-[4/5] w-28 shrink-0 overflow-hidden rounded-t-full rounded-b-[16px] border border-[var(--brass)] bg-[var(--card)] p-1.5">
+                <div className="relative aspect-[4/5] w-28 shrink-0 overflow-hidden rounded-t-full rounded-b-[16px] border border-[var(--brass)] bg-[var(--card)] p-1.5">
                   <div className="h-full w-full overflow-hidden rounded-t-full rounded-b-[10px] bg-gradient-to-b from-[var(--bg2)] to-[var(--bg)]">
                     {previewPortrait ? (
                       <img
                         src={previewPortrait}
                         alt="Portrait preview"
-                        className="h-full w-full object-cover object-top"
+                        className={`h-full w-full ${
+                          isCutoutPreview ? 'object-contain object-bottom' : 'object-cover object-top'
+                        }`}
                       />
                     ) : (
                       <div className="grid h-full w-full place-items-center bg-gradient-to-br from-[var(--bg2)] to-[var(--bg)] font-display text-2xl font-bold text-[var(--brass)]">
@@ -282,13 +300,13 @@ export function ProfileEditModal({
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-semibold text-[var(--ink)]">
                     {locale === 'en'
-                      ? 'Profile Portrait Photo (PNG / JPG / WebP)'
-                      : 'Foto Profil Utama (PNG Transparan / JPG / WebP)'}
+                      ? '3D Profile Portrait Photo (Full-Res PNG / JPG / WebP)'
+                      : 'Foto Profil 3D Utama (PNG Transparan / JPG / WebP)'}
                   </p>
                   <p className="mt-0.5 text-xs text-[var(--mute)]">
                     {locale === 'en'
-                      ? 'Framed prominently on the right side in a 4:5 brass arch. Uploads save automatically right away.'
-                      : 'Ditampilkan besar di sisi kanan dalam bingkai melengkung emas 4:5. Langsung tersimpan otomatis saat diunggah.'}
+                      ? 'Transparent PNG cutouts render in 3D over the brass arch at full resolution and auto-save immediately.'
+                      : 'PNG transparan tampil 3D menembus bingkai atas tanpa penurunan resolusi & langsung tersimpan otomatis.'}
                   </p>
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     <button
@@ -308,6 +326,17 @@ export function ProfileEditModal({
                             : 'Upload PNG / Foto'}
                       </span>
                     </button>
+                    {previewPortrait !== DEFAULT_PORTRAIT_SRC && (
+                      <button
+                        type="button"
+                        disabled={isProcessingPhoto || saveState === 'saving'}
+                        onClick={() => void handleRestoreDefaultDraftPhoto()}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-[var(--bg2)] px-3.5 py-1.5 text-xs font-semibold text-[var(--ink)] hover:border-[var(--brass)] disabled:opacity-50 cursor-pointer"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5 text-[var(--brass)]" aria-hidden="true" />
+                        <span>{locale === 'en' ? 'Default 3D PNG' : 'Foto 3D Default'}</span>
+                      </button>
+                    )}
                     {Boolean(previewPortrait) && (
                       <button
                         type="button"

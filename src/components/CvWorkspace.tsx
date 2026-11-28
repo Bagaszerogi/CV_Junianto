@@ -25,9 +25,15 @@ import {
   saveSiteContentToFirestore,
   SiteContentData,
   SiteCopyLocale,
+  subscribePortraitMedia,
   subscribeProfile,
   subscribeSiteContent,
 } from '../utils/cvFirestoreApi';
+import {
+  DEFAULT_PORTRAIT_SRC,
+  isDataImageUrl,
+  MEDIA_PORTRAIT_TOKEN,
+} from '../utils/safeUrls';
 import {
   ensureCvIndex,
   GlobalSyncState,
@@ -90,8 +96,10 @@ export default function CvWorkspace({
     error: null,
   });
   const [masterReadError, setMasterReadError] = useState<string | null>(null);
+  const [portraitMediaUrl, setPortraitMediaUrl] = useState<string | null>(null);
   const lenisRef = useRef<Lenis | null>(null);
   const profileRef = useRef<CvProfileData>(profile);
+  const portraitMediaRef = useRef<string | null>(portraitMediaUrl);
   const siteContentRef = useRef<SiteContentData>(siteContent);
   const profileQueueRef = useRef<Promise<void>>(Promise.resolve());
   const siteContentQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -99,6 +107,10 @@ export default function CvWorkspace({
   useEffect(() => {
     profileRef.current = profile;
   }, [profile]);
+
+  useEffect(() => {
+    portraitMediaRef.current = portraitMediaUrl;
+  }, [portraitMediaUrl]);
 
   useEffect(() => {
     siteContentRef.current = siteContent;
@@ -122,6 +134,8 @@ export default function CvWorkspace({
   useEffect(() => {
     if (!authReady || !isAdminUser || !firebaseUser) {
       setMasterReadError(null);
+      portraitMediaRef.current = null;
+      setPortraitMediaUrl(null);
       return;
     }
 
@@ -132,6 +146,15 @@ export default function CvWorkspace({
         setMasterReadError(null);
         profileRef.current = data;
         setProfile(data);
+      },
+      (err) => {
+        setMasterReadError(formatReadableFirestoreError(err));
+      }
+    );
+    const unsubPortraitMedia = subscribePortraitMedia(
+      (dataUrl) => {
+        portraitMediaRef.current = dataUrl;
+        setPortraitMediaUrl(dataUrl);
       },
       (err) => {
         setMasterReadError(formatReadableFirestoreError(err));
@@ -149,6 +172,7 @@ export default function CvWorkspace({
     );
     return () => {
       unsubProfile();
+      unsubPortraitMedia();
       unsubSiteContent();
     };
   }, [authReady, firebaseUser, isAdminUser]);
@@ -249,14 +273,39 @@ export default function CvWorkspace({
   ): Promise<void> => {
     const run = profileQueueRef.current.catch(() => undefined).then(async () => {
       const latest = profileRef.current;
+      const latestMedia = portraitMediaRef.current;
       const nextProfile = buildNext(latest);
+      const uploadedDataUrl = isDataImageUrl(nextProfile.portraitDataUrl)
+        ? nextProfile.portraitDataUrl
+        : null;
+
+      if (uploadedDataUrl) {
+        portraitMediaRef.current = uploadedDataUrl;
+        setPortraitMediaUrl(uploadedDataUrl);
+      } else if (
+        nextProfile.portraitDataUrl === '' ||
+        nextProfile.portraitDataUrl === DEFAULT_PORTRAIT_SRC
+      ) {
+        portraitMediaRef.current = null;
+        setPortraitMediaUrl(null);
+      }
+
       profileRef.current = { ...nextProfile, fromFirestore: latest.fromFirestore };
       setProfile(profileRef.current);
       try {
         await saveProfileToFirestore(nextProfile, Boolean(latest.fromFirestore));
-        profileRef.current = { ...nextProfile, fromFirestore: true };
+        const persistedPortrait = uploadedDataUrl
+          ? MEDIA_PORTRAIT_TOKEN
+          : nextProfile.portraitDataUrl;
+        profileRef.current = {
+          ...nextProfile,
+          portraitDataUrl: persistedPortrait,
+          fromFirestore: true,
+        };
         setProfile(profileRef.current);
       } catch (err) {
+        portraitMediaRef.current = latestMedia;
+        setPortraitMediaUrl(latestMedia);
         profileRef.current = latest;
         setProfile(latest);
         throw err;
@@ -348,6 +397,10 @@ export default function CvWorkspace({
 
   const activeSiteCopy = siteContent[locale];
   const needsEmailVerifyBanner = Boolean(firebaseUser && !isAdminUser);
+  const resolvedPortraitUrl =
+    profile.portraitDataUrl === MEDIA_PORTRAIT_TOKEN
+      ? (portraitMediaUrl ?? '')
+      : profile.portraitDataUrl;
 
   return (
     <div className="min-h-screen overflow-x-clip bg-[var(--bg)] text-[var(--ink)] print:min-h-0 print:bg-white print:text-slate-950">
@@ -488,6 +541,7 @@ export default function CvWorkspace({
           theme={theme}
           onThemeChange={onThemeChange}
           profile={profile}
+          resolvedPortraitUrl={resolvedPortraitUrl}
           siteCopy={activeSiteCopy}
           isAdminUser={isAdminUser}
           onSaveProfilePatch={handleSaveProfilePatch}
@@ -548,6 +602,7 @@ export default function CvWorkspace({
         initialTab={profileEditModal.tab}
         locale={locale}
         profile={profile}
+        resolvedPortraitUrl={resolvedPortraitUrl}
         onSaveProfile={handleSaveProfilePatch}
         onClose={() => setProfileEditModal((prev) => ({ ...prev, open: false }))}
       />

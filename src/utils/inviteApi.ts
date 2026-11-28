@@ -15,11 +15,22 @@ import {
   auth,
   db,
   handleFirestoreError,
-  hasValidFirestoreTimestamp,
   isPermissionError,
   OperationType,
 } from '../firebase';
-import { isValidEmailAddress, normalizePortraitValue } from './safeUrls';
+import {
+  upsertAdminDoc,
+  withAdminRetry,
+} from './firestoreCore';
+import {
+  DEFAULT_PORTRAIT_SRC,
+  isDataImageUrl,
+  isValidEmailAddress,
+  MAX_FIRESTORE_IMAGE_CHARS,
+  MEDIA_PORTRAIT_TOKEN,
+  normalizePortraitValue,
+  sanitizePortraitSrc,
+} from './safeUrls';
 import type {
   ExperienceItem,
   ExperienceStatus,
@@ -215,28 +226,12 @@ async function discoverAdminCollectionIds(
   }
 }
 
-async function runInviteAdminRetry<T>(task: () => Promise<T>): Promise<T> {
-  try {
-    return await task();
-  } catch (err) {
-    const user = auth.currentUser;
-    if (user && isPermissionError(err)) {
-      await user.getIdToken(true).catch(() => undefined);
-      const { syncAdminRecord } = await import('./projectApi');
-      await syncAdminRecord(user).catch(() => undefined);
-      await user.getIdToken(true).catch(() => undefined);
-      return await task();
-    }
-    throw err;
-  }
-}
-
 export async function ensureCvIndex(): Promise<CvIndexDoc> {
   const user = auth.currentUser;
   if (!user) throw new Error('Authentication required.');
 
   const indexRef = doc(db, 'cvIndex', 'admin');
-  const existingSnap = await runInviteAdminRetry(() => getDocFromServer(indexRef));
+  const existingSnap = await withAdminRetry(() => getDocFromServer(indexRef));
   const existingRaw = existingSnap.exists() ? existingSnap.data() : null;
   const existing: CvIndexDoc | null = existingRaw
     ? {
@@ -287,23 +282,7 @@ export async function ensureCvIndex(): Promise<CvIndexDoc> {
     inviteTokens: existing?.inviteTokens ?? [],
   };
 
-  const preservedAuthorId =
-    typeof existingRaw?.authorId === 'string' && existingRaw.authorId.length > 0
-      ? existingRaw.authorId
-      : user.uid;
-  const preservedCreatedAt =
-    existingRaw && hasValidFirestoreTimestamp(existingRaw.createdAt)
-      ? existingRaw.createdAt
-      : serverTimestamp();
-
-  await runInviteAdminRetry(() =>
-    setDoc(indexRef, {
-      ...initial,
-      authorId: preservedAuthorId,
-      createdAt: preservedCreatedAt,
-      updatedAt: serverTimestamp(),
-    })
-  );
+  await upsertAdminDoc(indexRef, initial as unknown as Record<string, unknown>);
 
   return initial;
 }
@@ -314,35 +293,23 @@ export async function registerEntityInCvIndex(
   mode: 'add' | 'remove'
 ): Promise<void> {
   if (!auth.currentUser) return;
-  const user = auth.currentUser;
   try {
     const index = await ensureCvIndex();
     const indexRef = doc(db, 'cvIndex', 'admin');
-    await runInviteAdminRetry(async () => {
-      const snap = await getDocFromServer(indexRef).catch(() => null);
-      const existing = snap?.exists() ? snap.data() : null;
-      const current = index[field];
-      const next =
-        mode === 'add'
-          ? Array.from(new Set([...current, id])).slice(0, field === 'inviteTokens' ? 100 : 60)
-          : current.filter((item) => item !== id);
+    const current = index[field];
+    const next =
+      mode === 'add'
+        ? Array.from(new Set([...current, id])).slice(0, field === 'inviteTokens' ? 100 : 60)
+        : current.filter((item) => item !== id);
 
-      await setDoc(indexRef, {
-        ...index,
-        [field]: next,
-        authorId:
-          typeof existing?.authorId === 'string' && existing.authorId.length > 0
-            ? existing.authorId
-            : user.uid,
-        createdAt:
-          existing && hasValidFirestoreTimestamp(existing.createdAt)
-            ? existing.createdAt
-            : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    await upsertAdminDoc(indexRef, {
+      ...index,
+      [field]: next,
     });
   } catch (err) {
-    console.warn('cvIndex sync warning:', err);
+    if (!isPermissionError(err)) {
+      console.warn('cvIndex sync warning:', err);
+    }
   }
 }
 
@@ -389,7 +356,7 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
       : index.vaultKey;
 
     const [
-      { DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT },
+      { DEFAULT_PROFILE_DATA, DEFAULT_SITE_CONTENT, readPortraitMediaOnce },
       { EXPERIENCES, TECH_STACK, REFERENCES },
     ] = await Promise.all([
       import('./cvFirestoreApi'),
@@ -406,6 +373,34 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
     ]);
 
     const rawProfile = profileSnap?.exists() ? profileSnap.data() : null;
+    const rawPortrait =
+      typeof rawProfile?.portraitDataUrl === 'string'
+        ? normalizePortraitValue(rawProfile.portraitDataUrl)
+        : DEFAULT_PROFILE_DATA.portraitDataUrl;
+
+    let isolatedPortraitDataUrl: string | null = null;
+    if (rawPortrait === MEDIA_PORTRAIT_TOKEN) {
+      isolatedPortraitDataUrl = await readPortraitMediaOnce();
+    } else if (
+      isDataImageUrl(rawPortrait) &&
+      rawPortrait.length <= MAX_FIRESTORE_IMAGE_CHARS
+    ) {
+      isolatedPortraitDataUrl = rawPortrait;
+    }
+
+    const portraitAssetRef = doc(db, 'cvProjectAssets', `${vaultKey}__portrait`);
+    let portraitForShare: string;
+    if (isolatedPortraitDataUrl) {
+      await upsertAdminDoc(portraitAssetRef, {
+        projectId: 'portrait',
+        imageDataUrl: isolatedPortraitDataUrl,
+      });
+      portraitForShare = MEDIA_PORTRAIT_TOKEN;
+    } else {
+      await deleteDoc(portraitAssetRef).catch(() => undefined);
+      portraitForShare = sanitizePortraitSrc(rawPortrait, '');
+    }
+
     const profilePayload = rawProfile
       ? {
           name: rawProfile.name ?? DEFAULT_PROFILE_DATA.name,
@@ -422,10 +417,7 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
           whatsappHref: rawProfile.whatsappHref ?? DEFAULT_PROFILE_DATA.whatsappHref,
           email: rawProfile.email ?? DEFAULT_PROFILE_DATA.email,
           address: rawProfile.address ?? DEFAULT_PROFILE_DATA.address,
-          portraitDataUrl:
-            typeof rawProfile.portraitDataUrl === 'string'
-              ? normalizePortraitValue(rawProfile.portraitDataUrl)
-              : DEFAULT_PROFILE_DATA.portraitDataUrl,
+          portraitDataUrl: portraitForShare,
           metrics: Array.isArray(rawProfile.metrics) ? rawProfile.metrics : DEFAULT_PROFILE_DATA.metrics,
           education:
             typeof rawProfile.education === 'object' && rawProfile.education !== null
@@ -447,7 +439,7 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
           whatsappHref: DEFAULT_PROFILE_DATA.whatsappHref,
           email: DEFAULT_PROFILE_DATA.email,
           address: DEFAULT_PROFILE_DATA.address,
-          portraitDataUrl: DEFAULT_PROFILE_DATA.portraitDataUrl,
+          portraitDataUrl: portraitForShare,
           metrics: DEFAULT_PROFILE_DATA.metrics,
           education: DEFAULT_PROFILE_DATA.education,
         };
@@ -536,22 +528,9 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
 
         const assetId = `${vaultKey}__${id}`;
         const assetRef = doc(db, 'cvProjectAssets', assetId);
-        await runInviteAdminRetry(async () => {
-          const assetSnap = await getDocFromServer(assetRef).catch(() => null);
-          const assetExisting = assetSnap?.exists() ? assetSnap.data() : null;
-          await setDoc(assetRef, {
-            projectId: id,
-            imageDataUrl,
-            authorId:
-              typeof assetExisting?.authorId === 'string' && assetExisting.authorId.length > 0
-                ? assetExisting.authorId
-                : user.uid,
-            createdAt:
-              assetExisting && hasValidFirestoreTimestamp(assetExisting.createdAt)
-                ? assetExisting.createdAt
-                : serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+        await upsertAdminDoc(assetRef, {
+          projectId: id,
+          imageDataUrl,
         });
       })
     );
@@ -566,44 +545,16 @@ export async function syncPublishedCvSnapshot(targetVaultKey?: string): Promise<
       projectMeta: projectMeta.sort((a, b) => a.createdAtMs - b.createdAtMs),
     };
 
-    await runInviteAdminRetry(async () => {
-      const shareSnap = await getDocFromServer(shareRef).catch(() => null);
-      const shareExisting = shareSnap?.exists() ? shareSnap.data() : null;
-      await setDoc(shareRef, {
-        ...shareData,
-        authorId:
-          typeof shareExisting?.authorId === 'string' && shareExisting.authorId.length > 0
-            ? shareExisting.authorId
-            : user.uid,
-        createdAt:
-          shareExisting && hasValidFirestoreTimestamp(shareExisting.createdAt)
-            ? shareExisting.createdAt
-            : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    });
+    await upsertAdminDoc(shareRef, shareData);
 
     const indexRef = doc(db, 'cvIndex', 'admin');
-    await runInviteAdminRetry(async () => {
-      const indexSnap = await getDocFromServer(indexRef).catch(() => null);
-      const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
-      await setDoc(indexRef, {
-        vaultKey: index.vaultKey,
-        experienceIds: Array.from(expMap.keys()).slice(0, 60),
-        projectIds: projectMeta.map((p) => p.id).slice(0, 60),
-        techStackIds: Array.from(stackMap.keys()).slice(0, 60),
-        referenceIds: Array.from(refMap.keys()).slice(0, 60),
-        inviteTokens: index.inviteTokens,
-        authorId:
-          typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
-            ? indexExisting.authorId
-            : user.uid,
-        createdAt:
-          indexExisting && hasValidFirestoreTimestamp(indexExisting.createdAt)
-            ? indexExisting.createdAt
-            : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    await upsertAdminDoc(indexRef, {
+      vaultKey: index.vaultKey,
+      experienceIds: Array.from(expMap.keys()).slice(0, 60),
+      projectIds: projectMeta.map((p) => p.id).slice(0, 60),
+      techStackIds: Array.from(stackMap.keys()).slice(0, 60),
+      referenceIds: Array.from(refMap.keys()).slice(0, 60),
+      inviteTokens: index.inviteTokens,
     }).catch(() => undefined);
 
     emitGlobalSyncState({
@@ -714,7 +665,7 @@ export async function createInviteLink(params: {
       : 'admin@cv-junianto.vercel.app';
 
   try {
-    await runInviteAdminRetry(() =>
+    await withAdminRetry(() =>
       setDoc(doc(db, 'invites', rawToken), {
         label: cleanLabel,
         active: true,
@@ -751,31 +702,21 @@ export async function toggleInviteActive(token: string, active: boolean): Promis
       ? user.email.trim().toLowerCase()
       : 'admin@cv-junianto.vercel.app';
   try {
-    await runInviteAdminRetry(async () => {
-      const invRef = doc(db, 'invites', token);
-      const snap = await getDocFromServer(invRef);
-      if (!snap.exists()) throw new Error('Invite not found.');
-      const existing = snap.data();
-      const createdByEmail =
-        typeof existing.createdByEmail === 'string' &&
-        isValidEmailAddress(existing.createdByEmail.trim())
-          ? existing.createdByEmail.trim().toLowerCase()
-          : fallbackEmail;
-      await setDoc(invRef, {
-        label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
-        active,
-        expiresAt: existing.expiresAt ?? null,
-        vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
-        createdByEmail,
-        authorId:
-          typeof existing.authorId === 'string' && existing.authorId.length > 0
-            ? existing.authorId
-            : user.uid,
-        createdAt: hasValidFirestoreTimestamp(existing.createdAt)
-          ? existing.createdAt
-          : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    const invRef = doc(db, 'invites', token);
+    const snap = await withAdminRetry(() => getDocFromServer(invRef));
+    if (!snap.exists()) throw new Error('Invite not found.');
+    const existing = snap.data();
+    const createdByEmail =
+      typeof existing.createdByEmail === 'string' &&
+      isValidEmailAddress(existing.createdByEmail.trim())
+        ? existing.createdByEmail.trim().toLowerCase()
+        : fallbackEmail;
+    await upsertAdminDoc(invRef, {
+      label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
+      active,
+      expiresAt: existing.expiresAt ?? null,
+      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+      createdByEmail,
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `invites/${token}`);
@@ -797,31 +738,21 @@ export async function updateInviteExpiry(
       ? user.email.trim().toLowerCase()
       : 'admin@cv-junianto.vercel.app';
   try {
-    await runInviteAdminRetry(async () => {
-      const invRef = doc(db, 'invites', token);
-      const snap = await getDocFromServer(invRef);
-      if (!snap.exists()) throw new Error('Invite not found.');
-      const existing = snap.data();
-      const createdByEmail =
-        typeof existing.createdByEmail === 'string' &&
-        isValidEmailAddress(existing.createdByEmail.trim())
-          ? existing.createdByEmail.trim().toLowerCase()
-          : fallbackEmail;
-      await setDoc(invRef, {
-        label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
-        active: Boolean(existing.active),
-        expiresAt: expiresAtTs,
-        vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
-        createdByEmail,
-        authorId:
-          typeof existing.authorId === 'string' && existing.authorId.length > 0
-            ? existing.authorId
-            : user.uid,
-        createdAt: hasValidFirestoreTimestamp(existing.createdAt)
-          ? existing.createdAt
-          : serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    const invRef = doc(db, 'invites', token);
+    const snap = await withAdminRetry(() => getDocFromServer(invRef));
+    if (!snap.exists()) throw new Error('Invite not found.');
+    const existing = snap.data();
+    const createdByEmail =
+      typeof existing.createdByEmail === 'string' &&
+      isValidEmailAddress(existing.createdByEmail.trim())
+        ? existing.createdByEmail.trim().toLowerCase()
+        : fallbackEmail;
+    await upsertAdminDoc(invRef, {
+      label: typeof existing.label === 'string' && existing.label.trim() ? existing.label.trim() : token,
+      active: Boolean(existing.active),
+      expiresAt: expiresAtTs,
+      vaultKey: typeof existing.vaultKey === 'string' ? existing.vaultKey : '',
+      createdByEmail,
     });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `invites/${token}`);
@@ -831,7 +762,7 @@ export async function updateInviteExpiry(
 export async function deleteInviteLink(token: string): Promise<void> {
   if (!auth.currentUser) throw new Error('Authentication required.');
   try {
-    await runInviteAdminRetry(() => deleteDoc(doc(db, 'invites', token)));
+    await withAdminRetry(() => deleteDoc(doc(db, 'invites', token)));
     await registerEntityInCvIndex('inviteTokens', token, 'remove');
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `invites/${token}`);
@@ -853,50 +784,29 @@ export async function rotateShareVaultKey(): Promise<string> {
   await syncPublishedCvSnapshot(newKey);
 
   const indexRef = doc(db, 'cvIndex', 'admin');
-  await runInviteAdminRetry(async () => {
-    const indexSnap = await getDocFromServer(indexRef).catch(() => null);
-    const indexExisting = indexSnap?.exists() ? indexSnap.data() : null;
-    await setDoc(indexRef, {
-      ...index,
-      vaultKey: newKey,
-      authorId:
-        typeof indexExisting?.authorId === 'string' && indexExisting.authorId.length > 0
-          ? indexExisting.authorId
-          : user.uid,
-      createdAt:
-        indexExisting && hasValidFirestoreTimestamp(indexExisting.createdAt)
-          ? indexExisting.createdAt
-          : serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+  await upsertAdminDoc(indexRef, {
+    ...index,
+    vaultKey: newKey,
   });
 
   await Promise.all(
     index.inviteTokens.map(async (token) => {
       try {
-        await runInviteAdminRetry(async () => {
-          const invRef = doc(db, 'invites', token);
-          const invSnap = await getDocFromServer(invRef);
-          if (!invSnap.exists()) return;
-          const ex = invSnap.data();
-          const createdByEmail =
-            typeof ex.createdByEmail === 'string' &&
-            isValidEmailAddress(ex.createdByEmail.trim())
-              ? ex.createdByEmail.trim().toLowerCase()
-              : fallbackEmail;
-          await setDoc(invRef, {
-            label: typeof ex.label === 'string' && ex.label.trim() ? ex.label.trim() : token,
-            active: Boolean(ex.active),
-            expiresAt: ex.expiresAt ?? null,
-            vaultKey: newKey,
-            createdByEmail,
-            authorId:
-              typeof ex.authorId === 'string' && ex.authorId.length > 0 ? ex.authorId : user.uid,
-            createdAt: hasValidFirestoreTimestamp(ex.createdAt)
-              ? ex.createdAt
-              : serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
+        const invRef = doc(db, 'invites', token);
+        const invSnap = await withAdminRetry(() => getDocFromServer(invRef));
+        if (!invSnap.exists()) return;
+        const ex = invSnap.data();
+        const createdByEmail =
+          typeof ex.createdByEmail === 'string' &&
+          isValidEmailAddress(ex.createdByEmail.trim())
+            ? ex.createdByEmail.trim().toLowerCase()
+            : fallbackEmail;
+        await upsertAdminDoc(invRef, {
+          label: typeof ex.label === 'string' && ex.label.trim() ? ex.label.trim() : token,
+          active: Boolean(ex.active),
+          expiresAt: ex.expiresAt ?? null,
+          vaultKey: newKey,
+          createdByEmail,
         });
       } catch {
         // Ignore stale token
@@ -906,6 +816,7 @@ export async function rotateShareVaultKey(): Promise<string> {
 
   if (oldKey && oldKey !== newKey && VAULT_KEY_PATTERN.test(oldKey)) {
     await deleteDoc(doc(db, 'cvShares', oldKey)).catch(() => undefined);
+    await deleteDoc(doc(db, 'cvProjectAssets', `${oldKey}__portrait`)).catch(() => undefined);
     await Promise.all(
       index.projectIds.map((pid) =>
         deleteDoc(doc(db, 'cvProjectAssets', `${oldKey}__${pid}`)).catch(() => undefined)
@@ -1176,32 +1087,49 @@ async function parseShareBundleIntoSession(params: {
     ? (sd.projectMeta as SharedProjectMeta[])
     : [];
 
-  const projects: ProjectPhotoItem[] = await Promise.all(
-    projectMetaList.map(async (meta) => {
-      let imageDataUrl = '';
-      try {
-        const assetSnap = await getDocFromServer(
-          doc(db, 'cvProjectAssets', `${vaultKey}__${meta.id}`)
-        );
-        if (assetSnap.exists() && typeof assetSnap.data()?.imageDataUrl === 'string') {
-          imageDataUrl = assetSnap.data().imageDataUrl;
+  const portraitPromise =
+    profile.portraitDataUrl === MEDIA_PORTRAIT_TOKEN
+      ? getDocFromServer(doc(db, 'cvProjectAssets', `${vaultKey}__portrait`))
+          .then((snap) => {
+            const raw = snap.exists() ? snap.data()?.imageDataUrl : null;
+            return typeof raw === 'string' && isDataImageUrl(raw)
+              ? raw
+              : DEFAULT_PORTRAIT_SRC;
+          })
+          .catch(() => DEFAULT_PORTRAIT_SRC)
+      : Promise.resolve(profile.portraitDataUrl);
+
+  const [resolvedSharePortrait, projects] = await Promise.all([
+    portraitPromise,
+    Promise.all(
+      projectMetaList.map(async (meta) => {
+        let imageDataUrl = '';
+        try {
+          const assetSnap = await getDocFromServer(
+            doc(db, 'cvProjectAssets', `${vaultKey}__${meta.id}`)
+          );
+          if (assetSnap.exists() && typeof assetSnap.data()?.imageDataUrl === 'string') {
+            imageDataUrl = assetSnap.data().imageDataUrl;
+          }
+        } catch {
+          // Ignore missing asset
         }
-      } catch {
-        // Ignore missing asset
-      }
-      return {
-        id: meta.id,
-        title: String(meta.title ?? ''),
-        property: String(meta.property ?? ''),
-        year: String(meta.year ?? ''),
-        category: VALID_PROJECT_CATS.has(meta.category) ? meta.category : 'infrastructure',
-        description: String(meta.description ?? ''),
-        imageDataUrl,
-        authorId: '',
-        createdAt: typeof meta.createdAtMs === 'number' ? meta.createdAtMs : Date.now(),
-      };
-    })
-  );
+        return {
+          id: meta.id,
+          title: String(meta.title ?? ''),
+          property: String(meta.property ?? ''),
+          year: String(meta.year ?? ''),
+          category: VALID_PROJECT_CATS.has(meta.category) ? meta.category : 'infrastructure',
+          description: String(meta.description ?? ''),
+          imageDataUrl,
+          authorId: '',
+          createdAt: typeof meta.createdAtMs === 'number' ? meta.createdAtMs : Date.now(),
+        };
+      })
+    ),
+  ]);
+
+  profile.portraitDataUrl = resolvedSharePortrait;
 
   return {
     token,

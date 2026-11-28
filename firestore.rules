@@ -7,32 +7,52 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // =========================================================================
     // Reusable Hardened Primitives
+    // =========================================================================
     function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string &&
+        id.size() >= 1 &&
+        id.size() <= 128 &&
+        id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isValidInviteTokenId(token) {
-      return token is string && token.size() >= 6 && token.size() <= 64 && token.matches('^[a-zA-Z0-9_\\-]+$');
+      return token is string &&
+        token.size() >= 6 &&
+        token.size() <= 64 &&
+        token.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isValidVaultKey(vaultKey) {
-      return vaultKey is string && vaultKey.size() >= 24 && vaultKey.size() <= 64 && vaultKey.matches('^[a-zA-Z0-9_\\-]+$');
+      return vaultKey is string &&
+        vaultKey.size() >= 24 &&
+        vaultKey.size() <= 64 &&
+        vaultKey.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     function isValidVaultAssetId(assetId) {
-      return assetId is string && assetId.size() >= 27 && assetId.size() <= 196 && assetId.matches('^[a-zA-Z0-9_\\-]{24,64}__[a-zA-Z0-9_\\-]{1,128}$');
+      return assetId is string &&
+        assetId.size() >= 27 &&
+        assetId.size() <= 196 &&
+        assetId.matches('^[a-zA-Z0-9_\\-]{24,64}__[a-zA-Z0-9_\\-]{1,128}$');
     }
 
     function isValidEmailStr(val) {
-      return val is string && val.size() >= 3 && val.size() <= 140 && val.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
+      return val is string &&
+        val.size() >= 3 &&
+        val.size() <= 140 &&
+        val.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$');
     }
 
     function isValidAdminKey(id) {
-      return id is string && id.size() >= 1 && id.size() <= 140 && (
-        id.matches('^[a-zA-Z0-9_\\-]+$') ||
-        (isValidEmailStr(id) && id == id.lower())
-      );
+      return id is string &&
+        id.size() >= 1 &&
+        id.size() <= 140 &&
+        (
+          id.matches('^[a-zA-Z0-9_\\-]+$') ||
+          (isValidEmailStr(id) && id == id.lower())
+        );
     }
 
     function incoming() {
@@ -48,32 +68,81 @@ service cloud.firestore {
     }
 
     function isVerifiedEmail() {
-      return 'email_verified' in request.auth.token &&
+      return isSignedIn() &&
+        'email_verified' in request.auth.token &&
         request.auth.token.email_verified == true &&
         'email' in request.auth.token &&
-        request.auth.token.email is string;
+        request.auth.token.email is string &&
+        request.auth.token.email.size() <= 140;
+    }
+
+    function isCoreAdminEmail() {
+      return isVerifiedEmail() &&
+        request.auth.token.email.lower() in [
+          'it@hotelciputra.com',
+          'bagaszerogi@gmail.com',
+          'zerogi26@gmail.com'
+        ];
     }
 
     function isAdmin() {
       return isSignedIn() && (
+        isCoreAdminEmail() ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
         (
-          isVerifiedEmail() && (
-            request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] ||
-            exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
-          )
+          isVerifiedEmail() &&
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
         )
       );
     }
 
+    function isValidDataImage(val) {
+      return val is string &&
+        val.size() >= 26 &&
+        val.size() <= 750000 &&
+        (
+          val[0:22] == 'data:image/png;base64,' ||
+          (val.size() >= 27 && val[0:23] == 'data:image/jpeg;base64,') ||
+          (val.size() >= 27 && val[0:23] == 'data:image/webp;base64,')
+        );
+    }
+
     function isValidPortrait(val) {
       return val is string && (
-        val == "" ||
-        (val.size() >= 8 && val.size() <= 200 && val[0:8] == '/assets/' && !val.matches('.*\\.\\..*') && val.matches('^/assets/[a-zA-Z0-9_./-]+$')) ||
-        (val.size() >= 30 && val.size() <= 920000 && val[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'))
+        val == '' ||
+        val == 'media:portrait' ||
+        (
+          val.size() >= 8 &&
+          val.size() <= 200 &&
+          val[0:8] == '/assets/' &&
+          !val.matches('.*\\.\\..*') &&
+          val.matches('^/assets/[a-zA-Z0-9_./-]+$')
+        ) ||
+        isValidDataImage(val)
       );
     }
 
+    function preservesImmutableAuditFields() {
+      return (
+        (
+          !('authorId' in existing()) ||
+          !(existing().authorId is string) ||
+          existing().authorId.size() == 0
+            ? incoming().authorId == request.auth.uid
+            : incoming().authorId == existing().authorId
+        ) &&
+        (
+          !('createdAt' in existing()) ||
+          !(existing().createdAt is timestamp)
+            ? incoming().createdAt == request.time
+            : incoming().createdAt == existing().createdAt
+        )
+      );
+    }
+
+    // =========================================================================
+    // Entity Validation Blueprints
+    // =========================================================================
     function isValidMetric(m) {
       return m is map &&
         m.keys().hasAll(['value', 'valueId', 'label', 'labelId', 'detail', 'detailId']) &&
@@ -102,48 +171,16 @@ service cloud.firestore {
 
     function isValidProfile(data) {
       return data.keys().hasAll([
-          'name',
-          'brandShort',
-          'titleEn',
-          'titleId',
-          'kickerEn',
-          'kickerId',
-          'currentCompany',
-          'currentRole',
-          'summaryEn',
-          'summaryId',
-          'phoneDisplay',
-          'whatsappHref',
-          'email',
-          'address',
-          'portraitDataUrl',
-          'metrics',
-          'education',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+          'name', 'brandShort', 'titleEn', 'titleId', 'kickerEn', 'kickerId',
+          'currentCompany', 'currentRole', 'summaryEn', 'summaryId',
+          'phoneDisplay', 'whatsappHref', 'email', 'address', 'portraitDataUrl',
+          'metrics', 'education', 'authorId', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'name',
-          'brandShort',
-          'titleEn',
-          'titleId',
-          'kickerEn',
-          'kickerId',
-          'currentCompany',
-          'currentRole',
-          'summaryEn',
-          'summaryId',
-          'phoneDisplay',
-          'whatsappHref',
-          'email',
-          'address',
-          'portraitDataUrl',
-          'metrics',
-          'education',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+          'name', 'brandShort', 'titleEn', 'titleId', 'kickerEn', 'kickerId',
+          'currentCompany', 'currentRole', 'summaryEn', 'summaryId',
+          'phoneDisplay', 'whatsappHref', 'email', 'address', 'portraitDataUrl',
+          'metrics', 'education', 'authorId', 'createdAt', 'updatedAt'
         ]) &&
         data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
         data.brandShort is string && data.brandShort.size() >= 1 && data.brandShort.size() <= 60 &&
@@ -158,8 +195,7 @@ service cloud.firestore {
         data.phoneDisplay is string && data.phoneDisplay.size() >= 1 && data.phoneDisplay.size() <= 40 &&
         data.whatsappHref is string && data.whatsappHref.size() >= 1 && data.whatsappHref.size() <= 200 &&
         data.whatsappHref.matches('^https://wa\\.me/[0-9]+$') &&
-        data.email is string && data.email.size() >= 3 && data.email.size() <= 140 &&
-        data.email.matches('^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$') &&
+        isValidEmailStr(data.email) &&
         data.address is string && data.address.size() >= 1 && data.address.size() <= 240 &&
         isValidPortrait(data.portraitDataUrl) &&
         data.metrics is list && data.metrics.size() >= 1 && data.metrics.size() <= 6 &&
@@ -175,36 +211,131 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidCvMedia(data) {
+      return data.keys().hasAll(['dataUrl', 'mimeType', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['dataUrl', 'mimeType', 'authorId', 'createdAt', 'updatedAt']) &&
+        isValidDataImage(data.dataUrl) &&
+        data.mimeType is string && data.mimeType.size() >= 9 && data.mimeType.size() <= 20 &&
+        data.mimeType in ['image/png', 'image/jpeg', 'image/webp'] &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
     function isValidProject(data) {
       return data.keys().hasAll([
-          'title',
-          'property',
-          'year',
-          'category',
-          'description',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+          'title', 'property', 'year', 'category', 'description',
+          'imageDataUrl', 'authorId', 'createdAt', 'updatedAt'
         ]) &&
         data.keys().hasOnly([
-          'title',
-          'property',
-          'year',
-          'category',
-          'description',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+          'title', 'property', 'year', 'category', 'description',
+          'imageDataUrl', 'authorId', 'createdAt', 'updatedAt'
         ]) &&
         data.title is string && data.title.size() >= 1 && data.title.size() <= 140 &&
         data.property is string && data.property.size() <= 140 &&
-        data.year is string && data.year.size() >= 1 && data.year.size() <= 24 && data.year.matches('^[0-9A-Za-z\\s\\-]+$') &&
-        data.category is string && data.category in ['infrastructure', 'pms-pos', 'security', 'event-av'] &&
+        data.year is string && data.year.size() >= 1 && data.year.size() <= 24 &&
+        data.year.matches('^[0-9A-Za-z\\s\\-]+$') &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 32 &&
+        data.category in ['infrastructure', 'pms-pos', 'security', 'event-av'] &&
         data.description is string && data.description.size() <= 1200 &&
-        data.imageDataUrl is string && data.imageDataUrl.size() >= 30 && data.imageDataUrl.size() <= 750000 &&
-        data.imageDataUrl[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        isValidDataImage(data.imageDataUrl) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCareerStage(s) {
+      return s is map &&
+        s.keys().hasAll(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
+        s.keys().hasOnly(['id', 'role', 'roleId', 'status', 'employmentType', 'period', 'periodId', 'bullets', 'bulletsId']) &&
+        isValidId(s.id) &&
+        s.role is string && s.role.size() >= 1 && s.role.size() <= 140 &&
+        s.roleId is string && s.roleId.size() >= 1 && s.roleId.size() <= 140 &&
+        s.status is string && s.status.size() >= 1 && s.status.size() <= 20 &&
+        s.status in ['active', 'completed'] &&
+        (!('employmentType' in s) || (
+          s.employmentType is string &&
+          s.employmentType.size() >= 1 &&
+          s.employmentType.size() <= 24 &&
+          s.employmentType in ['full-time', 'promotion', 'contract', 'consulting']
+        )) &&
+        s.period is string && s.period.size() >= 1 && s.period.size() <= 60 &&
+        s.periodId is string && s.periodId.size() >= 1 && s.periodId.size() <= 60 &&
+        s.bullets is list && s.bullets.size() >= 1 && s.bullets.size() <= 15 &&
+        s.bullets[0] is string && s.bullets[0].size() >= 1 && s.bullets[0].size() <= 500 &&
+        s.bulletsId is list && s.bulletsId.size() >= 1 && s.bulletsId.size() <= 15 &&
+        s.bulletsId[0] is string && s.bulletsId[0].size() >= 1 && s.bulletsId[0].size() <= 500;
+    }
+
+    function isValidExperience(data) {
+      return data.keys().hasAll([
+          'company', 'role', 'roleId', 'status', 'category', 'period', 'periodId',
+          'scaleContext', 'scaleContextId', 'bullets', 'bulletsId', 'systems',
+          'sortOrder', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'company', 'role', 'roleId', 'status', 'category', 'period', 'periodId',
+          'scaleContext', 'scaleContextId', 'bullets', 'bulletsId', 'systems',
+          'sortOrder', 'careerStages', 'authorId', 'createdAt', 'updatedAt'
+        ]) &&
+        data.company is string && data.company.size() >= 1 && data.company.size() <= 140 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
+        data.roleId is string && data.roleId.size() >= 1 && data.roleId.size() <= 140 &&
+        data.status is string && data.status.size() >= 1 && data.status.size() <= 20 &&
+        data.status in ['active', 'completed'] &&
+        data.category is string && data.category.size() >= 1 && data.category.size() <= 24 &&
+        data.category in ['leadership', 'operations'] &&
+        data.period is string && data.period.size() >= 1 && data.period.size() <= 60 &&
+        data.periodId is string && data.periodId.size() >= 1 && data.periodId.size() <= 60 &&
+        data.scaleContext is string && data.scaleContext.size() <= 200 &&
+        data.scaleContextId is string && data.scaleContextId.size() <= 200 &&
+        data.bullets is list && data.bullets.size() >= 1 && data.bullets.size() <= 15 &&
+        data.bullets[0] is string && data.bullets[0].size() >= 1 && data.bullets[0].size() <= 500 &&
+        data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 &&
+        data.bulletsId[0] is string && data.bulletsId[0].size() >= 1 && data.bulletsId[0].size() <= 500 &&
+        data.systems is list && data.systems.size() <= 25 &&
+        (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() >= 1 && data.systems[0].size() <= 80)) &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        (!('careerStages' in data) || (
+          data.careerStages is list &&
+          data.careerStages.size() >= 1 &&
+          data.careerStages.size() <= 8 &&
+          isValidCareerStage(data.careerStages[0]) &&
+          (data.careerStages.size() < 2 || isValidCareerStage(data.careerStages[1])) &&
+          (data.careerStages.size() < 3 || isValidCareerStage(data.careerStages[2])) &&
+          (data.careerStages.size() < 4 || isValidCareerStage(data.careerStages[3])) &&
+          (data.careerStages.size() < 5 || isValidCareerStage(data.careerStages[4])) &&
+          (data.careerStages.size() < 6 || isValidCareerStage(data.careerStages[5])) &&
+          (data.careerStages.size() < 7 || isValidCareerStage(data.careerStages[6])) &&
+          (data.careerStages.size() < 8 || isValidCareerStage(data.careerStages[7]))
+        )) &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidTechStack(data) {
+      return data.keys().hasAll(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.group is string && data.group.size() >= 1 && data.group.size() <= 24 &&
+        data.group in ['core', 'infra', 'guest', 'productivity'] &&
+        data.label is string && data.label.size() >= 1 && data.label.size() <= 100 &&
+        data.labelId is string && data.labelId.size() >= 1 && data.labelId.size() <= 100 &&
+        data.items is list && data.items.size() >= 1 && data.items.size() <= 40 &&
+        data.items[0] is string && data.items[0].size() >= 1 && data.items[0].size() <= 100 &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
+        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidReference(data) {
+      return data.keys().hasAll(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
+        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
+        data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 40 &&
+        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -241,29 +372,29 @@ service cloud.firestore {
         c.navContact is string && c.navContact.size() >= 1 && c.navContact.size() <= 40 &&
         c.downloadPdf is string && c.downloadPdf.size() >= 1 && c.downloadPdf.size() <= 80 &&
         c.heroActiveBadge is string && c.heroActiveBadge.size() >= 1 && c.heroActiveBadge.size() <= 60 &&
-        c.heroPropertyScale is string && c.heroPropertyScale.size() >= 1 && c.heroPropertyScale.size() <= 140 &&
-        c.heroDossierFooter is string && c.heroDossierFooter.size() >= 1 && c.heroDossierFooter.size() <= 100 &&
+        c.heroPropertyScale is string && c.heroPropertyScale.size() <= 140 &&
+        c.heroDossierFooter is string && c.heroDossierFooter.size() <= 100 &&
         c.heroSendEmail is string && c.heroSendEmail.size() >= 1 && c.heroSendEmail.size() <= 50 &&
-        c.experienceKicker is string && c.experienceKicker.size() >= 1 && c.experienceKicker.size() <= 80 &&
+        c.experienceKicker is string && c.experienceKicker.size() <= 80 &&
         c.experienceTitle is string && c.experienceTitle.size() >= 1 && c.experienceTitle.size() <= 120 &&
-        c.experienceDesc is string && c.experienceDesc.size() >= 1 && c.experienceDesc.size() <= 400 &&
-        c.projectsKicker is string && c.projectsKicker.size() >= 1 && c.projectsKicker.size() <= 80 &&
+        c.experienceDesc is string && c.experienceDesc.size() <= 400 &&
+        c.projectsKicker is string && c.projectsKicker.size() <= 80 &&
         c.projectsTitle is string && c.projectsTitle.size() >= 1 && c.projectsTitle.size() <= 120 &&
-        c.projectsDesc is string && c.projectsDesc.size() >= 1 && c.projectsDesc.size() <= 400 &&
-        c.stackKicker is string && c.stackKicker.size() >= 1 && c.stackKicker.size() <= 80 &&
+        c.projectsDesc is string && c.projectsDesc.size() <= 400 &&
+        c.stackKicker is string && c.stackKicker.size() <= 80 &&
         c.stackTitle is string && c.stackTitle.size() >= 1 && c.stackTitle.size() <= 120 &&
-        c.stackDesc is string && c.stackDesc.size() >= 1 && c.stackDesc.size() <= 400 &&
-        c.educationKicker is string && c.educationKicker.size() >= 1 && c.educationKicker.size() <= 80 &&
+        c.stackDesc is string && c.stackDesc.size() <= 400 &&
+        c.educationKicker is string && c.educationKicker.size() <= 80 &&
         c.educationTitle is string && c.educationTitle.size() >= 1 && c.educationTitle.size() <= 120 &&
-        c.referencesKicker is string && c.referencesKicker.size() >= 1 && c.referencesKicker.size() <= 80 &&
+        c.referencesKicker is string && c.referencesKicker.size() <= 80 &&
         c.referencesTitle is string && c.referencesTitle.size() >= 1 && c.referencesTitle.size() <= 120 &&
-        c.referencesNote is string && c.referencesNote.size() >= 1 && c.referencesNote.size() <= 300 &&
-        c.contactKicker is string && c.contactKicker.size() >= 1 && c.contactKicker.size() <= 80 &&
+        c.referencesNote is string && c.referencesNote.size() <= 300 &&
+        c.contactKicker is string && c.contactKicker.size() <= 80 &&
         c.contactTitle is string && c.contactTitle.size() >= 1 && c.contactTitle.size() <= 120 &&
-        c.contactDesc is string && c.contactDesc.size() >= 1 && c.contactDesc.size() <= 400 &&
+        c.contactDesc is string && c.contactDesc.size() <= 400 &&
         c.composerTitle is string && c.composerTitle.size() >= 1 && c.composerTitle.size() <= 120 &&
-        c.composerDesc is string && c.composerDesc.size() >= 1 && c.composerDesc.size() <= 300 &&
-        c.footerNote is string && c.footerNote.size() >= 1 && c.footerNote.size() <= 240;
+        c.composerDesc is string && c.composerDesc.size() <= 300 &&
+        c.footerNote is string && c.footerNote.size() <= 240;
     }
 
     function isValidSiteContent(data) {
@@ -280,7 +411,7 @@ service cloud.firestore {
       return data.keys().hasAll(['email', 'role', 'provider', 'updatedAt']) &&
         data.keys().hasOnly(['email', 'role', 'provider', 'addedBy', 'updatedAt']) &&
         isValidEmailStr(data.email) &&
-        data.role is string && data.role == 'admin' &&
+        data.role is string && data.role.size() == 5 && data.role == 'admin' &&
         data.provider is string && data.provider.size() >= 1 && data.provider.size() <= 40 &&
         (!('addedBy' in data) || (data.addedBy is string && data.addedBy.size() >= 1 && data.addedBy.size() <= 128)) &&
         data.updatedAt is timestamp &&
@@ -312,10 +443,15 @@ service cloud.firestore {
         ]) &&
         isValidVaultKey(data.vaultKey) &&
         data.experienceIds is list && data.experienceIds.size() <= 60 &&
+        (data.experienceIds.size() == 0 || isValidId(data.experienceIds[0])) &&
         data.projectIds is list && data.projectIds.size() <= 60 &&
+        (data.projectIds.size() == 0 || isValidId(data.projectIds[0])) &&
         data.techStackIds is list && data.techStackIds.size() <= 60 &&
+        (data.techStackIds.size() == 0 || isValidId(data.techStackIds[0])) &&
         data.referenceIds is list && data.referenceIds.size() <= 60 &&
+        (data.referenceIds.size() == 0 || isValidId(data.referenceIds[0])) &&
         data.inviteTokens is list && data.inviteTokens.size() <= 100 &&
+        (data.inviteTokens.size() == 0 || isValidInviteTokenId(data.inviteTokens[0])) &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -352,9 +488,13 @@ service cloud.firestore {
         data.profile is map &&
         data.siteContent is map &&
         data.experiences is list && data.experiences.size() <= 60 &&
+        (data.experiences.size() == 0 || data.experiences[0] is map) &&
         data.techStacks is list && data.techStacks.size() <= 60 &&
+        (data.techStacks.size() == 0 || data.techStacks[0] is map) &&
         data.references is list && data.references.size() <= 60 &&
+        (data.references.size() == 0 || data.references[0] is map) &&
         data.projectMeta is list && data.projectMeta.size() <= 60 &&
+        (data.projectMeta.size() == 0 || data.projectMeta[0] is map) &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -364,132 +504,15 @@ service cloud.firestore {
       return data.keys().hasAll(['projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt']) &&
         data.keys().hasOnly(['projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt']) &&
         isValidId(data.projectId) &&
-        data.imageDataUrl is string && data.imageDataUrl.size() >= 30 && data.imageDataUrl.size() <= 750000 &&
-        data.imageDataUrl[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        isValidDataImage(data.imageDataUrl) &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
     }
 
-    function preservesImmutableAuditFields() {
-      return (
-        (!('authorId' in existing()) || !(existing().authorId is string) || existing().authorId.size() == 0
-          ? incoming().authorId == request.auth.uid
-          : incoming().authorId == existing().authorId) &&
-        (!('createdAt' in existing()) || !(existing().createdAt is timestamp)
-          ? incoming().createdAt == request.time
-          : incoming().createdAt == existing().createdAt)
-      );
-    }
-
-    function isValidCareerStage(s) {
-      return s is map &&
-        s.keys().hasAll(['id', 'role', 'roleId', 'status', 'period', 'periodId', 'bullets', 'bulletsId']) &&
-        s.keys().hasOnly(['id', 'role', 'roleId', 'status', 'employmentType', 'period', 'periodId', 'bullets', 'bulletsId']) &&
-        isValidId(s.id) &&
-        s.role is string && s.role.size() >= 1 && s.role.size() <= 140 &&
-        s.roleId is string && s.roleId.size() >= 1 && s.roleId.size() <= 140 &&
-        s.status is string && s.status in ['active', 'completed'] &&
-        (!('employmentType' in s) || (s.employmentType is string && s.employmentType in ['full-time', 'promotion', 'contract', 'consulting'])) &&
-        s.period is string && s.period.size() >= 1 && s.period.size() <= 60 &&
-        s.periodId is string && s.periodId.size() >= 1 && s.periodId.size() <= 60 &&
-        s.bullets is list && s.bullets.size() >= 1 && s.bullets.size() <= 15 && s.bullets[0] is string && s.bullets[0].size() >= 1 && s.bullets[0].size() <= 500 &&
-        s.bulletsId is list && s.bulletsId.size() >= 1 && s.bulletsId.size() <= 15 && s.bulletsId[0] is string && s.bulletsId[0].size() >= 1 && s.bulletsId[0].size() <= 500;
-    }
-
-    function isValidExperience(data) {
-      return data.keys().hasAll([
-          'company',
-          'role',
-          'roleId',
-          'status',
-          'category',
-          'period',
-          'periodId',
-          'scaleContext',
-          'scaleContextId',
-          'bullets',
-          'bulletsId',
-          'systems',
-          'sortOrder',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        data.keys().hasOnly([
-          'company',
-          'role',
-          'roleId',
-          'status',
-          'category',
-          'period',
-          'periodId',
-          'scaleContext',
-          'scaleContextId',
-          'bullets',
-          'bulletsId',
-          'systems',
-          'sortOrder',
-          'careerStages',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        data.company is string && data.company.size() >= 1 && data.company.size() <= 140 &&
-        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
-        data.roleId is string && data.roleId.size() >= 1 && data.roleId.size() <= 140 &&
-        data.status is string && data.status in ['active', 'completed'] &&
-        data.category is string && data.category in ['leadership', 'operations'] &&
-        data.period is string && data.period.size() >= 1 && data.period.size() <= 60 &&
-        data.periodId is string && data.periodId.size() >= 1 && data.periodId.size() <= 60 &&
-        data.scaleContext is string && data.scaleContext.size() <= 200 &&
-        data.scaleContextId is string && data.scaleContextId.size() <= 200 &&
-        data.bullets is list && data.bullets.size() >= 1 && data.bullets.size() <= 15 && data.bullets[0] is string && data.bullets[0].size() >= 1 && data.bullets[0].size() <= 500 &&
-        data.bulletsId is list && data.bulletsId.size() >= 1 && data.bulletsId.size() <= 15 && data.bulletsId[0] is string && data.bulletsId[0].size() >= 1 && data.bulletsId[0].size() <= 500 &&
-        data.systems is list && data.systems.size() <= 25 && (data.systems.size() == 0 || (data.systems[0] is string && data.systems[0].size() >= 1 && data.systems[0].size() <= 80)) &&
-        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
-        (!('careerStages' in data) || (
-          data.careerStages is list &&
-          data.careerStages.size() >= 1 &&
-          data.careerStages.size() <= 8 &&
-          isValidCareerStage(data.careerStages[0]) &&
-          (data.careerStages.size() < 2 || isValidCareerStage(data.careerStages[1])) &&
-          (data.careerStages.size() < 3 || isValidCareerStage(data.careerStages[2])) &&
-          (data.careerStages.size() < 4 || isValidCareerStage(data.careerStages[3])) &&
-          (data.careerStages.size() < 5 || isValidCareerStage(data.careerStages[4])) &&
-          (data.careerStages.size() < 6 || isValidCareerStage(data.careerStages[5])) &&
-          (data.careerStages.size() < 7 || isValidCareerStage(data.careerStages[6])) &&
-          (data.careerStages.size() < 8 || isValidCareerStage(data.careerStages[7]))
-        )) &&
-        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-        data.createdAt is timestamp &&
-        data.updatedAt is timestamp;
-    }
-
-    function isValidTechStack(data) {
-      return data.keys().hasAll(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['group', 'label', 'labelId', 'items', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
-        data.group is string && data.group in ['core', 'infra', 'guest', 'productivity'] &&
-        data.label is string && data.label.size() >= 1 && data.label.size() <= 100 &&
-        data.labelId is string && data.labelId.size() >= 1 && data.labelId.size() <= 100 &&
-        data.items is list && data.items.size() >= 1 && data.items.size() <= 40 && data.items[0] is string && data.items[0].size() >= 1 && data.items[0].size() <= 100 &&
-        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
-        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-        data.createdAt is timestamp &&
-        data.updatedAt is timestamp;
-    }
-
-    function isValidReference(data) {
-      return data.keys().hasAll(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
-        data.keys().hasOnly(['name', 'role', 'phone', 'sortOrder', 'authorId', 'createdAt', 'updatedAt']) &&
-        data.name is string && data.name.size() >= 1 && data.name.size() <= 120 &&
-        data.role is string && data.role.size() >= 1 && data.role.size() <= 140 &&
-        data.phone is string && data.phone.size() >= 1 && data.phone.size() <= 40 &&
-        data.sortOrder is number && data.sortOrder >= 0 && data.sortOrder <= 1000 &&
-        data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
-        data.createdAt is timestamp &&
-        data.updatedAt is timestamp;
-    }
+    // =========================================================================
+    // Collection Match Rules
+    // =========================================================================
 
     // Private Admin-Only Master CV Profile & Education
     match /profile/{profileId} {
@@ -508,52 +531,38 @@ service cloud.firestore {
         isValidProfile(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'name',
-          'brandShort',
-          'titleEn',
-          'titleId',
-          'kickerEn',
-          'kickerId',
-          'currentCompany',
-          'currentRole',
-          'summaryEn',
-          'summaryId',
-          'phoneDisplay',
-          'whatsappHref',
-          'email',
-          'address',
-          'portraitDataUrl',
-          'metrics',
-          'education',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'name',
-          'brandShort',
-          'titleEn',
-          'titleId',
-          'kickerEn',
-          'kickerId',
-          'currentCompany',
-          'currentRole',
-          'summaryEn',
-          'summaryId',
-          'phoneDisplay',
-          'whatsappHref',
-          'email',
-          'address',
-          'portraitDataUrl',
-          'metrics',
-          'education',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'brandShort', 'titleEn', 'titleId', 'kickerEn', 'kickerId',
+          'currentCompany', 'currentRole', 'summaryEn', 'summaryId',
+          'phoneDisplay', 'whatsappHref', 'email', 'address', 'portraitDataUrl',
+          'metrics', 'education', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if false;
+    }
+
+    // Private Admin-Only Isolated Media Storage (custom hero portrait)
+    match /cvMedia/{mediaId} {
+      allow get: if isAdmin() && isValidId(mediaId);
+      allow list: if false;
+
+      allow create: if isAdmin() &&
+        isValidId(mediaId) &&
+        isValidCvMedia(incoming()) &&
+        incoming().authorId == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isAdmin() &&
+        isValidId(mediaId) &&
+        isValidCvMedia(incoming()) &&
+        preservesImmutableAuditFields() &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'dataUrl', 'mimeType', 'authorId', 'createdAt', 'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(mediaId);
     }
 
     // Private Admin-Only Master CV Project Gallery
@@ -573,27 +582,9 @@ service cloud.firestore {
         isValidProject(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'title',
-          'property',
-          'year',
-          'category',
-          'description',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'title',
-          'property',
-          'year',
-          'category',
-          'description',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'property', 'year', 'category', 'description',
+          'imageDataUrl', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidId(projectId);
@@ -616,43 +607,10 @@ service cloud.firestore {
         isValidExperience(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'company',
-          'role',
-          'roleId',
-          'status',
-          'category',
-          'period',
-          'periodId',
-          'scaleContext',
-          'scaleContextId',
-          'bullets',
-          'bulletsId',
-          'systems',
-          'sortOrder',
-          'careerStages',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'company',
-          'role',
-          'roleId',
-          'status',
-          'category',
-          'period',
-          'periodId',
-          'scaleContext',
-          'scaleContextId',
-          'bullets',
-          'bulletsId',
-          'systems',
-          'sortOrder',
-          'careerStages',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'company', 'role', 'roleId', 'status', 'category', 'period', 'periodId',
+          'scaleContext', 'scaleContextId', 'bullets', 'bulletsId', 'systems',
+          'sortOrder', 'careerStages', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidId(experienceId);
@@ -675,25 +633,9 @@ service cloud.firestore {
         isValidTechStack(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'group',
-          'label',
-          'labelId',
-          'items',
-          'sortOrder',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'group',
-          'label',
-          'labelId',
-          'items',
-          'sortOrder',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'group', 'label', 'labelId', 'items', 'sortOrder',
+          'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidId(stackId);
@@ -716,23 +658,9 @@ service cloud.firestore {
         isValidReference(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'name',
-          'role',
-          'phone',
-          'sortOrder',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'name',
-          'role',
-          'phone',
-          'sortOrder',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'name', 'role', 'phone', 'sortOrder',
+          'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidId(refId);
@@ -755,8 +683,9 @@ service cloud.firestore {
         isValidSiteContent(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly(['en', 'id', 'authorId', 'createdAt', 'updatedAt']) &&
-        incoming().diff(existing()).changedKeys().hasOnly(['en', 'id', 'authorId', 'createdAt', 'updatedAt']);
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'en', 'id', 'authorId', 'createdAt', 'updatedAt'
+        ]);
 
       allow delete: if false;
     }
@@ -778,27 +707,9 @@ service cloud.firestore {
         isValidCvIndex(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'vaultKey',
-          'experienceIds',
-          'projectIds',
-          'techStackIds',
-          'referenceIds',
-          'inviteTokens',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'vaultKey',
-          'experienceIds',
-          'projectIds',
-          'techStackIds',
-          'referenceIds',
-          'inviteTokens',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'vaultKey', 'experienceIds', 'projectIds', 'techStackIds',
+          'referenceIds', 'inviteTokens', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if false;
@@ -825,25 +736,9 @@ service cloud.firestore {
         isValidInviteTokenDoc(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'label',
-          'active',
-          'expiresAt',
-          'vaultKey',
-          'createdByEmail',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'label',
-          'active',
-          'expiresAt',
-          'vaultKey',
-          'createdByEmail',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'label', 'active', 'expiresAt', 'vaultKey', 'createdByEmail',
+          'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidInviteTokenId(token);
@@ -866,33 +761,15 @@ service cloud.firestore {
         isValidCvShareBundle(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'profile',
-          'siteContent',
-          'experiences',
-          'techStacks',
-          'references',
-          'projectMeta',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'profile',
-          'siteContent',
-          'experiences',
-          'techStacks',
-          'references',
-          'projectMeta',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'profile', 'siteContent', 'experiences', 'techStacks',
+          'references', 'projectMeta', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidVaultKey(vaultKey);
     }
 
-    // Published Project Images (non-listable; keyed by vaultKey__projectId)
+    // Published Project & Portrait Assets (non-listable; keyed by vaultKey__assetKey)
     match /cvProjectAssets/{assetId} {
       allow get: if isAdmin() || isValidVaultAssetId(assetId);
       allow list: if false;
@@ -909,19 +786,8 @@ service cloud.firestore {
         isValidCvProjectAsset(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly([
-          'projectId',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
-        ]) &&
-        incoming().diff(existing()).changedKeys().hasOnly([
-          'projectId',
-          'imageDataUrl',
-          'authorId',
-          'createdAt',
-          'updatedAt'
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt'
         ]);
 
       allow delete: if isAdmin() && isValidVaultAssetId(assetId);
@@ -935,6 +801,7 @@ service cloud.firestore {
         isAdmin()
       );
       allow list: if false;
+
       allow create, update: if isSignedIn() &&
         isValidAdminKey(adminId) &&
         isValidAdminRecord(incoming(), adminId) &&
@@ -944,7 +811,7 @@ service cloud.firestore {
             isVerifiedEmail() &&
             request.auth.uid == adminId &&
             (
-              request.auth.token.email.lower() in ['it@hotelciputra.com', 'bagaszerogi@gmail.com', 'zerogi26@gmail.com'] ||
+              isCoreAdminEmail() ||
               exists(/databases/$(database)/documents/admins/$(request.auth.token.email.lower()))
             )
           ) ||
@@ -956,6 +823,7 @@ service cloud.firestore {
             )
           )
         );
+
       allow delete: if isAdmin() && isValidAdminKey(adminId);
     }
 
@@ -963,19 +831,23 @@ service cloud.firestore {
     match /adminsRegistry/{registryId} {
       allow get: if isAdmin() && isValidId(registryId);
       allow list: if false;
+
       allow create: if isAdmin() &&
         isValidId(registryId) &&
         isValidAdminsRegistry(incoming()) &&
         incoming().authorId == request.auth.uid &&
         incoming().createdAt == request.time &&
         incoming().updatedAt == request.time;
+
       allow update: if isAdmin() &&
         isValidId(registryId) &&
         isValidAdminsRegistry(incoming()) &&
         preservesImmutableAuditFields() &&
         incoming().updatedAt == request.time &&
-        incoming().diff(existing()).addedKeys().hasOnly(['emails', 'authorId', 'createdAt', 'updatedAt']) &&
-        incoming().diff(existing()).changedKeys().hasOnly(['emails', 'authorId', 'createdAt', 'updatedAt']);
+        incoming().diff(existing()).affectedKeys().hasOnly([
+          'emails', 'authorId', 'createdAt', 'updatedAt'
+        ]);
+
       allow delete: if false;
     }
   }

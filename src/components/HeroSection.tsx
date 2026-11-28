@@ -21,6 +21,7 @@ import {
 } from '../utils/cvFirestoreApi';
 import {
   DEFAULT_PORTRAIT_SRC,
+  MEDIA_PORTRAIT_TOKEN,
   sanitizeEmailForHref,
   sanitizePortraitSrc,
   sanitizeWhatsAppHref,
@@ -38,6 +39,7 @@ interface HeroSectionProps {
   theme: ThemeMode;
   onThemeChange: (theme: ThemeMode) => void;
   profile: CvProfileData;
+  resolvedPortraitUrl?: string;
   siteCopy: SiteCopyLocale;
   isAdminUser: boolean;
   onSaveProfilePatch: (patch: Partial<CvProfileData>) => Promise<void>;
@@ -86,6 +88,7 @@ export function HeroSection({
   theme,
   onThemeChange,
   profile,
+  resolvedPortraitUrl,
   siteCopy,
   isAdminUser,
   onSaveProfilePatch,
@@ -103,10 +106,15 @@ export function HeroSection({
   const backArchRef = useRef<HTMLDivElement>(null);
   const cutoutLayerRef = useRef<HTMLDivElement>(null);
 
+  const effectivePortraitRaw =
+    profile.portraitDataUrl === MEDIA_PORTRAIT_TOKEN
+      ? (resolvedPortraitUrl ?? '')
+      : profile.portraitDataUrl;
+
   useEffect(() => {
     setImgError(false);
     setPhotoError(null);
-  }, [profile.portraitDataUrl, isAdminUser]);
+  }, [effectivePortraitRaw, isAdminUser]);
 
   // Multi-plane 3D parallax + ambient float between recessed arch backdrop and over-frame foreground cutout
   useEffect(() => {
@@ -154,7 +162,7 @@ export function HeroSection({
       if (backEl) backEl.style.transform = '';
       if (cutoutEl) cutoutEl.style.transform = '';
     };
-  }, [profile.portraitDataUrl]);
+  }, [effectivePortraitRaw]);
 
   const handleCopy = async (text: string, field: 'email' | 'phone') => {
     try {
@@ -249,14 +257,16 @@ export function HeroSection({
     .map((n) => n[0]?.toUpperCase() ?? '')
     .join('');
 
-  const safePortrait = sanitizePortraitSrc(profile.portraitDataUrl, '');
+  const safePortrait = sanitizePortraitSrc(effectivePortraitRaw, '');
   const showPhoto = Boolean(safePortrait) && !imgError;
   const isCutoutPortrait =
     showPhoto &&
     (safePortrait.toLowerCase().includes('.png') ||
       safePortrait.startsWith('data:image/png') ||
       safePortrait.startsWith('data:image/webp'));
-  const isCustomPortrait = Boolean(safePortrait) && safePortrait !== DEFAULT_PORTRAIT_SRC;
+  const isCustomPortrait =
+    profile.portraitDataUrl === '' ||
+    (Boolean(safePortrait) && safePortrait !== DEFAULT_PORTRAIT_SRC);
 
   return (
     <section
@@ -438,7 +448,7 @@ export function HeroSection({
           <div className="flex min-w-0 flex-col items-center lg:col-span-5 lg:items-end print:col-span-5 print:items-stretch">
             {/* Large 3D Multi-Plane Portrait Showcase */}
             <div className="flex w-full flex-col items-center lg:items-end print:hidden">
-              <div className="group/photo relative mt-3 aspect-[4/5] w-[244px] max-w-full select-none sm:w-[292px] lg:w-[340px]">
+              <div className="group/photo relative mt-6 aspect-[4/5] w-[244px] max-w-full select-none sm:w-[292px] lg:w-[340px]">
                 {/* Soft 3D Ambient Floor Shadow */}
                 <div
                   aria-hidden="true"

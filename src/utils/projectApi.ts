@@ -29,10 +29,14 @@ import {
   googleProvider,
   handleFirestoreError,
   hasValidFirestoreTimestamp,
-  isPermissionError,
   OperationType,
 } from '../firebase';
-import { isValidEmailAddress } from './safeUrls';
+import { isValidEmailAddress, MAX_FIRESTORE_IMAGE_CHARS } from './safeUrls';
+import {
+  unwrapUpsertError,
+  upsertAdminDoc,
+  withAdminRetry,
+} from './firestoreCore';
 import {
   readCvIndex,
   registerEntityInCvIndex,
@@ -57,7 +61,7 @@ const MAX_TITLE_LEN = 140;
 const MAX_PROPERTY_LEN = 140;
 const MAX_YEAR_LEN = 24;
 const MAX_DESC_LEN = 1200;
-const MAX_IMAGE_DATA_URL_LEN = 750000;
+const MAX_IMAGE_DATA_URL_LEN = MAX_FIRESTORE_IMAGE_CHARS;
 const YEAR_PATTERN = /^[0-9A-Za-z\s-]+$/;
 const DATA_IMAGE_PATTERN = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const VALID_CATEGORIES = new Set<ProjectCategory>([
@@ -177,20 +181,7 @@ export async function syncAdminRecord(
   }
 }
 
-export async function withAdminRetry<T>(task: () => Promise<T>): Promise<T> {
-  try {
-    return await task();
-  } catch (err) {
-    const user = auth.currentUser;
-    if (user && isPermissionError(err)) {
-      await user.getIdToken(true).catch(() => undefined);
-      await syncAdminRecord(user).catch(() => undefined);
-      await user.getIdToken(true).catch(() => undefined);
-      return await task();
-    }
-    throw err;
-  }
-}
+export { withAdminRetry };
 
 export async function listFirestoreAdminEmails(): Promise<{
   coreEmails: string[];
@@ -568,18 +559,12 @@ export async function createFirestoreProject(input: {
   const path = `projects/${projectId}`;
 
   try {
-    await withAdminRetry(() =>
-      setDoc(doc(db, 'projects', projectId), {
-        ...sanitized,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    );
+    await upsertAdminDoc(doc(db, 'projects', projectId), sanitized);
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    const resolved = unwrapUpsertError(error, OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, path);
   }
 }
 
@@ -606,29 +591,12 @@ export async function updateFirestoreProject(
   const path = `projects/${projectId}`;
 
   try {
-    await withAdminRetry(async () => {
-      const docRef = doc(db, 'projects', projectId);
-      const snap = await getDocFromServer(docRef);
-      const existing = snap.exists() ? snap.data() : null;
-      const authorId =
-        typeof existing?.authorId === 'string' && existing.authorId.length > 0
-          ? existing.authorId
-          : currentUser.uid;
-      const createdAt =
-        existing && hasValidFirestoreTimestamp(existing.createdAt)
-          ? existing.createdAt
-          : serverTimestamp();
-      await setDoc(docRef, {
-        ...sanitized,
-        authorId,
-        createdAt,
-        updatedAt: serverTimestamp(),
-      });
-    });
+    await upsertAdminDoc(doc(db, 'projects', projectId), sanitized);
     await registerEntityInCvIndex('projectIds', projectId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, path);
+    const resolved = unwrapUpsertError(error, OperationType.UPDATE);
+    handleFirestoreError(resolved.cause, resolved.op, path);
   }
 }
 

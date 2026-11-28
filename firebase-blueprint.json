@@ -2,7 +2,7 @@
   "entities": {
     "CvProfile": {
       "title": "CvProfile",
-      "description": "Primary CV identity, portrait photo, contact details, metrics strip, and education record (admin-private master).",
+      "description": "Primary CV identity, portrait reference or asset path, contact details, KPI metrics strip, and education record (admin-private master).",
       "type": "object",
       "properties": {
         "name": { "type": "string", "minLength": 1, "maxLength": 120 },
@@ -22,8 +22,8 @@
         "portraitDataUrl": {
           "type": "string",
           "minLength": 0,
-          "maxLength": 920000,
-          "pattern": "^($|/assets/[a-zA-Z0-9_./-]+|data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+)$"
+          "maxLength": 750000,
+          "description": "Empty string, 'media:portrait' pointer into cvMedia/portrait, '/assets/...' path, or compressed base64 image <= 750KB."
         },
         "metrics": { "type": "array" },
         "education": { "type": "object" },
@@ -54,6 +54,26 @@
         "updatedAt"
       ]
     },
+    "CvMedia": {
+      "title": "CvMedia",
+      "description": "Isolated binary-free base64 image document (such as custom uploaded hero portrait) so profile/main stays lightweight.",
+      "type": "object",
+      "properties": {
+        "dataUrl": {
+          "type": "string",
+          "minLength": 26,
+          "maxLength": 750000
+        },
+        "mimeType": {
+          "type": "string",
+          "enum": ["image/png", "image/jpeg", "image/webp"]
+        },
+        "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dataUrl", "mimeType", "authorId", "createdAt", "updatedAt"]
+    },
     "Project": {
       "title": "Project",
       "description": "A hospitality IT project photo and summary managed by verified admins.",
@@ -66,9 +86,8 @@
         "description": { "type": "string", "minLength": 0, "maxLength": 1200 },
         "imageDataUrl": {
           "type": "string",
-          "minLength": 24,
-          "maxLength": 750000,
-          "pattern": "^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+          "minLength": 26,
+          "maxLength": 750000
         },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -231,7 +250,7 @@
       "properties": {
         "label": { "type": "string", "minLength": 1, "maxLength": 120 },
         "active": { "type": "boolean" },
-        "expiresAt": { "type": ["string", "null"], "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "Optional expiration timestamp (null for never-expiring)." },
         "vaultKey": { "type": "string", "minLength": 24, "maxLength": 64 },
         "createdByEmail": { "type": "string", "minLength": 3, "maxLength": 140 },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
@@ -278,15 +297,14 @@
     },
     "CvProjectAsset": {
       "title": "CvProjectAsset",
-      "description": "Published project image asset keyed by vaultKey__projectId for invited CV viewing.",
+      "description": "Published image asset (project photo or portrait) keyed by vaultKey__assetKey for invited CV viewing.",
       "type": "object",
       "properties": {
         "projectId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "imageDataUrl": {
           "type": "string",
-          "minLength": 24,
-          "maxLength": 750000,
-          "pattern": "^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+          "minLength": 26,
+          "maxLength": 750000
         },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -298,7 +316,11 @@
   "firestore": {
     "/profile/{profileId}": {
       "schema": { "$ref": "#/entities/CvProfile" },
-      "description": "Private admin-only master CV profile, portrait photo, contact details, metrics, and education."
+      "description": "Private admin-only master CV profile, portrait reference, contact details, metrics, and education."
+    },
+    "/cvMedia/{mediaId}": {
+      "schema": { "$ref": "#/entities/CvMedia" },
+      "description": "Private admin-only custom portrait or CV media binary-free data URLs."
     },
     "/projects/{projectId}": {
       "schema": { "$ref": "#/entities/Project" },
@@ -334,7 +356,7 @@
     },
     "/cvProjectAssets/{assetId}": {
       "schema": { "$ref": "#/entities/CvProjectAsset" },
-      "description": "Non-listable published project images keyed by vaultKey__projectId."
+      "description": "Non-listable published project and portrait image assets keyed by vaultKey__assetKey."
     },
     "/admins/{adminId}": {
       "schema": { "$ref": "#/entities/AdminRecord" },

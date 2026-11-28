@@ -10,6 +10,7 @@ import { formatReadableFirestoreError } from '../firebase';
 import {
   DEFAULT_PORTRAIT_SRC,
   isValidEmailAddress,
+  MEDIA_PORTRAIT_TOKEN,
   sanitizePortraitSrc,
 } from '../utils/safeUrls';
 
@@ -20,6 +21,7 @@ interface ProfileEditModalProps {
   initialTab?: ProfileEditTab;
   locale: Locale;
   profile: CvProfileData;
+  resolvedPortraitUrl?: string;
   onSaveProfile?: (patch: Partial<CvProfileData>) => Promise<void>;
   onClose: () => void;
 }
@@ -84,6 +86,7 @@ export function ProfileEditModal({
   initialTab = 'identity',
   locale,
   profile,
+  resolvedPortraitUrl,
   onSaveProfile,
   onClose,
 }: ProfileEditModalProps) {
@@ -97,6 +100,7 @@ export function ProfileEditModal({
   const lastSavedDigestRef = useRef('');
   const latestProfileRef = useRef(profile);
   const onSaveProfileRef = useRef(onSaveProfile);
+  const autoSaveTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     latestProfileRef.current = profile;
@@ -119,6 +123,10 @@ export function ProfileEditModal({
   }, [initialTab, isOpen, profile]);
 
   const persistProfileNow = async (nextDraft: CvProfileData) => {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     setError(null);
     setSaveState('saving');
     try {
@@ -148,11 +156,17 @@ export function ProfileEditModal({
     }
 
     setSaveState('pending');
-    const timer = window.setTimeout(() => {
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null;
       void persistProfileNow(draft);
     }, 480);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+    };
   }, [draft, isOpen]);
 
   if (!isOpen) return null;
@@ -191,7 +205,11 @@ export function ProfileEditModal({
     await persistProfileNow(nextDraft);
   };
 
-  const previewPortrait = sanitizePortraitSrc(draft.portraitDataUrl, '');
+  const previewPortraitRaw =
+    draft.portraitDataUrl === MEDIA_PORTRAIT_TOKEN
+      ? (resolvedPortraitUrl ?? '')
+      : draft.portraitDataUrl;
+  const previewPortrait = sanitizePortraitSrc(previewPortraitRaw, '');
   const isCutoutPreview =
     Boolean(previewPortrait) &&
     (previewPortrait.toLowerCase().includes('.png') ||

@@ -6,8 +6,6 @@ import {
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  setDoc,
 } from 'firebase/firestore';
 import { auth, db, handleFirestoreError, OperationType } from '../firebase';
 import {
@@ -17,8 +15,7 @@ import {
   ExperienceItem,
   ExperienceStatus,
 } from '../data/cvData';
-import { unwrapUpsertError, upsertFirestoreDoc } from './cvFirestoreApi';
-import { withAdminRetry } from './projectApi';
+import { unwrapUpsertError, upsertAdminDoc, withAdminRetry } from './firestoreCore';
 import {
   readCvIndex,
   registerEntityInCvIndex,
@@ -349,7 +346,7 @@ export async function saveExperienceToFirestore(
   const path = `experiences/${sanitizedId}`;
 
   try {
-    await upsertFirestoreDoc(doc(db, 'experiences', sanitizedId), sanitized, path);
+    await upsertAdminDoc(doc(db, 'experiences', sanitizedId), sanitized);
     await registerEntityInCvIndex('experienceIds', sanitizedId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
@@ -371,18 +368,12 @@ export async function createExperienceInFirestore(
   const path = `experiences/${id}`;
 
   try {
-    await withAdminRetry(() =>
-      setDoc(doc(db, 'experiences', id), {
-        ...sanitized,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    );
+    await upsertAdminDoc(doc(db, 'experiences', id), sanitized);
     await registerEntityInCvIndex('experienceIds', id, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, path);
+    const resolved = unwrapUpsertError(error, OperationType.CREATE);
+    handleFirestoreError(resolved.cause, resolved.op, path);
   }
 }
 

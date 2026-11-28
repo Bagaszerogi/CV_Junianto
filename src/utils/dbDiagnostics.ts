@@ -63,6 +63,7 @@ export interface DatabaseAuditReport {
 
 const PRIVATE_COLLECTIONS: Array<{ key: string; label: string; path: string }> = [
   { key: 'profile', label: 'Profile & Education', path: 'profile/main' },
+  { key: 'cvMedia', label: 'Portrait Media Asset', path: 'cvMedia/portrait' },
   { key: 'siteContent', label: 'UI Copy & Labels', path: 'siteContent/main' },
   { key: 'experiences', label: 'Work Experiences', path: 'experiences' },
   { key: 'projects', label: 'Project Gallery', path: 'projects' },
@@ -308,6 +309,7 @@ export async function runFullDatabaseAudit(): Promise<DatabaseAuditReport> {
 
   const checkPromises: Array<Promise<CollectionCheckResult>> = [
     checkSingleDoc('profile', 'Profile & Education', 'profile', 'main'),
+    checkSingleDoc('cvMedia', 'Portrait Media Asset', 'cvMedia', 'portrait'),
     checkSingleDoc('siteContent', 'UI Copy & Labels', 'siteContent', 'main'),
     checkCollection('experiences', 'Work Experiences', 'experiences', cvIdx?.experienceIds ?? []),
     checkCollection('projects', 'Project Gallery', 'projects', cvIdx?.projectIds ?? []),

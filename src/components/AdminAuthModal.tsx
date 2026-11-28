@@ -503,7 +503,9 @@ export function AdminAuthModal({
 
   const inIframe = isRunningInIframe();
   const hasUnseededDefaults = Boolean(
-    auditReport?.collections.some((c) => c.status === 'empty-default')
+    auditReport?.collections.some(
+      (c) => c.key !== 'cvMedia' && c.status === 'empty-default'
+    )
   );
   const canSeedNow = Boolean(auditReport?.isAuthorizedAdmin);
 

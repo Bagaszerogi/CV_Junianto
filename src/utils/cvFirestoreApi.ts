@@ -7,14 +7,11 @@ import {
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
-  setDoc,
 } from 'firebase/firestore';
 import {
   auth,
   db,
   handleFirestoreError,
-  hasValidFirestoreTimestamp,
   OperationType,
 } from '../firebase';
 import {
@@ -27,13 +24,36 @@ import {
   type ReferenceItem,
   type TechCategory,
 } from '../data/cvData';
-import { isValidEmailAddress, normalizePortraitValue, sanitizePortraitSrc } from './safeUrls';
+import {
+  extractDataImageMime,
+  isDataImageUrl,
+  isValidEmailAddress,
+  MAX_FIRESTORE_IMAGE_CHARS,
+  MEDIA_PORTRAIT_TOKEN,
+  normalizePortraitValue,
+  sanitizePortraitSrc,
+} from './safeUrls';
 import {
   readCvIndex,
   registerEntityInCvIndex,
   schedulePublishedSnapshotSync,
 } from './inviteApi';
-import { withAdminRetry } from './projectApi';
+import {
+  unwrapUpsertError,
+  upsertAdminDoc,
+  UpsertStepError,
+  withAdminRetry,
+} from './firestoreCore';
+
+export { UpsertStepError, unwrapUpsertError };
+
+export async function upsertFirestoreDoc(
+  docRef: DocumentReference,
+  payload: Record<string, unknown>,
+  _path?: string
+): Promise<void> {
+  await upsertAdminDoc(docRef, payload);
+}
 
 export interface SiteCopyLocale {
   navProfile: string;
@@ -231,6 +251,83 @@ const VALID_TECH_GROUPS = new Set<TechCategory['group']>([
   'productivity',
 ]);
 
+export function subscribePortraitMedia(
+  onData: (dataUrl: string | null) => void,
+  onError?: (err: Error) => void
+): () => void {
+  if (!auth.currentUser) return () => {};
+  const mediaRef = doc(db, 'cvMedia', 'portrait');
+  return onSnapshot(
+    mediaRef,
+    (snapshot) => {
+      if (!snapshot.exists()) {
+        onData(null);
+        return;
+      }
+      const raw = snapshot.data()?.dataUrl;
+      onData(typeof raw === 'string' && isDataImageUrl(raw) ? raw.trim() : null);
+    },
+    (error) => {
+      if (!auth.currentUser) return;
+      if (onError) {
+        try {
+          handleFirestoreError(error, OperationType.GET, 'cvMedia/portrait');
+        } catch (wrapped) {
+          onError(wrapped instanceof Error ? wrapped : new Error(String(wrapped)));
+        }
+      }
+    }
+  );
+}
+
+export async function readPortraitMediaOnce(): Promise<string | null> {
+  if (!auth.currentUser) return null;
+  try {
+    const snap = await withAdminRetry(() => getDocFromServer(doc(db, 'cvMedia', 'portrait')));
+    if (!snap.exists()) return null;
+    const raw = snap.data()?.dataUrl;
+    return typeof raw === 'string' && isDataImageUrl(raw) ? raw.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePortraitMediaToFirestore(rawDataUrl: string): Promise<string> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) throw new Error('Authentication required.');
+
+  let dataUrl = rawDataUrl.trim();
+  if (dataUrl.length > MAX_FIRESTORE_IMAGE_CHARS) {
+    dataUrl = await recompressDataImageUrl(dataUrl);
+  }
+
+  const mimeType = extractDataImageMime(dataUrl);
+  if (!mimeType || dataUrl.length > MAX_FIRESTORE_IMAGE_CHARS) {
+    throw new Error('Portrait must be PNG, JPEG, or WebP under 750 KB.');
+  }
+
+  const mediaRef = doc(db, 'cvMedia', 'portrait');
+  try {
+    await upsertAdminDoc(mediaRef, {
+      dataUrl,
+      mimeType,
+    });
+    return dataUrl;
+  } catch (error) {
+    const resolved = unwrapUpsertError(error, OperationType.WRITE);
+    handleFirestoreError(resolved.cause, resolved.op, 'cvMedia/portrait');
+  }
+}
+
+export async function deletePortraitMediaFromFirestore(): Promise<void> {
+  if (!auth.currentUser) return;
+  try {
+    await withAdminRetry(() => deleteDoc(doc(db, 'cvMedia', 'portrait')));
+  } catch {
+    // Ignore if already absent
+  }
+}
+
 export function subscribeProfile(
   onData: (profile: CvProfileData) => void,
   onError: (err: Error) => void
@@ -245,12 +342,17 @@ export function subscribeProfile(
         return;
       }
       const d = snapshot.data();
-      const rawEdu = (typeof d.education === 'object' && d.education !== null ? d.education : {}) as Partial<EducationData>;
-      const rawMetrics = Array.isArray(d.metrics) ? (d.metrics as MetricItem[]) : DEFAULT_PROFILE_DATA.metrics;
+      const rawEdu = (
+        typeof d.education === 'object' && d.education !== null ? d.education : {}
+      ) as Partial<EducationData>;
+      const rawMetrics = Array.isArray(d.metrics)
+        ? (d.metrics as MetricItem[])
+        : DEFAULT_PROFILE_DATA.metrics;
 
       onData({
         name: typeof d.name === 'string' ? d.name : DEFAULT_PROFILE_DATA.name,
-        brandShort: typeof d.brandShort === 'string' ? d.brandShort : DEFAULT_PROFILE_DATA.brandShort,
+        brandShort:
+          typeof d.brandShort === 'string' ? d.brandShort : DEFAULT_PROFILE_DATA.brandShort,
         titleEn: typeof d.titleEn === 'string' ? d.titleEn : DEFAULT_PROFILE_DATA.titleEn,
         titleId: typeof d.titleId === 'string' ? d.titleId : DEFAULT_PROFILE_DATA.titleId,
         kickerEn:
@@ -261,12 +363,20 @@ export function subscribeProfile(
           typeof d.kickerId === 'string'
             ? d.kickerId.replace(/Curriculum Vitae Standar Harvard/gi, 'Curriculum Vitae Profesional')
             : DEFAULT_PROFILE_DATA.kickerId,
-        currentCompany: typeof d.currentCompany === 'string' ? d.currentCompany : DEFAULT_PROFILE_DATA.currentCompany,
-        currentRole: typeof d.currentRole === 'string' ? d.currentRole : DEFAULT_PROFILE_DATA.currentRole,
-        summaryEn: typeof d.summaryEn === 'string' ? d.summaryEn : DEFAULT_PROFILE_DATA.summaryEn,
-        summaryId: typeof d.summaryId === 'string' ? d.summaryId : DEFAULT_PROFILE_DATA.summaryId,
-        phoneDisplay: typeof d.phoneDisplay === 'string' ? d.phoneDisplay : DEFAULT_PROFILE_DATA.phoneDisplay,
-        whatsappHref: typeof d.whatsappHref === 'string' ? d.whatsappHref : DEFAULT_PROFILE_DATA.whatsappHref,
+        currentCompany:
+          typeof d.currentCompany === 'string'
+            ? d.currentCompany
+            : DEFAULT_PROFILE_DATA.currentCompany,
+        currentRole:
+          typeof d.currentRole === 'string' ? d.currentRole : DEFAULT_PROFILE_DATA.currentRole,
+        summaryEn:
+          typeof d.summaryEn === 'string' ? d.summaryEn : DEFAULT_PROFILE_DATA.summaryEn,
+        summaryId:
+          typeof d.summaryId === 'string' ? d.summaryId : DEFAULT_PROFILE_DATA.summaryId,
+        phoneDisplay:
+          typeof d.phoneDisplay === 'string' ? d.phoneDisplay : DEFAULT_PROFILE_DATA.phoneDisplay,
+        whatsappHref:
+          typeof d.whatsappHref === 'string' ? d.whatsappHref : DEFAULT_PROFILE_DATA.whatsappHref,
         email: typeof d.email === 'string' ? d.email : DEFAULT_PROFILE_DATA.email,
         address: typeof d.address === 'string' ? d.address : DEFAULT_PROFILE_DATA.address,
         portraitDataUrl:
@@ -275,14 +385,38 @@ export function subscribeProfile(
             : DEFAULT_PROFILE_DATA.portraitDataUrl,
         metrics: rawMetrics.length > 0 ? rawMetrics : DEFAULT_PROFILE_DATA.metrics,
         education: {
-          institution: typeof rawEdu.institution === 'string' ? rawEdu.institution : DEFAULT_PROFILE_DATA.education.institution,
-          majorEn: typeof rawEdu.majorEn === 'string' ? rawEdu.majorEn : DEFAULT_PROFILE_DATA.education.majorEn,
-          majorId: typeof rawEdu.majorId === 'string' ? rawEdu.majorId : DEFAULT_PROFILE_DATA.education.majorId,
-          period: typeof rawEdu.period === 'string' ? rawEdu.period : DEFAULT_PROFILE_DATA.education.period,
-          gpaEn: typeof rawEdu.gpaEn === 'string' ? rawEdu.gpaEn : DEFAULT_PROFILE_DATA.education.gpaEn,
-          gpaId: typeof rawEdu.gpaId === 'string' ? rawEdu.gpaId : DEFAULT_PROFILE_DATA.education.gpaId,
-          focusEn: typeof rawEdu.focusEn === 'string' ? rawEdu.focusEn : DEFAULT_PROFILE_DATA.education.focusEn,
-          focusId: typeof rawEdu.focusId === 'string' ? rawEdu.focusId : DEFAULT_PROFILE_DATA.education.focusId,
+          institution:
+            typeof rawEdu.institution === 'string'
+              ? rawEdu.institution
+              : DEFAULT_PROFILE_DATA.education.institution,
+          majorEn:
+            typeof rawEdu.majorEn === 'string'
+              ? rawEdu.majorEn
+              : DEFAULT_PROFILE_DATA.education.majorEn,
+          majorId:
+            typeof rawEdu.majorId === 'string'
+              ? rawEdu.majorId
+              : DEFAULT_PROFILE_DATA.education.majorId,
+          period:
+            typeof rawEdu.period === 'string'
+              ? rawEdu.period
+              : DEFAULT_PROFILE_DATA.education.period,
+          gpaEn:
+            typeof rawEdu.gpaEn === 'string'
+              ? rawEdu.gpaEn
+              : DEFAULT_PROFILE_DATA.education.gpaEn,
+          gpaId:
+            typeof rawEdu.gpaId === 'string'
+              ? rawEdu.gpaId
+              : DEFAULT_PROFILE_DATA.education.gpaId,
+          focusEn:
+            typeof rawEdu.focusEn === 'string'
+              ? rawEdu.focusEn
+              : DEFAULT_PROFILE_DATA.education.focusEn,
+          focusId:
+            typeof rawEdu.focusId === 'string'
+              ? rawEdu.focusId
+              : DEFAULT_PROFILE_DATA.education.focusId,
         },
         fromFirestore: true,
       });
@@ -310,6 +444,17 @@ export async function saveProfileToFirestore(
     ? waClean
     : `https://wa.me/${profile.phoneDisplay.replace(/\D/g, '').replace(/^0/, '62') || '6281225560408'}`;
 
+  let storedPortraitRef = normalizePortraitValue(profile.portraitDataUrl);
+  if (isDataImageUrl(storedPortraitRef)) {
+    await savePortraitMediaToFirestore(storedPortraitRef);
+    storedPortraitRef = MEDIA_PORTRAIT_TOKEN;
+  } else {
+    storedPortraitRef = sanitizePortraitSrc(storedPortraitRef, '');
+    if (storedPortraitRef !== MEDIA_PORTRAIT_TOKEN) {
+      void deletePortraitMediaFromFirestore();
+    }
+  }
+
   const payload = {
     name: profile.name.trim().slice(0, 120),
     brandShort: profile.brandShort.trim().slice(0, 60),
@@ -325,7 +470,7 @@ export async function saveProfileToFirestore(
     whatsappHref: normalizedWa.slice(0, 200),
     email: profile.email.trim().slice(0, 140),
     address: profile.address.trim().slice(0, 240),
-    portraitDataUrl: sanitizePortraitSrc(profile.portraitDataUrl, ''),
+    portraitDataUrl: storedPortraitRef,
     metrics: profile.metrics.slice(0, 6).map((m) => ({
       value: (m.value || '-').trim().slice(0, 40) || '-',
       valueId: (m.valueId || m.value || '-').trim().slice(0, 40) || '-',
@@ -376,80 +521,15 @@ export async function saveProfileToFirestore(
 
   const docRef = doc(db, 'profile', 'main');
   try {
-    await upsertFirestoreDoc(docRef, payload, 'profile/main');
+    await upsertAdminDoc(docRef, payload);
     schedulePublishedSnapshotSync();
   } catch (error) {
-    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    const resolved = unwrapUpsertError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE
+    );
     handleFirestoreError(resolved.cause, resolved.op, 'profile/main');
   }
-}
-
-export class UpsertStepError extends Error {
-  readonly op: OperationType;
-  readonly causeError: unknown;
-
-  constructor(op: OperationType, causeError: unknown) {
-    super(causeError instanceof Error ? causeError.message : String(causeError));
-    this.op = op;
-    this.causeError = causeError;
-  }
-}
-
-export function unwrapUpsertError(
-  error: unknown,
-  fallbackOp: OperationType
-): { op: OperationType; cause: unknown } {
-  if (error instanceof UpsertStepError) {
-    return { op: error.op, cause: error.causeError };
-  }
-  return { op: fallbackOp, cause: error };
-}
-
-export async function upsertFirestoreDoc(
-  docRef: DocumentReference,
-  payload: Record<string, unknown>,
-  _path: string
-): Promise<void> {
-  const currentUser = auth.currentUser;
-  if (!currentUser) throw new Error('Authentication required.');
-
-  const snap = await withAdminRetry(() => getDocFromServer(docRef)).catch((err) => {
-    throw new UpsertStepError(OperationType.GET, err);
-  });
-
-  if (!snap.exists()) {
-    await withAdminRetry(() =>
-      setDoc(docRef, {
-        ...payload,
-        authorId: currentUser.uid,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      })
-    ).catch((err) => {
-      throw new UpsertStepError(OperationType.CREATE, err);
-    });
-    return;
-  }
-
-  const existing = snap.data();
-  const preservedAuthorId =
-    typeof existing?.authorId === 'string' && existing.authorId.length > 0
-      ? existing.authorId
-      : currentUser.uid;
-  const preservedCreatedAt = hasValidFirestoreTimestamp(existing?.createdAt)
-    ? existing.createdAt
-    : serverTimestamp();
-
-  await withAdminRetry(() =>
-    setDoc(docRef, {
-      ...payload,
-      authorId: preservedAuthorId,
-      createdAt: preservedCreatedAt,
-      updatedAt: serverTimestamp(),
-    })
-  ).catch((err) => {
-    throw new UpsertStepError(OperationType.UPDATE, err);
-  });
 }
 
 export function subscribeTechStacks(
@@ -485,8 +565,15 @@ export function subscribeTechStacks(
             ? (d.group as TechCategory['group'])
             : 'core',
           label: typeof d.label === 'string' ? d.label : '',
-          labelId: typeof d.labelId === 'string' ? d.labelId : typeof d.label === 'string' ? d.label : '',
-          items: Array.isArray(d.items) ? d.items.filter((x): x is string => typeof x === 'string') : [],
+          labelId:
+            typeof d.labelId === 'string'
+              ? d.labelId
+              : typeof d.label === 'string'
+                ? d.label
+                : '',
+          items: Array.isArray(d.items)
+            ? d.items.filter((x): x is string => typeof x === 'string')
+            : [],
           sortOrder: typeof d.sortOrder === 'number' ? d.sortOrder : 99,
           fromFirestore: true,
         });
@@ -568,11 +655,14 @@ export async function saveTechStackToFirestore(
   };
 
   try {
-    await upsertFirestoreDoc(doc(db, 'techStacks', cleanId), payload, `techStacks/${cleanId}`);
+    await upsertAdminDoc(doc(db, 'techStacks', cleanId), payload);
     await registerEntityInCvIndex('techStackIds', cleanId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    const resolved = unwrapUpsertError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE
+    );
     handleFirestoreError(resolved.cause, resolved.op, `techStacks/${cleanId}`);
   }
 }
@@ -709,11 +799,14 @@ export async function saveReferenceToFirestore(
   };
 
   try {
-    await upsertFirestoreDoc(doc(db, 'references', cleanId), payload, `references/${cleanId}`);
+    await upsertAdminDoc(doc(db, 'references', cleanId), payload);
     await registerEntityInCvIndex('referenceIds', cleanId, 'add');
     schedulePublishedSnapshotSync();
   } catch (error) {
-    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    const resolved = unwrapUpsertError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE
+    );
     handleFirestoreError(resolved.cause, resolved.op, `references/${cleanId}`);
   }
 }
@@ -750,8 +843,7 @@ function detectHasTransparency(img: HTMLImageElement): boolean {
   }
 }
 
-const MAX_PORTRAIT_DATA_URL_CHARS = 900_000;
-const SAFE_DATA_IMAGE_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const MAX_PORTRAIT_DATA_URL_CHARS = 700_000;
 
 function encodeCanvasBestEffort(
   img: HTMLImageElement,
@@ -772,33 +864,80 @@ function encodeCanvasBestEffort(
   ctx.drawImage(img, 0, 0, img.width, img.height, 0, 0, canvas.width, canvas.height);
 
   if (preserveAlpha) {
-    // WebP preserves full RGBA alpha at native resolution with ~5x smaller payload than PNG
-    for (let q = 0.96; q >= 0.7; q -= 0.04) {
+    for (let q = 0.96; q >= 0.65; q -= 0.04) {
       const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
-      if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+      if (
+        webpUrl.startsWith('data:image/webp;base64,') &&
+        webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS
+      ) {
         return webpUrl;
       }
     }
     const pngUrl = canvas.toDataURL('image/png');
-    if (pngUrl.startsWith('data:image/png;') && pngUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+    if (
+      pngUrl.startsWith('data:image/png;base64,') &&
+      pngUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS
+    ) {
       return pngUrl;
     }
     return null;
   }
 
-  for (let q = 0.95; q >= 0.68; q -= 0.04) {
+  for (let q = 0.95; q >= 0.65; q -= 0.04) {
     const webpUrl = canvas.toDataURL('image/webp', Number(q.toFixed(2)));
-    if (webpUrl.startsWith('data:image/webp;') && webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+    if (
+      webpUrl.startsWith('data:image/webp;base64,') &&
+      webpUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS
+    ) {
       return webpUrl;
     }
   }
-  for (let q = 0.94; q >= 0.65; q -= 0.05) {
+  for (let q = 0.94; q >= 0.62; q -= 0.05) {
     const jpgUrl = canvas.toDataURL('image/jpeg', Number(q.toFixed(2)));
-    if (jpgUrl.startsWith('data:image/jpeg;') && jpgUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+    if (
+      jpgUrl.startsWith('data:image/jpeg;base64,') &&
+      jpgUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS
+    ) {
       return jpgUrl;
     }
   }
   return null;
+}
+
+function recompressDataImageUrl(rawDataUrl: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error('Invalid image file.'));
+    img.onload = () => {
+      try {
+        const isPngOrWebp =
+          rawDataUrl.startsWith('data:image/png;') ||
+          rawDataUrl.startsWith('data:image/webp;');
+        const preserveAlpha = isPngOrWebp && detectHasTransparency(img);
+        const naturalW = Math.max(1, img.width);
+        const naturalH = Math.max(1, img.height);
+        const maxSide = Math.max(naturalW, naturalH);
+        const initialRatio = maxSide > 2200 ? 2200 / maxSide : 1;
+        const scaleSteps = [1, 0.9, 0.8, 0.7, 0.58, 0.45, 0.35];
+
+        for (const step of scaleSteps) {
+          const targetW = Math.round(naturalW * initialRatio * step);
+          const targetH = Math.round(naturalH * initialRatio * step);
+          const encoded = encodeCanvasBestEffort(img, targetW, targetH, preserveAlpha);
+          if (encoded) {
+            resolve(encoded);
+            return;
+          }
+        }
+        reject(
+          new Error('Portrait image exceeds the 750 KB Firestore limit even after optimization.')
+        );
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
+    };
+    img.src = rawDataUrl;
+  });
 }
 
 export function compressPortraitImage(file: File): Promise<string> {
@@ -816,47 +955,11 @@ export function compressPortraitImage(file: File): Promise<string> {
     reader.onerror = () => reject(new Error('Failed to read image file.'));
     reader.onload = () => {
       const rawDataUrl = String(reader.result || '').trim();
-      // Preserve original file byte-for-byte with 100% native resolution if already within Firestore cap
-      if (SAFE_DATA_IMAGE_RE.test(rawDataUrl) && rawDataUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
+      if (isDataImageUrl(rawDataUrl) && rawDataUrl.length <= MAX_PORTRAIT_DATA_URL_CHARS) {
         resolve(rawDataUrl);
         return;
       }
-
-      const img = new Image();
-      img.onerror = () => reject(new Error('Invalid image file.'));
-      img.onload = () => {
-        try {
-          const isPngOrWebp = file.type === 'image/png' || file.type === 'image/webp';
-          const hasAlpha = isPngOrWebp && detectHasTransparency(img);
-          const preserveAlpha = hasAlpha || file.type === 'image/png';
-
-          const naturalW = Math.max(1, img.width);
-          const naturalH = Math.max(1, img.height);
-          const maxSide = Math.max(naturalW, naturalH);
-          // Start at exact native pixels (only clamp extreme >2400px camera raw images first)
-          const initialRatio = maxSide > 2400 ? 2400 / maxSide : 1;
-          const scaleSteps = [1, 0.9, 0.8, 0.7, 0.58, 0.45];
-
-          for (const step of scaleSteps) {
-            const targetW = Math.round(naturalW * initialRatio * step);
-            const targetH = Math.round(naturalH * initialRatio * step);
-            const encoded = encodeCanvasBestEffort(img, targetW, targetH, preserveAlpha);
-            if (encoded) {
-              resolve(encoded);
-              return;
-            }
-          }
-
-          reject(
-            new Error(
-              'Portrait image exceeds the 900 KB Firestore limit even after high-quality WebP compression.'
-            )
-          );
-        } catch (err) {
-          reject(err instanceof Error ? err : new Error(String(err)));
-        }
-      };
-      img.src = rawDataUrl;
+      void recompressDataImageUrl(rawDataUrl).then(resolve, reject);
     };
     reader.readAsDataURL(file);
   });
@@ -934,8 +1037,10 @@ export function subscribeSiteContent(
         return;
       }
       const d = snapshot.data();
-      const rawEn = typeof d.en === 'object' && d.en !== null ? (d.en as Record<string, unknown>) : undefined;
-      const rawId = typeof d.id === 'object' && d.id !== null ? (d.id as Record<string, unknown>) : undefined;
+      const rawEn =
+        typeof d.en === 'object' && d.en !== null ? (d.en as Record<string, unknown>) : undefined;
+      const rawId =
+        typeof d.id === 'object' && d.id !== null ? (d.id as Record<string, unknown>) : undefined;
       onData({
         en: sanitizeLocaleCopy(rawEn, DEFAULT_SITE_CONTENT.en),
         id: sanitizeLocaleCopy(rawId, DEFAULT_SITE_CONTENT.id),
@@ -960,14 +1065,23 @@ export async function saveSiteContentToFirestore(
   const currentUser = auth.currentUser;
   if (!currentUser) throw new Error('Authentication required.');
 
-  const en = sanitizeLocaleCopy(data.en as unknown as Record<string, unknown>, DEFAULT_SITE_CONTENT.en);
-  const id = sanitizeLocaleCopy(data.id as unknown as Record<string, unknown>, DEFAULT_SITE_CONTENT.id);
+  const en = sanitizeLocaleCopy(
+    data.en as unknown as Record<string, unknown>,
+    DEFAULT_SITE_CONTENT.en
+  );
+  const id = sanitizeLocaleCopy(
+    data.id as unknown as Record<string, unknown>,
+    DEFAULT_SITE_CONTENT.id
+  );
 
   try {
-    await upsertFirestoreDoc(doc(db, 'siteContent', 'main'), { en, id }, 'siteContent/main');
+    await upsertAdminDoc(doc(db, 'siteContent', 'main'), { en, id });
     schedulePublishedSnapshotSync();
   } catch (error) {
-    const resolved = unwrapUpsertError(error, alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE);
+    const resolved = unwrapUpsertError(
+      error,
+      alreadyInFirestore ? OperationType.UPDATE : OperationType.CREATE
+    );
     handleFirestoreError(resolved.cause, resolved.op, 'siteContent/main');
   }
 }

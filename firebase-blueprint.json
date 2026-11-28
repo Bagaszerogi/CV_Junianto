@@ -68,7 +68,7 @@
           "type": "string",
           "minLength": 24,
           "maxLength": 750000,
-          "pattern": "^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+          "pattern": "^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
         },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" },
@@ -286,7 +286,7 @@
           "type": "string",
           "minLength": 24,
           "maxLength": 750000,
-          "pattern": "^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
+          "pattern": "^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$"
         },
         "authorId": { "type": "string", "minLength": 1, "maxLength": 128 },
         "createdAt": { "type": "string", "format": "date-time" },

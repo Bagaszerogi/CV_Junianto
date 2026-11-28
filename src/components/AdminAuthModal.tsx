@@ -722,6 +722,11 @@ export function AdminAuthModal({
                     <div className="break-all">
                       <span className="font-medium text-[var(--ink)]">Database ID:</span>{' '}
                       <span className="font-mono">{auditReport.databaseId}</span>
+                      <p className="mt-0.5 text-[10px] text-[var(--mute)]">
+                        {locale === 'en'
+                          ? 'Active Enterprise DB. Any "(default)" Standard DB in Firebase Console is unused by this app.'
+                          : 'Database aktif (Enterprise). Database "(default)" Standard di Firebase Console tidak dipakai aplikasi.'}
+                      </p>
                     </div>
                     <div className="break-all">
                       <span className="font-medium text-[var(--ink)]">Host aktif:</span>{' '}

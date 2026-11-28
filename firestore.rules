@@ -70,7 +70,7 @@ service cloud.firestore {
       return val is string && (
         val == "" ||
         (val.size() >= 8 && val.size() <= 200 && val[0:8] == '/assets/' && !val.matches('.*\\.\\..*') && val.matches('^/assets/[a-zA-Z0-9_./-]+$')) ||
-        (val.size() >= 30 && val.size() <= 920000 && val[0:30].matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'))
+        (val.size() >= 30 && val.size() <= 920000 && val[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$'))
       );
     }
 
@@ -204,7 +204,7 @@ service cloud.firestore {
         data.category is string && data.category in ['infrastructure', 'pms-pos', 'security', 'event-av'] &&
         data.description is string && data.description.size() <= 1200 &&
         data.imageDataUrl is string && data.imageDataUrl.size() >= 30 && data.imageDataUrl.size() <= 750000 &&
-        data.imageDataUrl[0:30].matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        data.imageDataUrl[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;
@@ -365,7 +365,7 @@ service cloud.firestore {
         data.keys().hasOnly(['projectId', 'imageDataUrl', 'authorId', 'createdAt', 'updatedAt']) &&
         isValidId(data.projectId) &&
         data.imageDataUrl is string && data.imageDataUrl.size() >= 30 && data.imageDataUrl.size() <= 750000 &&
-        data.imageDataUrl[0:30].matches('^data:image\\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
+        data.imageDataUrl[0:30].matches('^data:image/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$') &&
         data.authorId is string && data.authorId.size() >= 1 && data.authorId.size() <= 128 &&
         data.createdAt is timestamp &&
         data.updatedAt is timestamp;

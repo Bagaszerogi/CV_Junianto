@@ -364,30 +364,43 @@ export async function seedMissingDefaultsToFirestore(): Promise<{
   }
 
   let seededCount = 0;
+  const stepErrors: string[] = [];
 
   await syncAdminRecord(user);
   const idx = await ensureCvIndex();
 
   const [profileSnap, siteSnap] = await Promise.all([
-    getDocFromServer(doc(db, 'profile', 'main')),
-    getDocFromServer(doc(db, 'siteContent', 'main')),
+    getDocFromServer(doc(db, 'profile', 'main')).catch(() => null),
+    getDocFromServer(doc(db, 'siteContent', 'main')).catch(() => null),
   ]);
 
-  if (!profileSnap.exists()) {
-    await saveProfileToFirestore(DEFAULT_PROFILE_DATA, false);
-    seededCount += 1;
+  if (!profileSnap?.exists()) {
+    try {
+      await saveProfileToFirestore(DEFAULT_PROFILE_DATA, false);
+      seededCount += 1;
+    } catch (err) {
+      stepErrors.push(`profile/main: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
-  if (!siteSnap.exists()) {
-    await saveSiteContentToFirestore(DEFAULT_SITE_CONTENT, false);
-    seededCount += 1;
+  if (!siteSnap?.exists()) {
+    try {
+      await saveSiteContentToFirestore(DEFAULT_SITE_CONTENT, false);
+      seededCount += 1;
+    } catch (err) {
+      stepErrors.push(`siteContent/main: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   for (const exp of EXPERIENCES) {
     const existsSnap = await getDocFromServer(doc(db, 'experiences', exp.id)).catch(() => null);
     if (!existsSnap?.exists()) {
-      await saveExperienceToFirestore(exp, false);
-      seededCount += 1;
+      try {
+        await saveExperienceToFirestore(exp, false);
+        seededCount += 1;
+      } catch (err) {
+        stepErrors.push(`experiences/${exp.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -395,8 +408,12 @@ export async function seedMissingDefaultsToFirestore(): Promise<{
     const stack = TECH_STACK[i];
     const existsSnap = await getDocFromServer(doc(db, 'techStacks', stack.id)).catch(() => null);
     if (!existsSnap?.exists()) {
-      await saveTechStackToFirestore({ ...stack, sortOrder: i }, false);
-      seededCount += 1;
+      try {
+        await saveTechStackToFirestore({ ...stack, sortOrder: i }, false);
+        seededCount += 1;
+      } catch (err) {
+        stepErrors.push(`techStacks/${stack.id}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
@@ -405,21 +422,33 @@ export async function seedMissingDefaultsToFirestore(): Promise<{
     const refId = `ref_default_${i}`;
     const existsSnap = await getDocFromServer(doc(db, 'references', refId)).catch(() => null);
     if (!existsSnap?.exists()) {
-      await saveReferenceToFirestore(
-        {
-          id: refId,
-          name: ref.name,
-          role: ref.role,
-          phone: ref.phone,
-          sortOrder: i,
-        },
-        false
-      );
-      seededCount += 1;
+      try {
+        await saveReferenceToFirestore(
+          {
+            id: refId,
+            name: ref.name,
+            role: ref.role,
+            phone: ref.phone,
+            sortOrder: i,
+          },
+          false
+        );
+        seededCount += 1;
+      } catch (err) {
+        stepErrors.push(`references/${refId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
   }
 
-  await syncPublishedCvSnapshot(idx.vaultKey);
+  try {
+    await syncPublishedCvSnapshot(idx.vaultKey);
+  } catch (err) {
+    stepErrors.push(`cvShares: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  if (stepErrors.length > 0) {
+    throw new Error(stepErrors[0]);
+  }
 
   return { seededCount };
 }
